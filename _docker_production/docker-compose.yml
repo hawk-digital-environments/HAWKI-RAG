@@ -60,7 +60,7 @@ services:
             - ${DOCKER_PROJECT_IP:-127.0.0.1}:${HAWKI_RAG_APP_PORT:-8080}:80
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
         depends_on:
             migrator:
                 condition: service_completed_successfully
@@ -109,7 +109,7 @@ services:
                 condition: service_healthy
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
 
     # Qdrant stores the semantic vectors. The official image ships bash but no
     # HTTP client, so the health check probes /readyz through bash's /dev/tcp.
@@ -162,7 +162,7 @@ services:
         command: ["serve"]
         networks:
             default: {}
-            hawki-network:
+            hawki-rag-network:
                 aliases:
                     - ollama
                     - hawki_ollama
@@ -259,7 +259,7 @@ services:
         stop_grace_period: 15s
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
 
     hawki-rag-temporal-scraper-worker:
         container_name: hawki_rag_temporal_scraper_worker
@@ -282,7 +282,7 @@ services:
         stop_grace_period: 15s
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
 
     hawki-rag-temporal-converter-worker:
         container_name: hawki_rag_temporal_converter_worker
@@ -307,7 +307,7 @@ services:
         stop_grace_period: 15s
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
 
     # The indexer worker embeds and indexes the converted documents. The
     # docker-compose.gpu-override.yml swaps this to the "-gpu" image variant
@@ -339,7 +339,7 @@ services:
         stop_grace_period: 15s
         networks:
             - default
-            - hawki-network
+            - hawki-rag-network
 
 volumes:
     shared_storage:
@@ -356,7 +356,7 @@ volumes:
 networks:
     # Shared with the main HAWKI application stack, so both sides can reach
     # each other by service name. Create it once with:
-    #   docker network create hawki-network
-    hawki-network:
-        name: hawki-network
-        external: true
+    #   docker network create hawki-rag-network
+    hawki-rag-network:
+        name: hawki-rag-network
+        driver: bridge
