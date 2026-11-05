@@ -210,7 +210,9 @@ the application's tables.
 
 The tenant is part of both identities. A grant references its dataset by
 `(tenant_id, dataset_id)`, so a grant that names a dataset of another
-tenant cannot be stored at all. The dataset status is limited to `active`,
+tenant cannot be stored at all. A dataset that grants still reference
+refuses deletion: a grant is retired only by an explicit revocation, never
+by the database destroying it. The dataset status is limited to `active`,
 `archived` and `deleted`, and only an active dataset answers a lookup.
 
 The tables carry no storage target. The collection, the namespace and the

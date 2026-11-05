@@ -167,3 +167,19 @@ def test_a_table_of_the_legacy_application_is_never_removed(
     finally:
         with engine.begin() as connection:
             connection.execute(sa.text(f'DROP TABLE IF EXISTS public."{sentinel}"'))
+
+
+def test_the_grant_foreign_key_restricts_dataset_deletion(
+    alembic_config: Config, engine: Engine
+) -> None:
+    command.upgrade(alembic_config, "head")
+
+    inspector = inspect(engine)
+    foreign_keys = inspector.get_foreign_keys("dataset_grants", schema=SCHEMA_NAME)
+    constraint = next(
+        foreign_key
+        for foreign_key in foreign_keys
+        if foreign_key.get("name") == "fk_dataset_grants_dataset"
+    )
+
+    assert constraint.get("options", {}).get("ondelete") == "RESTRICT"

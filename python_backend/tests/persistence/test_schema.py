@@ -111,7 +111,7 @@ def test_the_grant_references_the_dataset_by_tenant_and_dataset() -> None:
         (SCHEMA_NAME, "datasets", "tenant_id"),
         (SCHEMA_NAME, "datasets", "dataset_id"),
     ]
-    assert constraint.ondelete == "CASCADE"
+    assert constraint.ondelete == "RESTRICT"
 
 
 def test_the_status_is_limited_to_the_known_values() -> None:

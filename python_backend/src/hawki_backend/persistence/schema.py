@@ -104,7 +104,10 @@ dataset_grants = Table(
         ["tenant_id", "dataset_id"],
         ["datasets.tenant_id", "datasets.dataset_id"],
         name="fk_dataset_grants_dataset",
-        ondelete="CASCADE",
+        # A grant is retired only by an explicit revocation, never by the
+        # database destroying it. A dataset row that grants still reference
+        # refuses deletion, so removing one has to revoke the grants first.
+        ondelete="RESTRICT",
     ),
 )
 
