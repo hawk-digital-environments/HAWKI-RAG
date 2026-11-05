@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeAlias
 
 from hawki_rag_contracts.retrieval.query import QueryFilterScalar
@@ -98,13 +98,8 @@ class GraphReader(Protocol):
         dataset_id: str,
         neo4j_namespace: str,
         limit: int,
-        excluded_doc_ids: Sequence[str] = (),
     ) -> list[dict[str, str]]:
-        """Fetch relationship records from the trusted dataset and namespace.
-
-        ``excluded_doc_ids`` hides facts contributed solely by documents whose
-        deletion is pending verification.
-        """
+        """Fetch relationship records from the trusted dataset and namespace."""
         ...
 
 
@@ -120,7 +115,6 @@ class GraphSearchPort(GraphReader, Protocol):
         limit: int,
         hops: int,
         include_rel_match: bool,
-        excluded_doc_ids: Sequence[str] = (),
     ) -> list[dict[str, Any]]: ...
 
 

@@ -33,12 +33,6 @@
   reject late writer retries, and prevent stale callbacks or replacement
   continuations from restoring deleted state. Cancellation alone no longer counts
   as proof that sink writes have stopped.
-- **Pending deletions are hidden from retrieval.** Documents whose deletion
-  operation is preparing, pending, or failed are excluded from every vector,
-  lexical, and graph read through the trusted query scope
-  (`authorized_scope.excluded_doc_ids`), derived from durable deletion
-  operations and closed to caller influence. Shared graph contributions with
-  at least one live document remain visible until verified cleanup.
 - **Exact historical cleanup scope.** Use recorded document/source/dataset ownership
   and physical collection/namespace evidence, including effective graph indexing
   enabled by converter passthrough. Preserve shared Neo4j provenance and reject

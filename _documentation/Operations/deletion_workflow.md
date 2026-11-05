@@ -40,7 +40,7 @@ by marking datapoints in the sinks:
 | Level | Gate | Effect |
 |---|---|---|
 | Whole dataset | `datasets.status` (`active` / `archived` / `deleted`); query and ingestion grants require `active` | Archived dataset is instantly unqueryable, uningestible, and hidden from dashboards — while its points still physically exist |
-| Managed document | Pending-deletion documents are **excluded from retrieval** through the trusted query scope while their deletion operation is `preparing`, `pending`, or `failed`; points/graph facts match filters again only if the operation is abandoned without cleanup | The exclusion list rides `authorized_scope.excluded_doc_ids` into every vector, lexical, and graph read |
+| Managed document | No query-time gate. Points and graph facts remain retrievable until the Path A workflow reports **verified** sink cleanup; the writer ledger fences new writes during the window | The window is kept short by the verified workflow, not by filtering reads |
 | Direct-text source | Same window as documents, but deletion is synchronous (200), so it is usually immediate | — |
 
 There is deliberately **no `archived` flag written inside Qdrant or Neo4j**: Neo4j
@@ -48,12 +48,16 @@ contributions are reference-counted on shared entities and relationships
 (`doc_ids`), and query-path flag filtering would complicate the provenance
 model. The sink contract is *physically clean, verified*: either a scope has
 a verified remaining count of zero, or it is untouched. Invisibility before
-physical cleanup is enforced by the Laravel authorization layer: the dataset
-status gate for whole datasets, and the trusted-scope exclusion list for
-pending managed-document deletions (Laravel derives it from
-`managed_document_deletions`; callers cannot influence it, and graph facts
-contributed solely by an excluded document are filtered by the graph-store
-predicate while shared contributions survive).
+physical cleanup is enforced at the Laravel authorization layer for whole
+datasets (the status gate above).
+
+> **Explored and rejected: a trusted-scope exclusion list.** Hiding
+> pending-deletion documents by threading `authorized_scope.excluded_doc_ids`
+> into every vector, lexical, and graph read was implemented and then
+> removed: it put a bounded exclusion filter (and its list cap) on the hot
+> path of *every* query, and the list could be exhausted while deletions
+> were still pending — after which the gate silently stopped protecting.
+> Verified sink cleanup (Path A) is the accepted mechanism instead.
 
 ## Path A: Managed document (a dataset entry)
 
@@ -61,8 +65,8 @@ predicate while shared contributions survive).
 grant), optional `Idempotency-Key`. Responses: **202** pending, **200**
 verified complete, **502** startup/failure uncertainty, **409** conflict.
 Repeat the DELETE to resume the same operation. While an operation is
-pending or failed, the document is already excluded from retrieval through
-the trusted query scope — see
+pending or failed, the writer ledger fences the document's sinks; its points
+stay retrievable until verified cleanup lands — see
 [Retrieval gating](#retrieval-gating-why-deleted-content-stops-being-findable).
 
 ```text
@@ -299,12 +303,12 @@ with the generation: generations make late writes self-cleaning.
 - **Partial deletion stays in place.** Generations are whole-dataset;
   document- and source-level deletion inside the active generation remains
   the scoped, verified Path A.
-- **The trusted-scope exclusion list stays.** Generations hide whole
-  datasets; documents deleted inside the active generation keep using the
-  `excluded_doc_ids` retrieval gate described in
-  [Retrieval gating](#retrieval-gating-why-deleted-content-stops-being-findable).
-  The two mechanisms compose: the registry decides *whether the dataset is
-  reachable*, the exclusion list decides *which documents inside it are*.
+- **No query-time exclusion list.** A trusted-scope `excluded_doc_ids` gate
+  was explored and rejected (see
+  [Retrieval gating](#retrieval-gating-why-deleted-content-stops-being-findable)):
+  it taxed every read and its bounded list could be exhausted. The registry
+  decides *whether the dataset is reachable*; documents inside it are
+  removed by verified Path A cleanup.
 - Fail-closed evidence rules and verified-zero teardown checks.
 - Retrieval denial remains application-level. The registry is the gate; the
   stores only hold data.
@@ -362,15 +366,6 @@ Each phase is shippable on its own; Laravel stays until cutover.
 - `app/Services/Dataset/DatasetService.php` — archive, background resume,
   finalization; `DatasetStorageCleanupService.php` — final verification only
 - `app/Services/TextIngestion/TextIngestionDeletionService.php` — Path C
-- Retrieval exclusions for pending deletions:
-  `app/Services/Document/Repositories/ManagedDocumentDeletionRepository.php`
-  (blocking doc IDs),
-  `python_rag/packages/contracts/src/hawki_rag_contracts/retrieval/auth_scope.py`
-  (`excluded_doc_ids` trusted contract),
-  `python_rag/packages/vector_store/src/hawki_vector_store/payloads.py`
-  (`must_not` filter — single choke point for every search path), and
-  `python_rag/packages/graph_store/src/hawki_graph_store/requests.py`
-  (`fetch_related` predicate)
 - `python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/delete_managed_document.py`
   — the deletion workflow
 - `python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/activities/deletion.py`

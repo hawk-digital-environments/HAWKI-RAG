@@ -14,7 +14,6 @@ use App\Services\Authorization\Values\AuthenticatedPrincipal;
 use App\Services\Authorization\Values\AuthorizedDatasetScope;
 use App\Services\Dataset\QdrantCollectionCatalog;
 use App\Services\Dataset\Repositories\DatasetGraphAvailabilityRepository;
-use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -25,7 +24,6 @@ readonly class DatasetQueryAuthorizationService
         private DatasetGrantRepository $grants,
         private DatasetGraphAvailabilityRepository $graphs,
         private QdrantCollectionCatalog $qdrantCollections,
-        private ManagedDocumentDeletionRepository $deletionOperations,
         #[Config('config.query_auth.all_datasets_by_default')]
         private bool $allDatasetsByDefault,
     ) {}
@@ -56,7 +54,6 @@ readonly class DatasetQueryAuthorizationService
             graphEnabled: $includeGraph
                 && trim((string) $dataset->neo4j_namespace) !== ''
                 && $this->graphs->hasReadyGraph((string) $dataset->dataset_id),
-            excludedDocIds: $this->deletionOperations->blockingDocIdsForDataset((string) $dataset->dataset_id),
         );
     }
 
