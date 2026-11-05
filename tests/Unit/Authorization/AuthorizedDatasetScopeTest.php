@@ -17,7 +17,7 @@ class AuthorizedDatasetScopeTest extends TestCase
             qdrantCollection: 'hawki_dataset_a',
             neo4jNamespace: 'graph_dataset_a',
             embeddingProvider: 'ollama',
-            embeddingModel: 'hawki-ollama-embedding',
+            embeddingModel: 'ollama/bge-m3',
         );
 
         $this->assertSame([
@@ -25,7 +25,7 @@ class AuthorizedDatasetScopeTest extends TestCase
             'qdrant_collection' => 'hawki_dataset_a',
             'neo4j_namespace' => 'graph_dataset_a',
             'embedding_provider' => 'ollama',
-            'embedding_model' => 'hawki-ollama-embedding',
+            'embedding_model' => 'ollama/bge-m3',
             'graph_enabled' => false,
         ], $scope->toArray());
     }

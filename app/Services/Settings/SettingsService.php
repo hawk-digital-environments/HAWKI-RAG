@@ -92,9 +92,7 @@ readonly class SettingsService
         $stored ??= $this->settings->read();
         $models = is_array($stored['models'] ?? null) ? $stored['models'] : [];
         $provider = $this->runtimeProvider(
-            $this->stringValue($models['provider'] ?? null)
-                ?? $this->stringValue($this->config->get('temporal.ingestion.provider'))
-                ?? (string) $this->config->get('config.graph_provider', 'ollama'),
+            $this->stringValue($models['provider'] ?? null) ?? '',
         );
 
         return $this->modelRuntimeForProvider($provider, $stored);
@@ -333,31 +331,42 @@ readonly class SettingsService
     {
         $provider = strtolower(trim($provider));
 
-        if ($this->supportsRuntimeProvider($provider)) {
+        if ($provider !== '' && $this->supportsRuntimeProvider($provider)) {
             return $provider;
         }
 
         $default = $this->configuredDefaultProvider();
-        if ($this->supportsRuntimeProvider($default)) {
+        if (! $this->supportsRuntimeProvider($default)) {
+            throw new \InvalidArgumentException(
+                "RAG_PROVIDER '{$default}' is not a runtime-supported provider; ".
+                'set RAG_PROVIDER=ollama or RAG_PROVIDER=litellm.'
+            );
+        }
+
+        if ($provider === '') {
             return $default;
         }
 
-        foreach ($this->providerKeys() as $candidate) {
-            if ($this->supportsRuntimeProvider($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return 'ollama';
+        throw new \InvalidArgumentException(
+            "Provider '{$provider}' is not runtime-supported; ".
+            "select 'ollama' or 'litellm'."
+        );
     }
 
     private function configuredDefaultProvider(): string
     {
-        return strtolower(
-            $this->stringValue($this->config->get('temporal.ingestion.provider'))
-                ?? $this->stringValue($this->config->get('config.graph_provider'))
-                ?? 'ollama',
+        $provider = strtolower(
+            (string) $this->stringValue($this->config->get('config.provider')),
         );
+
+        if ($provider === '') {
+            throw new \InvalidArgumentException(
+                'RAG_PROVIDER is not configured; set it to "ollama" or "litellm" '.
+                'in .env or select a provider in Settings.'
+            );
+        }
+
+        return $provider;
     }
 
     /**

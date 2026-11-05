@@ -1,0 +1,30 @@
+{#-
+    Template for the optional LiteLLM gateway's proxy config. Rendered at
+    container startup by hawki_model_providers.gateway_config from the
+    canonical model keys (EMBED/CHAT/VISION_MODEL plus the plural
+    allowlists). Edit the rendered output nowhere; change the environment
+    instead.
+-#}
+# Rendered at container startup from EMBED/CHAT/VISION_MODEL(S); do not edit.
+model_list:
+{% for route in routes %}
+  - model_name: "{{ route.name }}"
+    litellm_params:
+      model: "{{ route.model }}"
+{% if route.api_base %}
+      api_base: "{{ route.api_base }}"
+{% endif %}
+{% if route.api_key %}
+      api_key: "{{ route.api_key }}"
+{% endif %}
+{% endfor %}
+litellm_settings:
+  drop_params: true
+  request_timeout: 240
+{% if master_key %}
+general_settings:
+  # Current LiteLLM images refuse to boot without a master key; when no
+  # LITELLM_API_KEY is configured the shared internal placeholder keeps the
+  # default local gateway bootable and matches the client's bearer value.
+  master_key: "{{ master_key }}"
+{% endif %}

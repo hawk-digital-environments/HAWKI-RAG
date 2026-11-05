@@ -146,6 +146,11 @@ def _litellm_api_url(value: str) -> str:
 def live_litellm() -> LiveLiteLLM:
     """Discover an explicitly enabled LiteLLM gateway and its aliases."""
 
+    # The default local gateway runs with the shared placeholder master key
+    # (mirrored by the rendered config); probe with it when no explicit
+    # LITELLM_API_KEY is configured.
+    from hawki_model_providers.configuration import UNAUTHENTICATED_PROXY_KEY
+
     api_key = os.environ.get("LITELLM_API_KEY", "").strip()
     candidates = _unique(
         [
@@ -157,33 +162,40 @@ def live_litellm() -> LiveLiteLLM:
         ]
         + ["http://127.0.0.1:4000/v1", "http://litellm:4000/v1"]
     )
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    failures: list[str] = []
-    for api_url in candidates:
-        try:
-            response = requests.get(
-                f"{api_url}/models",
-                headers=headers,
-                timeout=_probe_timeout(),
-            )
-        except requests.exceptions.RequestException as exc:
-            failures.append(f"{api_url} ({type(exc).__name__})")
-            continue
+
+    def _probe(api_url: str, key: str) -> tuple[int, set[str] | None]:
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        response = requests.get(
+            f"{api_url}/models", headers=headers, timeout=_probe_timeout()
+        )
         if response.status_code != 200:
-            failures.append(f"{api_url} (HTTP {response.status_code})")
-            continue
-        try:
-            payload = response.json()
-        except ValueError:
-            failures.append(f"{api_url} (invalid JSON)")
-            continue
+            return response.status_code, None
+        payload = response.json() if response.content else {}
         model_rows = payload.get("data") if isinstance(payload, dict) else None
         models = {
             str(row.get("id") or "").strip()
             for row in (model_rows or [])
             if isinstance(row, dict) and row.get("id")
         }
-        return LiveLiteLLM(api_url=api_url, api_key=api_key, models=models)
+        return response.status_code, models
+
+    api_key = os.environ.get("LITELLM_API_KEY", "").strip()
+    candidate_keys = [api_key] if api_key else ["", UNAUTHENTICATED_PROXY_KEY]
+    failures: list[str] = []
+    for api_url in candidates:
+        for key in candidate_keys:
+            try:
+                status, models = _probe(api_url, key)
+            except (requests.exceptions.RequestException, ValueError) as exc:
+                failures.append(f"{api_url} ({type(exc).__name__})")
+                break
+            if status == 200:
+                return LiveLiteLLM(api_url=api_url, api_key=key, models=models or set())
+            if status not in (401, 403):
+                failures.append(f"{api_url} (HTTP {status})")
+                break
+        else:
+            failures.append(f"{api_url} (HTTP 401/403 for every candidate key)")
 
     unavailable(
         "the optional LiteLLM profile was not reachable/authenticated; start it "

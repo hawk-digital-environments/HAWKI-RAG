@@ -46,7 +46,6 @@ return [
     ],
 
     'ingestion' => [
-        'provider' => env('RAG_DEFAULT_PROVIDER', 'ollama'),
         'graph' => env('RAG_INGEST_GRAPH', false),
     ],
 
