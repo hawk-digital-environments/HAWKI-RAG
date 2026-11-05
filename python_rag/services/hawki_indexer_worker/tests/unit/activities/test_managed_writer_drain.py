@@ -116,3 +116,27 @@ def test_release_drains_admitted_writes_and_closes_cached_adapters(
         proceed.set()
         if sink_kind == "graph":
             sink.close()
+
+
+@pytest.mark.parametrize(
+    "protocol", ["text_writer_protocol", "managed_writer_protocol"]
+)
+def test_python_owned_sink_rechecks_the_existing_admission_protocol(
+    tmp_path, monkeypatch, protocol
+):
+    writer = registration(tmp_path)
+    writer.workflow_input[protocol] = 1
+    calls = []
+    monkeypatch.setattr(
+        writer, "send", lambda action, targets: calls.append((action, targets))
+    )
+    with writer.sink_write():
+        assert calls == [("acquire", [])]
+
+    def fenced(*args):
+        raise RuntimeError("writer admission fenced")
+
+    monkeypatch.setattr(writer, "send", fenced)
+    with pytest.raises(RuntimeError, match="fenced"), writer.sink_write():
+        pytest.fail("A fenced writer must not enter the sink mutation")
+    assert writer._inflight == 0

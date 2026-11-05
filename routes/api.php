@@ -34,6 +34,7 @@ use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
 use App\Http\Middleware\LimitTextIngestionRequestSize;
+use App\Http\Middleware\RequireManagedMutationPrincipal;
 use App\Http\Middleware\RequireTextIngestionToken;
 use App\Http\Middleware\VerifyPipelineWorkerSignature;
 use Illuminate\Http\JsonResponse;
@@ -164,14 +165,14 @@ Route::prefix('datasets')->group(function (): void {
 */
 Route::prefix('documents')->group(function (): void {
     Route::get('/', [DocumentBrowserController::class, 'index']);
-    Route::post('/', [UnifiedDocumentController::class, 'store']);
-    Route::post('/batch', [UnifiedDocumentController::class, 'storeBatch']);
+    Route::post('/', [UnifiedDocumentController::class, 'store'])->middleware(RequireManagedMutationPrincipal::class);
+    Route::post('/batch', [UnifiedDocumentController::class, 'storeBatch'])->middleware(RequireManagedMutationPrincipal::class);
     Route::get('/uploads/download', UploadedSourceDocumentController::class)
         ->name('documents.uploads.download')
         ->defaults('openapi', false);
     Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
-    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update']);
-    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy']);
+    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update'])->middleware(RequireManagedMutationPrincipal::class);
+    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy'])->middleware(RequireManagedMutationPrincipal::class);
 });
 
 /*
@@ -231,7 +232,7 @@ Route::prefix('pipeline')->group(function (): void {
     });
 
     // File ingestion stores the upload and starts a workflow.
-    Route::post('/controller/files', [PipelineControlController::class, 'uploadFile']);
+    Route::post('/controller/files', [PipelineControlController::class, 'uploadFile'])->middleware(RequireManagedMutationPrincipal::class);
 
     // Recovery mutations requeue failed jobs and tasks.
     Route::prefix('recovery')->group(function (): void {

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Pipeline;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pipeline\StorePipelineWorkerEventRequest;
+use App\Services\Document\ManagedCallbackBoundary;
 use App\Services\Pipeline\PipelineWorkerEventService;
 use App\Services\Pipeline\Values\PipelineWorkerEvent;
 use App\Services\TextIngestion\Clients\PythonTextIngestionClient;
@@ -21,8 +22,15 @@ class PipelineWorkerEventController extends Controller
         PythonTextIngestionClient $python,
         ConfigRepository $config,
         LoggerInterface $logger,
+        ManagedCallbackBoundary $managed,
     ): JsonResponse {
         $event = $request->event();
+        if (! str_starts_with($event->workflowId, 'ingest-text-')) {
+            $result = $managed->relay($event->workflowId, (string) $request->getContent(), 'events');
+            if ($result !== null) {
+                return response()->json($result['payload'], $result['status']);
+            }
+        }
 
         return match ($config->get('config.text_ingestion_backend', 'laravel')) {
             'laravel' => $this->record($events, $event),

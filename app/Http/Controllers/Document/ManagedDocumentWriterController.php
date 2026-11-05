@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Document;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Document\ManagedDocumentWriterRequest;
 use App\Services\Document\Exceptions\ManagedDeletionException;
+use App\Services\Document\ManagedCallbackBoundary;
 use App\Services\Document\ManagedDocumentWriterService;
 use App\Services\TextIngestion\Clients\PythonTextIngestionClient;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -14,7 +15,7 @@ use Illuminate\Http\JsonResponse;
 
 final class ManagedDocumentWriterController extends Controller
 {
-    public function __invoke(ManagedDocumentWriterRequest $request, ManagedDocumentWriterService $writers, PythonTextIngestionClient $python, ConfigRepository $config): JsonResponse
+    public function __invoke(ManagedDocumentWriterRequest $request, ManagedDocumentWriterService $writers, PythonTextIngestionClient $python, ConfigRepository $config, ManagedCallbackBoundary $managed): JsonResponse
     {
         // Signature middleware already verified these exact bytes. The Python
         // owner alone records migrated text writer/fence state.
@@ -27,6 +28,12 @@ final class ManagedDocumentWriterController extends Controller
             }
             if ($backend !== 'laravel') {
                 return response()->json(['success' => false, 'message' => 'Text ingestion is not available.'], 503);
+            }
+        }
+        if (! str_starts_with((string) $request->validated('workflow_id'), 'ingest-text-')) {
+            $result = $managed->relay((string) $request->validated('workflow_id'), (string) $request->getContent(), 'writers');
+            if ($result !== null) {
+                return response()->json($result['payload'], $result['status']);
             }
         }
         try {

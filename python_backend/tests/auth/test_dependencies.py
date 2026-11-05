@@ -762,6 +762,9 @@ def test_the_production_application_exposes_health_and_query() -> None:
         "/v1/query",
         "/v1/text-ingestions",
         "/v1/text-ingestions/{source_id}",
+        "/v1/documents",
+        "/v1/documents/batch",
+        "/v1/documents/{document_id}",
     }
     assert set(paths["/v1/health"]) == {"get"}
     assert set(paths["/v1/query"]) == {"post"}

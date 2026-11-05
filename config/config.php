@@ -18,6 +18,10 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
+    'managed_document_backend' => env('MANAGED_DOCUMENT_BACKEND', 'laravel'),
+    'python_managed_document_url' => env('HAWKI_PYTHON_MANAGED_DOCUMENT_URL', 'http://hawki_backend'),
+    'python_managed_document_timeout' => (int) env('HAWKI_PYTHON_MANAGED_DOCUMENT_TIMEOUT', 30),
+
     'query_backend' => env('HAWKI_QUERY_BACKEND', 'laravel'),
     'python_query_url' => env('HAWKI_PYTHON_QUERY_URL', 'http://hawki_backend/v1/query'),
     'query_bff' => [

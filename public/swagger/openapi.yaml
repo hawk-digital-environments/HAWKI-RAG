@@ -417,10 +417,14 @@ paths:
         Unified document list for HAWKI RAG.
 
         Read behavior:
-        - returns managed upload documents with `adoc_*` or `doc_*` handles when matching managed documents exist
-        - falls back to legacy indexed document UUID records when no managed documents match the current filter
+        - returns managed upload documents through the existing public route
+        - Python mode requires a browser query principal and exact Python QUERY grants
+        - Python state supplies Python-owned documents; proven legacy rows remain readable after an ownership/access check
+        - both owners share one limit and indexed/updated/created descending order, with document ID as the tie-breaker
+        - unauthorized datasets are omitted; ownership or backend failures never select another representation
       security:
-        []
+        - BearerAuth: []
+        - {}
       parameters:
         - in: query
           name: dataset_id
@@ -448,6 +452,12 @@ paths:
             minimum: 1
             maximum: 250
       responses:
+        "401":
+          description: Python mode could not resolve an authorized browser query principal.
+        "502":
+          description: Python read ownership or response could not be verified.
+        "503":
+          description: The selected read backend or authorization is unavailable.
         "200":
           description: Document list
           content:
@@ -459,14 +469,21 @@ paths:
         - Documents
       summary: Upload one document into a dataset and start ingest
       description: |
-        Creates one managed document from one uploaded file.
+        Creates one managed document from one uploaded file (at most 100 MiB).
+        Requires an active browser/session or valid Sanctum bearer principal.
+        Without credentials, exactly one active deployment user must exist;
+        zero or multiple users and explicitly invalid credentials return 401.
+        Python mode requires an exact tenant/user/dataset INGEST grant.
+        In Python mode, same-key identical requests replay; changed requests conflict (409).
+        Identical bytes with distinct keys are separate managed documents.
 
         Managed document model:
-        - the public document handle is the `adoc_*` or `doc_*` id returned in `document.document_id`
+        - the public document handle is the `adoc_*` id returned in `document.document_id`
         - one `dataset_id` groups documents that should be indexed together
         - the managed document remains the stable public handle for later read, replace, and delete operations
       security:
-        []
+        - BearerAuth: []
+        - {}
       parameters:
         - in: header
           name: Idempotency-Key
@@ -494,19 +511,25 @@ paths:
                   format: date-time
                 source_checksum_sha256:
                   type: string
+                  minLength: 64
+                  maxLength: 64
+                  pattern: "^[a-fA-F0-9]{64}$"
                 graph:
                   type: boolean
                   default: false
-                  description: Optional. If omitted, ingest stays vector-only and does not write Neo4j graph data.
+                  description: Optional graph enrichment flag. Native passthrough conversion may require scoped graph contributions even when false.
                 display_name:
                   type: string
                 source_url:
                   type: string
                   format: uri
+                  maxLength: 2048
                 metadata_json:
                   oneOf:
                     - type: object
                       additionalProperties: true
+                    - type: array
+                      items: {}
                     - type: string
       responses:
         "202":
@@ -515,6 +538,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Idempotency or managed generation conflict.
+        "502":
+          description: Workflow dispatch or cleanup could not be confirmed; retry the same request.
+        "503":
+          description: The selected managed backend or authorization is unavailable.
         "422":
           description: Validation failed
   /documents/batch:
@@ -523,14 +554,18 @@ paths:
         - Documents
       summary: Upload many documents into one dataset and start one ingest workflow per file
       description: |
-        Creates one managed document per uploaded file.
+        Creates one managed document per uploaded file (at most 100 MiB each).
+        Uses the same mutation principal boundary as single CREATE; credential-free
+        access requires exactly one active user. Invalid credentials return 401.
+        Each item uses the derived Idempotency-Key `<base>:<index>`.
 
         Batch behavior:
         - all files in the same request share the same `dataset_id`
         - each file still becomes its own managed `adoc_*` document handle
         - deleting one managed document is intended to remove only that file's indexed outputs while keeping the rest of the dataset intact
       security:
-        []
+        - BearerAuth: []
+        - {}
       parameters:
         - in: header
           name: Idempotency-Key
@@ -558,11 +593,13 @@ paths:
                 graph:
                   type: boolean
                   default: false
-                  description: Optional. If omitted, ingests stay vector-only and do not write Neo4j graph data.
+                  description: Optional graph enrichment flag; native passthrough contributions retain frozen graph ownership.
                 metadata_json:
                   oneOf:
                     - type: object
                       additionalProperties: true
+                    - type: array
+                      items: {}
                     - type: string
       responses:
         "202":
@@ -577,6 +614,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentBatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Idempotency or managed generation conflict.
+        "502":
+          description: Workflow dispatch or cleanup could not be confirmed; retry the same request.
+        "503":
+          description: The selected managed backend or authorization is unavailable.
         "422":
           description: Validation failed
   /documents/{document_id}:
@@ -600,11 +645,20 @@ paths:
         Returns one document from the unified surface.
 
         Read behavior:
-        - `adoc_*` and `doc_*` ids resolve to managed documents
-        - UUID ids resolve to legacy indexed documents
+        - managed handles resolve to their authoritative owner
+        - Python mode uses the browser query principal and exact Python QUERY grants, independently of INGEST grants
+        - legacy compatibility requires a durable Laravel row and Python proof of no competing owner
+        - unknown or unauthorized documents return 404
       security:
-        []
+        - BearerAuth: []
+        - {}
       responses:
+        "401":
+          description: Python mode could not resolve an authorized browser query principal.
+        "502":
+          description: Python read ownership or response could not be verified.
+        "503":
+          description: The selected read backend or authorization is unavailable.
         "200":
           description: Document
           content:
@@ -619,11 +673,19 @@ paths:
       summary: Replace a managed document if the incoming file is newer
       description: |
         Replaces one managed document while keeping it in the same dataset.
+        Requires the same mutation principal boundary as CREATE.
+        The uploaded file is required and limited to 100 MiB. source_updated_at
+        is required unless force is true. A stale/equal timestamp skips replacement;
+        a newer timestamp or force replaces. Otherwise an equal supplied checksum
+        skips unchanged content. Python mode verifies supplied checksums against bytes.
+        Cleanup fences and drains writers before dispatching a replacement;
+        repeating the same PUT and Idempotency-Key resumes pending work.
 
-        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        This operation only supports managed `adoc_*` or legacy `adoc-*` document ids.
         Passing a legacy indexed document UUID returns `404`.
       security:
-        []
+        - BearerAuth: []
+        - {}
       parameters:
         - in: header
           name: Idempotency-Key
@@ -647,6 +709,9 @@ paths:
                   format: date-time
                 source_checksum_sha256:
                   type: string
+                  minLength: 64
+                  maxLength: 64
+                  pattern: "^[a-fA-F0-9]{64}$"
                 graph:
                   type: boolean
                   description: Optional override. If omitted, the current graph setting is preserved.
@@ -655,10 +720,13 @@ paths:
                 source_url:
                   type: string
                   format: uri
+                  maxLength: 2048
                 metadata_json:
                   oneOf:
                     - type: object
                       additionalProperties: true
+                    - type: array
+                      items: {}
                     - type: string
                 force:
                   type: boolean
@@ -677,6 +745,14 @@ paths:
                 $ref: "#/components/schemas/ManagedDocumentMutationResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Idempotency or managed generation conflict.
+        "502":
+          description: Workflow dispatch or cleanup could not be confirmed; retry the same request.
+        "503":
+          description: The selected managed backend or authorization is unavailable.
         "422":
           description: Validation failed
     delete:
@@ -685,11 +761,17 @@ paths:
       summary: Delete one managed document's active indexed outputs
       description: |
         Deletes the active indexed outputs for one managed document.
+        Requires the same mutation principal boundary as CREATE. Cleanup uses
+        historical sink targets, fences and drains writers, and verifies owned
+        contributions are absent before returning completed. Repeating DELETE
+        resumes the same operation. Pending cleanup returns 202, conflicts 409,
+        and failed cleanup 502.
 
-        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        This operation only supports managed `adoc_*` or legacy `adoc-*` document ids.
         Passing a legacy indexed document UUID returns `404`.
       security:
-        []
+        - BearerAuth: []
+        - {}
       parameters:
         - in: header
           name: Idempotency-Key
@@ -703,6 +785,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentDeleteResponse"
+        "202":
+          description: Managed cleanup is pending confirmed writer drainage or completion.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Conflicting mutation or unprovable managed ownership.
+        "502":
+          description: Sink cleanup failed or could not be verified.
         "404":
           $ref: "#/components/responses/NotFound"
   /pipeline/tasks:
@@ -1054,9 +1144,16 @@ paths:
       tags:
         - Pipeline
       summary: Upload pipeline control files
-      description: Uploads one supported file, prepares its dataset and task records, and starts conversion and ingestion through Temporal.
+      description: |
+        Uploads one supported file (at most 100 MiB) and starts managed ingestion
+        through Temporal. Requires an active session or valid Sanctum principal;
+        credential-free access requires exactly one active deployment user.
+        In Python mode this compatibility mapper forwards to managed CREATE
+        without persisting Laravel task, job, source or managed rows. Aliases and
+        custom converter URL/token/start-path fields remain supported.
       security:
-        []
+        - BearerAuth: []
+        - {}
       requestBody:
         required: true
         content:
@@ -1070,6 +1167,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineFileUploadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Managed operation conflict.
+        "502":
+          description: The managed workflow startup could not be confirmed.
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "500":

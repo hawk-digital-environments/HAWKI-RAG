@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * Vertical upload-to-orchestration scenario using a valid ten-page PDF.
  *
- * The test exercises the unlocked operator upload API, multipart validation,
+ * The test exercises the authenticated operator upload API, multipart validation,
  * physical shared-storage persistence, hashing, dataset, task/job/source
  * creation, and Temporal workflow-payload construction. Only
  * the Python workflow-control endpoint is faked: workers, conversion, model inference,
@@ -56,6 +56,7 @@ class PdfIngestionFlowTest extends SystemTestCase
 
     public function test_real_ten_page_pdf_is_persisted_and_handed_to_temporal(): void
     {
+        $this->actingAsApiUser();
         $bridgeEndpoint = rtrim((string) config('temporal.control_url'), '/')
             .'/internal/workflow-control/source/start';
         Http::fake([

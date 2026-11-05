@@ -7,10 +7,12 @@ dependencies = [
     "alembic==1.20.0",
     "fastapi==0.139.2",
     "hawki-rag-retrieval==0.1.0",
+    "hawki-graph-store==0.1.0",
     "hawki-workflow-control==0.1.0",
     "httpx==0.27.2",
     "psycopg[binary]==3.3.6",
     "pydantic==2.13.4",
+    "python-multipart==0.0.32",
     "pyjwt[crypto]==2.15.1",
     "sqlalchemy==2.0.55",
     "uvicorn[standard]==0.30.6",
@@ -30,6 +32,7 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 hawki-rag-retrieval = { path = "../python_rag/packages/retrieval", editable = true }
+hawki-graph-store = { path = "../python_rag/packages/graph_store", editable = true }
 hawki-workflow-control = { path = "../python_rag/packages/workflow_control", editable = true }
 
 [tool.ruff]

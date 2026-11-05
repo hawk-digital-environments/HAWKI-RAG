@@ -115,14 +115,31 @@ readonly class ManagedDocumentRepository
      * @param  array<string, mixed>  $filters
      * @return Collection<int, ManagedDocument>
      */
-    public function list(array $filters, int $limit): Collection
+    public function list(array $filters, int $limit, int $offset = 0): Collection
     {
         return $this->filteredQuery($filters)
             ->with(['outputs' => fn ($query) => $query->orderByDesc('active')->orderBy('id')])
             ->orderByDesc('indexed_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('created_at')
+            ->orderBy('document_id')
+            ->offset($offset)
             ->limit($limit)
+            ->get();
+    }
+
+    /**
+     * All matching candidates are needed: synchronization can change their
+     * public ordering timestamps. Identity order is only for access batches.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, ManagedDocument>
+     */
+    public function readCandidates(array $filters): Collection
+    {
+        return $this->filteredQuery($filters)
+            ->with(['outputs' => fn ($query) => $query->orderByDesc('active')->orderBy('id')])
+            ->orderBy('document_id')
             ->get();
     }
 

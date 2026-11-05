@@ -8,11 +8,14 @@ operation, not in another writer registry. Unknown acknowledgements never expire
 from __future__ import annotations
 
 import hashlib
+import copy
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .identity import document_id
+from hawki_rag_contracts.pipeline.identity import document_id as artifact_document_id
 
 
 class WriterConflict(Exception):
@@ -51,14 +54,19 @@ def update_writer(
     row: dict[str, Any], event: WriterEvent, *, current_owner: bool
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Apply the managed writer state machine while the source lock is held."""
-    metadata = row["request_metadata"]
+    metadata = copy.deepcopy(row["request_metadata"])
+    workflow_input = metadata.get("workflow_input", {})
+    managed = (
+        bool(workflow_input.get("managed_document_id"))
+        and workflow_input.get("managed_writer_protocol") == 1
+    )
     if (
         row["source_id"] != event.source_id
         or row["job_id"] != event.job_id
         or row["workflow_id"] != event.workflow_id
         or (row["run_id"] is not None and row["run_id"] != event.run_id)
         or metadata.get("managed_writer_protocol") != 1
-        or metadata.get("workflow_input", {}).get("text_writer_protocol") != 1
+        or (not managed and workflow_input.get("text_writer_protocol") != 1)
     ):
         raise WriterConflict()
     writers = metadata.get("managed_writers", {})
@@ -78,22 +86,50 @@ def update_writer(
         ):
             raise WriterConflict()
         scope = metadata["workflow_input"]["ingestion"]
-        if not scope.get("collection") or scope.get("graph") is not False:
+        if not scope.get("collection") or (
+            not managed and scope.get("graph") is not False
+        ):
+            raise WriterConflict()
+        if managed and scope.get("graph") and not scope.get("neo4j_namespace"):
             raise WriterConflict()
         for target in event.targets:
-            if (
+            if not managed and (
                 target.graph
                 or target.relative_path != "document.md"
                 or target.doc_id != document_id(event.source_id)
             ):
                 raise WriterConflict()
+            if managed:
+                path = PurePosixPath(target.relative_path)
+                if (
+                    path.is_absolute()
+                    or not path.parts
+                    or ".." in path.parts
+                    or str(path) != target.relative_path
+                    or target.doc_id
+                    != artifact_document_id(event.source_id, target.relative_path)
+                    or (target.graph and not scope.get("neo4j_namespace"))
+                ):
+                    raise WriterConflict()
+                targets = metadata.setdefault("managed_targets", {})
+                frozen = {
+                    "relative_path": target.relative_path,
+                    "graph": bool(scope.get("graph") or target.graph),
+                }
+                if target.doc_id in targets and targets[target.doc_id] != frozen:
+                    raise WriterConflict()
+                if len(targets) >= 1000 and target.doc_id not in targets:
+                    raise WriterConflict()
+                targets[target.doc_id] = frozen
             grants.append(
                 {
                     "doc_id": target.doc_id,
                     "source_id": row["source_id"],
                     "dataset_id": row["dataset_id"],
                     "collection": scope["collection"],
-                    "neo4j_namespace": None,
+                    "neo4j_namespace": scope.get("neo4j_namespace")
+                    if managed and (scope.get("graph") or target.graph)
+                    else None,
                 }
             )
         writers[event.key()] = {
@@ -126,7 +162,13 @@ def writers_released(metadata: dict[str, Any]) -> bool:
     return (
         metadata.get("managed_writer_protocol") == 1
         and metadata.get("managed_writer_registered") is True
-        and metadata.get("workflow_input", {}).get("text_writer_protocol") == 1
+        and (
+            metadata.get("workflow_input", {}).get("text_writer_protocol") == 1
+            or (
+                metadata.get("workflow_input", {}).get("managed_writer_protocol") == 1
+                and bool(metadata.get("workflow_input", {}).get("managed_document_id"))
+            )
+        )
         and isinstance(metadata.get("managed_writers"), dict)
         and bool(metadata["managed_writers"])
         and all(

@@ -666,7 +666,8 @@ mints an internal JWT, forwards the raw POST body, and maps safe responses.
 Python owns POST validation, exact dataset `AuthorizationAction.INGEST` grants,
 identities, immutable artifacts, idempotency, persistence, workflow preparation,
 completion and direct-text DELETE. There is no fallback or dual dispatch.
-Managed-document/file, URL and crawler ingestion remain Laravel-owned.
+Managed-document/file ingestion is separately opt-in in Epoch 10 below.
+URL and crawler ingestion remain Laravel-owned.
 
 The internal token has `sub=<Laravel user ID>`, the configured canonical
 `tenant_id`, `azp=hawki-bff` and scope exactly `rag:ingest`. The existing RS256
@@ -707,3 +708,31 @@ HAWKI_EPOCH9_TEST_DSN='<disposable PostgreSQL DSN>' \
   uv run --frozen --no-sync pytest tests/text_ingestion/test_postgres.py
 uv run --frozen --no-sync python -O -m pytest tests/text_ingestion tests/test_workflow_control.py tests/auth tests/authorization
 ```
+
+## Epoch 10 managed uploads
+
+`MANAGED_DOCUMENT_BACKEND=laravel` remains the default. The `python` selector
+forwards the four managed mutation routes and the pipeline file mapper to
+Python, without local authoritative rows, fallback, or dual dispatch.
+Enable the backend with `HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED=true` after
+migration `0004`, exact INGEST grants, the existing scope/model registry,
+shared uploads, compatible workers, and Epoch 8 control are ready.
+
+Python owns POST `/v1/documents`, POST `/v1/documents/batch`, PUT and DELETE
+`/v1/documents/{document_id}`, revision publication, signed completion,
+writer fences/drainage, exact historical vector cleanup and shared-safe
+graph contribution cleanup. Identical uploads with distinct keys remain
+distinct documents. No Python runtime reads Laravel tables.
+
+GET `/v1/documents` and GET `/v1/documents/{id}` serve authoritative managed
+reads through the existing Laravel public URLs, using QUERY grants and query
+JWTs. A BFF compatibility access check permits only authorized, proven legacy
+rows to retain their Laravel read projection during cutover. Artifact intents
+commit in the existing mutation JSON before upload/profile publication; retries
+reconcile the same owned paths after a crash. See the runbook for staging,
+storage drift and recoverable publication errors.
+
+The [Epoch 10 deployment and recovery runbook](../_documentation/Operations/python_managed_documents.md)
+specifies the principal boundary, signed callback ownership discriminator,
+crash recovery, coordinated cutover, old in-flight policy and rollback.
+Production traffic is unchanged by implementation.

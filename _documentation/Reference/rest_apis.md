@@ -1,9 +1,9 @@
 # REST APIs
 
 Laravel is the public HTTP boundary. Its canonical JSON routes use `/api`.
-The browser uses these same routes. FastAPI is the internal **read-only data-plane
-bridge**: it has no canonical Qdrant/Neo4j ingestion write route, but also exposes
-Temporal control operations.
+The browser uses these same routes. The Python backend owns workflow control
+and opt-in text and managed-file ingestion. URL/crawler ingestion stays in
+Laravel. The separate RAG bridge retains its existing query responsibilities.
 
 The local Swagger UI is at `http://localhost:8080/swagger`. It loads the
 [checked-in OpenAPI contract](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/public/swagger/openapi.yaml); some UI/internal
@@ -24,7 +24,15 @@ and the owning service remain the source of truth for runtime behavior.
 | Worker events | `POST /api/internal/pipeline/worker-events` | Exact-body HMAC |
 | Health / monitoring | `/up`, `/api/pipeline/health`, `/api/rag/health`, `/api/rag/monitor` | See [Monitoring](../Operations/monitoring.md) |
 
-The management API does not require blanket Sanctum authentication. Application
+Managed document mutations and pipeline file uploads require a concrete active
+principal: browser/session or valid Sanctum bearer, with credential-free access
+only for exactly one active user. Python is final INGEST grant authority in
+Python mode. See the [Epoch 10 runbook](../Operations/python_managed_documents.md).
+In that mode, document GET/list use the established browser query principal,
+`rag:query` tokens and exact Python QUERY grants. Python-owned lifecycle is read
+from Python; legacy rows require an explicit ownership/access check before
+Laravel projection. Both sources retain the existing public document URLs.
+The other management APIs do not require blanket Sanctum authentication. Application
 request rate limits are disabled.
 Direct-text and MCP always need their explicit credentials. See
 [Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md)

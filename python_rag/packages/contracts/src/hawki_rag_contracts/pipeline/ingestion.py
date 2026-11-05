@@ -87,6 +87,7 @@ class IngestionOptions(BaseModel):
     graph: bool = False
     collection: str | None = Field(default=None, min_length=1, max_length=191)
     neo4j_namespace: str | None = Field(default=None, max_length=191)
+    neo4j_database: str | None = Field(default=None, min_length=1, max_length=191)
     chunk_chars: int = Field(default=1200, gt=0)
     chunk_overlap: int = Field(default=250, ge=0)
     batch_size: int = Field(default=64, gt=0)
@@ -131,6 +132,7 @@ class IngestSourceWorkflowInput(BaseModel):
     task_id: str | None = Field(default=None, max_length=191)
     job_id: str | None = Field(default=None, max_length=191)
     managed_document_id: str | None = Field(default=None, max_length=191)
+    managed_writer_protocol: Literal[1] | None = None
     upload: dict[str, JsonValue] | None = None
     converter_mode: str = Field(default="native", min_length=1, max_length=32)
     custom_converter_profile_path: str | None = Field(default=None, max_length=4096)

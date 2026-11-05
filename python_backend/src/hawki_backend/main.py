@@ -37,6 +37,14 @@ from hawki_backend.text_ingestion.settings import (
     load_text_ingestion_settings,
 )
 from hawki_backend.text_ingestion.vectors import TextVectorDeletion
+from hawki_backend.managed_documents.api import (
+    router as managed_router,
+    internal_router as managed_internal_router,
+)
+from hawki_backend.managed_documents.service import ManagedService
+from hawki_backend.managed_documents.repository import ManagedRepository
+from hawki_backend.managed_documents.artifacts import UploadStorage
+from hawki_backend.managed_documents.cleanup import ManagedCleanup
 from hawki_rag_retrieval import QueryDependencies, build_query_dependencies
 from hawki_backend.workflow_control.api import router as workflow_router
 from hawki_backend.workflow_control.repository import OperationRepository
@@ -60,6 +68,7 @@ def create_app(
     text_ingestion_settings: TextIngestionSettings | None = None,
     text_ingestion_service: TextIngestionService | None = None,
     text_ingestion_secret: str | None = None,
+    managed_document_service: ManagedService | None = None,
 ) -> FastAPI:
     """Create an application with health, authentication and query surfaces.
 
@@ -171,6 +180,28 @@ def create_app(
     text_secret = (
         text_ingestion_secret if text_ingestion_secret is not None else control_secret
     )
+    resolved_managed_service = managed_document_service
+    if resolved_managed_service is None and os.environ.get(
+        "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED", "false"
+    ).lower() in {"1", "true", "yes"}:
+        if owned_engine is None:
+            managed_database = database_settings or load_database_settings()
+            if managed_database is not None:
+                owned_engine = build_engine(managed_database)
+        if owned_engine is not None:
+            managed_settings = TextIngestionSettings(
+                shared_root=os.environ.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared"),
+                qdrant_url=os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
+                qdrant_api_key=os.environ.get("QDRANT_API_KEY", ""),
+            )
+            resolved_managed_service = ManagedService(
+                repository=ManagedRepository(owned_engine),
+                storage=UploadStorage(managed_settings.shared_root),
+                policy=resolved_policy,
+                query_settings=resolved_query_settings,
+                control=resolved_workflow_control,
+                cleanup=ManagedCleanup(TextVectorDeletion(managed_settings)),
+            )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -194,6 +225,8 @@ def create_app(
     application.include_router(text_ingestion_router, prefix="/v1")
     application.include_router(text_ingestion_internal_router)
     application.include_router(workflow_router)
+    application.include_router(managed_router, prefix="/v1")
+    application.include_router(managed_internal_router)
     application.state.authenticator = resolved_authenticator
     application.state.grant_policy = resolved_policy
     application.state.query_settings = resolved_query_settings
@@ -203,6 +236,8 @@ def create_app(
     application.state.text_ingestion_service = resolved_text_service
     application.state.text_ingestion_settings = resolved_text_settings
     application.state.text_ingestion_secret = text_secret
+    application.state.managed_document_service = resolved_managed_service
+    application.state.managed_document_secret = control_secret
     return application
 
 
