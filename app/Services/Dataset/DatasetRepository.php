@@ -48,21 +48,10 @@ readonly class DatasetRepository
     {
         $dataset = Dataset::query()->where('dataset_id', $datasetId)->lockForUpdate()->first();
         if ($dataset) {
-            if ($dataset->status === Dataset::STATUS_DELETED) {
-                $dataset->forceFill(['status' => Dataset::STATUS_ACTIVE])->save();
-            }
-
             return $dataset;
         }
 
         return Dataset::query()->create(['dataset_id' => $datasetId, ...$attributes]);
-    }
-
-    public function completeDeletion(Dataset $dataset): bool
-    {
-        // Retain the tombstone until a later explicit creation or upload reuses it.
-        return (bool) Dataset::query()->whereKey($dataset->getKey())
-            ->where('status', Dataset::STATUS_ARCHIVED)->update(['status' => Dataset::STATUS_DELETED]);
     }
 
     /** @return LazyCollection<int, Dataset> */
@@ -75,7 +64,7 @@ readonly class DatasetRepository
     public function archiveForDeletion(string $datasetId): ?Dataset
     {
         $dataset = Dataset::query()->where('dataset_id', $datasetId)->lockForUpdate()->first();
-        if ($dataset && $dataset->status !== Dataset::STATUS_DELETED) {
+        if ($dataset) {
             $dataset->forceFill(['status' => Dataset::STATUS_ARCHIVED])->save();
         }
 

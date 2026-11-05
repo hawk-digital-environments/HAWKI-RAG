@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Models\DatasetGrant;
 use App\Services\Authorization\DatasetGrantTokenService;
 use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
@@ -141,7 +142,7 @@ readonly class DatasetService
         $dataset = $this->database->transaction(fn () => $this->datasets->archiveForDeletion($datasetId));
 
         return $dataset ? ['dataset_id' => $datasetId, 'status' => $dataset->status,
-            'cleanup_pending' => $dataset->status !== Dataset::STATUS_DELETED] : null;
+            'cleanup_pending' => true] : null;
     }
 
     /** The archived row is the durable work item, including after a process restart. */
@@ -171,7 +172,7 @@ readonly class DatasetService
             return null;
         }
         if ($dataset->status !== Dataset::STATUS_ARCHIVED) {
-            return ['dataset_deleted' => $dataset->status === Dataset::STATUS_DELETED];
+            return ['dataset_deleted' => false];
         }
 
         $operations = [];
@@ -229,8 +230,43 @@ readonly class DatasetService
 
         return [
             ...$cleanup,
-            'dataset_deleted' => $cleanupOk ? $this->datasets->completeDeletion($dataset) : false,
+            'dataset_deleted' => $cleanupOk ? $this->finalizeDeletion($dataset) : false,
         ];
+    }
+
+    /**
+     * Delete the dataset row and revoke its grants in one transaction.
+     *
+     * The revocation is explicit and logged, so the destruction of
+     * authorization state stays traceable; the schema-level cascade on
+     * dataset_grants remains only as a backstop. A finalized dataset id can
+     * be created again from a clean slate.
+     */
+    private function finalizeDeletion(Dataset $dataset): bool
+    {
+        [$finalized, $revoked] = $this->database->transaction(function () use ($dataset): array {
+            $grants = DatasetGrant::query()->where('dataset_id', $dataset->dataset_id)->get();
+            DatasetGrant::query()->where('dataset_id', $dataset->dataset_id)->delete();
+
+            $finalized = (bool) Dataset::query()->whereKey($dataset->getKey())
+                ->where('status', Dataset::STATUS_ARCHIVED)->delete();
+
+            return [$finalized, $grants];
+        });
+
+        if ($finalized) {
+            $this->logger->info('Dataset finalization deleted the dataset and revoked its grants.', [
+                'dataset_id' => $dataset->dataset_id,
+                'grants_revoked' => $revoked->count(),
+                'principals' => $revoked->map(fn (DatasetGrant $grant): array => [
+                    'principal_type' => $grant->principal_type,
+                    'principal_id' => $grant->principal_id,
+                    'permission' => $grant->permission,
+                ])->all(),
+            ]);
+        }
+
+        return $finalized;
     }
 
     /**

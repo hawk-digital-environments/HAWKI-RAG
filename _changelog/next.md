@@ -51,6 +51,10 @@
 
 [//]: # (- Changes that are mostly relevant to maintainers and contributors, such as refactors, dependency updates, CI changes, etc.)
 
+- **No more dataset tombstones.** Verified dataset finalization now deletes the
+  dataset row and revokes its grants in one logged transaction instead of
+  keeping a `deleted` tombstone row. A finalized dataset id can be created
+  again from a clean slate, inheriting no grants or history.
 - **Simpler deletion implementation.** Reuse the existing signed Temporal client,
   remove redundant request classes and unused cleanup code, and reduce duplicate
   state queries, document reloads and historical workflow checks.

@@ -346,7 +346,7 @@ class DatasetManagementTest extends TestCase
         $remaining = 0;
         $this->artisan('schedule:run')->assertExitCode(0);
         $this->deleteJson('/api/datasets/scoped-delete/storage')->assertOk()->assertJsonPath('success', true);
-        $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_DELETED]);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => $dataset->dataset_id]);
     }
 
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void

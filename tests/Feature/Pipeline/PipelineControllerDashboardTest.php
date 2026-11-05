@@ -138,7 +138,7 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
     }
 
-    public function test_uploading_to_a_verified_deleted_dataset_reactivates_it(): void
+    public function test_uploading_to_a_finalized_dataset_id_creates_a_fresh_dataset(): void
     {
         $root = storage_path('framework/testing/pipeline-controller-reuse');
         File::deleteDirectory($root);
@@ -149,13 +149,6 @@ class PipelineControllerDashboardTest extends TestCase
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'reuse-run-1',
             ]),
-        ]);
-        Dataset::query()->create([
-            'dataset_id' => 'anatomy',
-            'name' => 'Anatomy',
-            'status' => Dataset::STATUS_DELETED,
-            'qdrant_collection' => 'hawki_anatomy',
-            'neo4j_namespace' => 'hawki_anatomy',
         ]);
         ManagedDocument::query()->create([
             'document_id' => 'adoc_deleted_anatomy',

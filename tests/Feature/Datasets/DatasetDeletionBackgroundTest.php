@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Datasets;
 
 use App\Models\Dataset;
+use App\Models\DatasetGrant;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocumentDeletion;
 use App\Models\ManagedDocumentOutput;
@@ -125,7 +126,7 @@ final class DatasetDeletionBackgroundTest extends TestCase
         $this->signedWriter($this->writerEvent('release'))->assertOk();
         $this->assertDatabaseHas('managed_documents', ['document_id' => 'adoc_writer_test', 'status' => 'deleted']);
         $this->artisan('schedule:run')->assertExitCode(0);
-        $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'deleted']);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'writer-test']);
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'control', 'status' => 'active']);
         $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-writer', 'index_status' => 'deleted']);
         $this->assertSame('completed', ManagedDocumentDeletion::query()->firstOrFail()->status);
@@ -153,12 +154,31 @@ final class DatasetDeletionBackgroundTest extends TestCase
         $this->assertSame('completed', $operation->fresh()->status);
         $this->assertGreaterThanOrEqual(2, count($this->dispatches));
         $this->assertSame([$operation->workflow_id], array_values(array_unique($this->dispatches)));
-        $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'deleted']);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'writer-test']);
         $dataset = app(DatasetService::class)->ensure('writer-test');
         $this->assertSame(Dataset::STATUS_ACTIVE, $dataset->status);
-        $this->assertSame('current_collection', $dataset->qdrant_collection);
-        $this->assertSame('current_namespace', $dataset->neo4j_namespace);
+        $this->assertTrue($dataset->wasRecentlyCreated);
+        $this->assertSame('hawki_writer_test', $dataset->qdrant_collection);
+        $this->assertSame('hawki_writer_test', $dataset->neo4j_namespace);
+        $this->assertDatabaseMissing('dataset_grants', ['dataset_id' => 'writer-test']);
         $this->signedWriter([...$this->writerEvent('acquire', [$this->target()]), 'attempt' => 2])->assertStatus(409);
+    }
+
+    public function test_finalization_revokes_dataset_grants_with_the_dataset_row(): void
+    {
+        $this->cleanupFinished = true;
+        $this->deleteJson('/api/datasets/writer-test/storage')->assertAccepted();
+        DatasetGrant::query()->create([
+            'dataset_id' => 'writer-test',
+            'principal_type' => 'user',
+            'principal_id' => '7',
+            'permission' => 'query',
+        ]);
+
+        $this->artisan('schedule:run')->assertExitCode(0);
+
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'writer-test']);
+        $this->assertDatabaseMissing('dataset_grants', ['dataset_id' => 'writer-test']);
     }
 
     public function test_archived_dataset_cannot_retry_before_background_cleanup_starts(): void
@@ -229,7 +249,7 @@ final class DatasetDeletionBackgroundTest extends TestCase
         Dataset::query()->create(['dataset_id' => 'other-archived', 'name' => 'Other', 'status' => 'archived',
             'qdrant_collection' => '', 'neo4j_namespace' => '']);
         $this->artisan('schedule:run')->assertExitCode(0);
-        $this->assertDatabaseHas('datasets', ['dataset_id' => 'other-archived', 'status' => 'deleted']);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'other-archived']);
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'archived']);
         $this->assertSame('uncertain', array_values(IngestionSource::query()->firstOrFail()->metadata['managed_writers'])[0]['status']);
         $this->assertTrue(ManagedDocumentOutput::query()->firstOrFail()->active);

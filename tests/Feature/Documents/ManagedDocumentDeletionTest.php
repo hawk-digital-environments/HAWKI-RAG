@@ -192,7 +192,7 @@ class ManagedDocumentDeletionTest extends TestCase
         ]);
         app(DatasetService::class)->resumeArchivedDeletions();
         $this->deleteJson('/api/datasets/delete-test/storage')->assertOk()->assertJsonPath('success', true);
-        $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-test', 'status' => Dataset::STATUS_DELETED]);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'delete-test']);
         Http::assertNotSent(fn ($request): bool => $request->method() === 'DELETE');
     }
 

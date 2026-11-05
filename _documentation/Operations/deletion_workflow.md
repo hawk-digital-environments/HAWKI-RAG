@@ -51,14 +51,6 @@ a verified remaining count of zero, or it is untouched. Invisibility before
 physical cleanup is enforced at the Laravel authorization layer for whole
 datasets (the status gate above).
 
-> **Explored and rejected: a trusted-scope exclusion list.** Hiding
-> pending-deletion documents by threading `authorized_scope.excluded_doc_ids`
-> into every vector, lexical, and graph read was implemented and then
-> removed: it put a bounded exclusion filter (and its list cap) on the hot
-> path of *every* query, and the list could be exhausted while deletions
-> were still pending — after which the gate silently stopped protecting.
-> Verified sink cleanup (Path A) is the accepted mechanism instead.
-
 ## Path A: Managed document (a dataset entry)
 
 `DELETE /api/documents/{documentId}` (Sanctum token plus dataset ingest
@@ -141,13 +133,13 @@ after an accepted start requires writer reconciliation before retry.
 contacting Temporal or the sinks.
 
 ```text
-active ──DELETE──▶ archived ──scheduler──▶ (per-document Path A) ──verify──▶ deleted (tombstone)
-                     │      every minute      all documents + sources DELETED
-                     │ instantly:              + Qdrant count(dataset_id) = 0
-                     │ unqueryable, no         + Neo4j nodes/rels(dataset_id, namespace) = 0
+active ──DELETE──▶ archived ──scheduler──▶ (per-document Path A) ──verify──▶ dataset row deleted
+                     │      every minute      all documents + sources DELETED     + grants revoked
+                     │ instantly:              + Qdrant count(dataset_id) = 0     (explicit, logged;
+                     │ unqueryable, no         + Neo4j nodes/rels(dataset_id, namespace) = 0  cascade as backstop)
                      │ ingestion, retries,
                      │ or grants
-                     └─ re-upload / create allowed only after `deleted`
+                     └─ re-upload / create allowed only after finalization
 ```
 
 - The `dataset-cleanup` schedule (`bootstrap/app.php`) runs
@@ -161,10 +153,14 @@ active ──DELETE──▶ archived ──scheduler──▶ (per-document Pat
   on the next scan, including after restarts; errors are logged with the
   dataset ID.
 - The final step (`DatasetStorageCleanupService`) only **verifies** — all
-  mutations already happened through Path A — then flips `archived` to
-  `deleted`. The row remains as a tombstone; a later creation or upload with
-  the same dataset identity reactivates it. Archived datasets can never be
-  reactivated while cleanup is pending. Repeated DELETE is idempotent.
+  mutations already happened through Path A — then finalization **deletes the
+  dataset row and revokes its grants in one transaction**. The revocation is
+  explicit and logged (dataset, count, principal identities); the
+  `dataset_grants` cascade remains as a backstop. No tombstone row is kept:
+  a later creation or upload with the same dataset identity starts from a
+  clean slate with no grants. Archived datasets can never be re-created
+  while cleanup is pending (the row still exists). Repeated DELETE is
+  idempotent.
 
 ## Path C: Direct-text ingestion source
 
@@ -189,7 +185,7 @@ this path must adopt Path A's verified scoped deletion.**
 
 | Table | Field | Values |
 |---|---|---|
-| `datasets` | `status` | `active` → `archived` (DELETE accepted) → `deleted` (verified clean; tombstone) |
+| `datasets` | `status` | `active` → `archived` (DELETE accepted) → row deleted on verified clean (grants revoked with it) |
 | `managed_documents` | `status` / `deleted_at` | `ready` → `deleting` → `deleted` (timestamp set on verified completion) |
 | `ingestion_sources` | `index_status` | `pending`/`running` → `cancelled`/`deleting` → `deleted`, with `metadata.managed_deletion.{operation_id,status}` tombstone |
 | `managed_document_outputs` | `deactivated_at` | set only after verified sink cleanup |
@@ -327,9 +323,10 @@ decides**, not **where enforcement happens**:
 - **Permission is not availability.** A dataset with a valid permission but
   `archived` status or no active generation stays unreachable: the lifecycle
   gate (Postgres) composes after the permission check, and both must pass.
-- **Tombstone policy.** Permission relationships keyed by dataset identity
-  survive delete-and-recreate (`reset`); they are retired by explicit grant
-  revocation, not by deletion.
+- **Grant retirement policy.** Permission relationships keyed by dataset
+  identity are retired by dataset finalization (explicit, logged, in the
+  same transaction as the row deletion) or by explicit grant revocation.
+  Delete-and-recreate starts from a clean slate and inherits no grants.
 - **Future invariant.** If document-level permission relationships are ever
   added, verified deletion completion must retire the deleted document's
   relationships in the same transition.

@@ -11,8 +11,6 @@ class Dataset extends Model
 
     public const STATUS_ARCHIVED = 'archived';
 
-    public const STATUS_DELETED = 'deleted';
-
     public $timestamps = false;
 
     protected $attributes = [
