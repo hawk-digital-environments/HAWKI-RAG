@@ -5,13 +5,13 @@ written to the repository.
 """
 
 import base64
-import json
-from collections.abc import Mapping
 
-import httpx
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from jwt import PyJWKClient, PyJWKSet
+from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 
+from hawki_backend.auth.jwks import PyJwkClientKeyProvider
 from hawki_backend.auth.models import PrincipalKind
 from hawki_backend.settings import AuthSettings
 
@@ -23,6 +23,17 @@ def base64url_int(value: int) -> str:
     """Encode an integer as a base64url string, the way a JWK does."""
     length = (value.bit_length() + 7) // 8
     return base64.urlsafe_b64encode(value.to_bytes(length, "big")).rstrip(b"=").decode()
+
+
+def base64url_fixed(value: int, size: int) -> str:
+    """Encode an integer as exactly ``size`` base64url bytes.
+
+    RFC 7518 requires an elliptic curve coordinate to use the full length
+    of the curve's field element, so a coordinate with a leading zero byte
+    is padded rather than shortened. Real providers publish them this way,
+    and the library rejects anything shorter.
+    """
+    return base64.urlsafe_b64encode(value.to_bytes(size, "big")).rstrip(b"=").decode()
 
 
 class ControllableClock:
@@ -40,61 +51,66 @@ class ControllableClock:
         self._now += seconds
 
 
-class JwksTransport:
-    """Serve a canned key set response and record every request."""
+class FakeJwksClient(PyJWKClient):
+    """A PyJWKClient whose endpoint and cache obey the test clock.
 
-    def __init__(
-        self,
-        body: bytes = b"",
-        status_code: int = 200,
-        headers: Mapping[str, str] | None = None,
-        error: Exception | None = None,
-        content_length: int | None = None,
-        omit_content_length: bool = False,
-    ) -> None:
-        self.body = body
-        self.status_code = status_code
-        self.headers = dict(headers or {})
-        self.error = error
-        self.content_length = content_length
-        self.omit_content_length = omit_content_length
-        self.requests: list[httpx.Request] = []
+    The endpoint serves the newest document it was given and fails while
+    it is unreachable. The cache mirrors the upstream contract, a fetched
+    set is served until the clock moves past its lifespan and a forced
+    refresh always contacts the endpoint, because the upstream cache ages
+    on the real monotonic clock, which a test cannot move. The provider
+    must not be able to tell this client from the real one.
+    """
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        """Return the canned response, or raise the configured error."""
-        self.requests.append(request)
-        if self.error is not None:
-            raise self.error
-        headers = dict(self.headers)
-        if not self.omit_content_length:
-            length = (
-                self.content_length
-                if self.content_length is not None
-                else len(self.body)
-            )
-            headers["content-length"] = str(length)
-        # A streamed response keeps its raw bytes readable, which is what a
-        # real key service connection looks like.
-        return httpx.Response(
-            self.status_code,
-            stream=httpx.ByteStream(self.body),
-            headers=headers,
-            request=request,
+    def __init__(self, *, lifespan: float, clock: ControllableClock) -> None:
+        """Serve a key endpoint whose cache ages on the given clock."""
+        super().__init__(
+            "https://issuer.example/.well-known/jwks.json",
+            lifespan=lifespan,
         )
+        self.cache_lifespan = lifespan
+        self.clock = clock
+        self.documents: list[object] = []
+        self.unreachable = False
+        self.fetches = 0
+        self._cached: PyJWKSet | None = None
+        self._cached_at: float | None = None
 
-    @property
-    def request_count(self) -> int:
-        """Return how often the endpoint was contacted."""
-        return len(self.requests)
+    def serve(self, document: object) -> None:
+        """Publish a new key set document at the endpoint."""
+        self.documents.append(document)
 
-    def client(self) -> httpx.Client:
-        """Return an HTTP client that talks to this transport."""
-        return httpx.Client(transport=httpx.MockTransport(self))
+    def fetch_data(self) -> object:
+        """Return the served document, or fail like an unreachable host."""
+        self.fetches += 1
+        if self.unreachable:
+            raise PyJWKClientConnectionError("key service could not be reached")
+        if not self.documents:
+            raise PyJWKClientError("the endpoint has nothing to serve")
+        return self._as_jwk_set_payload(self.documents[-1])
+
+    def get_jwk_set(self, refresh: bool = False) -> PyJWKSet:
+        """Serve the cached set until it ages past its lifespan."""
+        now = self.clock()
+        expired = self._cached is None or (
+            self._cached_at is not None and now - self._cached_at > self.cache_lifespan
+        )
+        if refresh or expired:
+            payload = self.fetch_data()
+            jwk_set = (
+                payload
+                if isinstance(payload, PyJWKSet)
+                else PyJWKSet.from_dict(payload)
+            )
+            self._cached = jwk_set
+            self._cached_at = now
+        assert self._cached is not None
+        return self._cached
 
 
-def key_set(*keys: Mapping[str, object]) -> bytes:
+def key_document(*keys: dict[str, object]) -> dict[str, object]:
     """Return a JWKS document holding the given keys."""
-    return json.dumps({"keys": list(keys)}).encode()
+    return {"keys": list(keys)}
 
 
 @pytest.fixture(scope="session")
@@ -143,8 +159,8 @@ def ec_public_jwk(ec_public_key: ec.EllipticCurvePublicKey) -> dict[str, str]:
         "kty": "EC",
         "kid": EC_KID,
         "crv": "P-256",
-        "x": base64url_int(numbers.x),
-        "y": base64url_int(numbers.y),
+        "x": base64url_fixed(numbers.x, 32),
+        "y": base64url_fixed(numbers.y, 32),
     }
 
 
@@ -162,4 +178,29 @@ def auth_settings() -> AuthSettings:
         audience="hawki-api",
         jwks_url="https://issuer.example/.well-known/jwks.json",
         clients={"hawki-console": PrincipalKind.USER},
+    )
+
+
+@pytest.fixture
+def jwks_client(
+    auth_settings: AuthSettings, clock: ControllableClock
+) -> FakeJwksClient:
+    """Return a key endpoint client whose cache ages with the test clock."""
+    return FakeJwksClient(
+        lifespan=auth_settings.jwks_cache_ttl_seconds,
+        clock=clock,
+    )
+
+
+@pytest.fixture
+def provider(
+    auth_settings: AuthSettings,
+    jwks_client: FakeJwksClient,
+    clock: ControllableClock,
+) -> PyJwkClientKeyProvider:
+    """Return a provider bound to the fake key endpoint."""
+    return PyJwkClientKeyProvider(
+        auth_settings,
+        client=jwks_client,
+        clock=clock,
     )

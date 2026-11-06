@@ -16,7 +16,7 @@ from hawki_backend.auth.dependencies import (
     require_scopes,
 )
 from hawki_backend.auth.errors import AuthenticationUnavailableError
-from hawki_backend.auth.jwks import JwksKeyProvider, StaticKeyProvider
+from hawki_backend.auth.jwks import PyJwkClientKeyProvider, StaticKeyProvider
 from hawki_backend.auth.jwt import JwtAuthenticator
 from hawki_backend.auth.models import AuthenticatedPrincipal, PrincipalKind
 from hawki_backend.main import create_app
@@ -268,17 +268,15 @@ def test_the_application_closes_the_key_provider_it_owns(
 ) -> None:
     application = create_app(auth_settings=_settings(auth_settings))
     # The provider the application built is not published, so the test reads
-    # it back to observe that the application closes what it owns.
+    # it back to observe that the application closes what it owns. The
+    # provider owns no resources, so closing it must simply not fail.
     provider = application.state.authenticator._key_provider
-    assert isinstance(provider, JwksKeyProvider)
-    client = provider._client
+    assert isinstance(provider, PyJwkClientKeyProvider)
 
     async def check() -> None:
         await _run_lifespan(application)
 
     asyncio.run(check())
-
-    assert client.is_closed
 
 
 def test_the_application_does_not_close_an_injected_key_provider(
