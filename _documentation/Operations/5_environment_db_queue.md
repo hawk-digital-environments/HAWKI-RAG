@@ -280,6 +280,15 @@ internals and graph-only repair limitations.
 
 ## External ingestion tools
 
+For Python-owned URLs, `EXTERNAL_SCRAPER_URL` is canonical. Composition may
+use `CUSTOM_CRAWLER_URL` only when that canonical value is absent; the service
+then receives one resolved scraper URL. `CRAWLER_INGESTION_BACKEND` defaults
+to `laravel`, and `HAWKI_BACKEND_URL_INGESTION_ENABLED` defaults to `false`.
+The Python cutover remains blocked on the external crawler safe-fetch and
+sealed-job drainage contract. Refresh ticks now claim URL generations. Site profiles require the server-owned
+`HAWKI_URL_SITE_PROFILE_ROOT`; arbitrary paths are rejected. See the
+[Epoch 11 runbook](python_url_ingestion.md) before changing any replica.
+
 | Variable | Template default | Read by |
 |---|---|---|
 | `CUSTOM_CRAWLER_URL`, `CUSTOM_CRAWLER_TASK_UI_URL` | `http://crawl4ai-service` | Laravel crawler/API UI integration |

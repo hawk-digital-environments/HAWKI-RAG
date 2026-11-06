@@ -16,6 +16,10 @@ final class ManagedDocumentWriterRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'owner' => 'sometimes|nullable|in:url',
+            'url_ingestion_operation_id' => 'sometimes|nullable|string|max:64',
+            'dataset_id' => 'sometimes|nullable|string|max:191',
+            'generation' => 'sometimes|nullable|integer|min:1',
             'schema_version' => 'required|integer|in:1', 'event_id' => 'required|string|max:255',
             'action' => 'required|in:acquire,release,uncertain',
             'source_id' => 'required|string|max:191', 'job_id' => 'required|string|max:191',

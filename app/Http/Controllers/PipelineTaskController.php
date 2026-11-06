@@ -38,6 +38,11 @@ class PipelineTaskController extends Controller
         ], 201);
     }
 
+    public function urlSourceBoundary(): JsonResponse
+    {
+        return response()->json(['success' => false, 'message' => 'URL source mutations require the Python backend.'], 409);
+    }
+
     public function show(string $taskId): JsonResponse
     {
         $task = $this->pipeline->tasks->show($taskId);

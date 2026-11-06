@@ -133,6 +133,11 @@ class IngestSourceWorkflowInput(BaseModel):
     job_id: str | None = Field(default=None, max_length=191)
     managed_document_id: str | None = Field(default=None, max_length=191)
     managed_writer_protocol: Literal[1] | None = None
+    owner: Literal["url"] | None = None
+    url_ingestion_operation_id: str | None = Field(
+        default=None, min_length=1, max_length=64
+    )
+    generation: int | None = Field(default=None, ge=1)
     upload: dict[str, JsonValue] | None = None
     converter_mode: str = Field(default="native", min_length=1, max_length=32)
     custom_converter_profile_path: str | None = Field(default=None, max_length=4096)
@@ -146,6 +151,24 @@ class IngestSourceWorkflowInput(BaseModel):
     ingestion: IngestionOptions
     external_services: dict[str, JsonValue] = Field(default_factory=dict)
     resume: SourceWorkflowResume | None = None
+
+    @model_validator(mode="after")
+    def validate_url_owner(self) -> "IngestSourceWorkflowInput":
+        url = self.owner == "url" or self.url_ingestion_operation_id is not None
+        if url and (
+            self.owner != "url"
+            or not self.url_ingestion_operation_id
+            or self.generation is None
+            or self.managed_document_id is not None
+            or self.managed_writer_protocol != 1
+            or self.upload is not None
+        ):
+            raise ValueError(
+                "URL ownership requires an exclusive operation and generation"
+            )
+        if not url and self.generation is not None:
+            raise ValueError("A generation requires an explicit URL owner")
+        return self
 
 
 class IngestTextWorkflowInput(BaseModel):

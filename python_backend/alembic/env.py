@@ -18,6 +18,7 @@ from hawki_backend.text_ingestion.schema import (  # noqa: F401
 )
 from hawki_backend.workflow_control.schema import operations  # noqa: F401
 from hawki_backend.managed_documents.schema import TABLES  # noqa: F401
+from hawki_backend.url_ingestion.schema import TABLES as URL_TABLES  # noqa: F401
 from hawki_backend.settings import load_database_settings
 
 config = context.config

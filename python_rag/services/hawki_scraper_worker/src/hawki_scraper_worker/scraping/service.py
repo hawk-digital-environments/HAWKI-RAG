@@ -56,6 +56,13 @@ class ScraperService:
     ) -> dict[str, Any]:
         source_id = _required_string(workflow_input, "source_id")
         raw_dir = _required_string(workflow_input, "raw_output_path")
+        if workflow_input.get("owner") == "url" or workflow_input.get(
+            "url_ingestion_operation_id"
+        ):
+            # Reject URL replays before staging any artifacts or uploads.
+            raise RuntimeError(
+                "Python URL crawling requires verified redirect and DNS-pinning enforcement"
+            )
         artifact_store = LocalArtifactStore(shared_storage_root(workflow_input))
 
         upload_result = self.upload_stager.stage(

@@ -736,3 +736,62 @@ The [Epoch 10 deployment and recovery runbook](../_documentation/Operations/pyth
 specifies the principal boundary, signed callback ownership discriminator,
 crash recovery, coordinated cutover, old in-flight policy and rollback.
 Production traffic is unchanged by implementation.
+
+## Epoch 11 URL ingestion (cutover blocked)
+
+`CRAWLER_INGESTION_BACKEND=laravel` remains the BFF default.
+`HAWKI_BACKEND_URL_INGESTION_ENABLED=false` keeps the new module disabled.
+Migration `0005` adds Python-owned URL requests, sources, generations and
+events, with linkage to the existing `workflow_operations`. No public-schema
+ingestion state is imported, mirrored or read by this module.
+
+The BFF resolves a concrete session/PAT principal or the sole active user.
+An explicit invalid Authorization header is always rejected. Python checks
+exact tenant/user/dataset INGEST access and rechecks locked grant/dataset
+rows before claiming URL state. Starts retain the HTTP 201
+`success/task_id/task` envelope, URL aliases, multi-URL input and metadata.
+
+Only HTTP and HTTPS are accepted. Identity normalization is legacy trim and
+scheme insertion; host case, fragments, query order, ports and trailing
+slashes stay distinct. Security resolution requires every answer to be
+public. This is **not sufficient for safe fetching**: the existing external
+crawler has no verified IP-pinning/redirect enforcement contract. Both the
+backend and scraper worker therefore reject production Python URL crawling.
+There is no environment flag that bypasses this refusal.
+
+Remote sitemaps are validated then blocked; Laravel never fetches them in
+Python mode. Local sitemap paths are rejected. Site profiles must resolve
+inside `HAWKI_URL_SITE_PROFILE_ROOT`, including symlink resolution; an empty
+root rejects profile paths. `EXTERNAL_SCRAPER_URL` is the canonical physical
+scraper setting. At composition only, `CUSTOM_CRAWLER_URL` may fill an absent
+canonical value. Callers cannot choose service URLs/tokens.
+
+The generation repository extends the existing managed writer protocol with
+an explicit URL operation/dataset/generation binding. Recrawl/delete close
+the previous admission gate, cancel/reconcile the exact execution, require
+writer drainage and use frozen vector/graph scopes. Artifact retirement
+also requires sealed external-job drainage, which the current crawler runtime
+cannot attest. Python refresh ticks now claim fresh generations through manual
+recrawl; they never create frozen-input Temporal schedules. The missing safe
+crawler runtime is an external merge prerequisite, while production connectivity
+and traffic migration are activation prerequisites.
+
+`/api/pipeline/health` is retained. Its Python URL readiness reports configured
+state separately from unknown scraper health and a false readiness gate.
+See the [Epoch 11 runbook](../_documentation/Operations/python_url_ingestion.md)
+for the blocked capabilities and mandatory cutover/rollback sequence.
+
+```bash
+uv run --frozen --no-sync pytest tests/url_ingestion
+HAWKI_EPOCH11_TEST_DSN='<disposable PostgreSQL DSN ending in _test>' \
+  uv run --frozen --no-sync pytest tests/url_ingestion/test_postgres.py
+uv run --frozen --no-sync python -O -m pytest tests/url_ingestion -k 'not postgres'
+```
+
+Epoch 11 remaining-blocker work adds PostgreSQL-backed refresh ticks (`python -m
+hawki_backend.url_ingestion.scheduler`), durable sealed-job retirement evidence,
+and authenticated mixed-owner recovery/status/event/log compatibility. The
+external crawler still lacks a verified connection-bound safe-fetch and
+sealed-job drainage contract, so remote URL dispatch and sitemap expansion
+remain fail closed. See the [current runbook](../_documentation/Operations/python_url_ingestion.md)
+and [validation record](../_documentation/Operations/epoch11_blocker_validation.md).

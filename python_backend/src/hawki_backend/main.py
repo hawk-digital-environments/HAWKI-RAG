@@ -45,6 +45,13 @@ from hawki_backend.managed_documents.service import ManagedService
 from hawki_backend.managed_documents.repository import ManagedRepository
 from hawki_backend.managed_documents.artifacts import UploadStorage
 from hawki_backend.managed_documents.cleanup import ManagedCleanup
+from hawki_backend.url_ingestion.api import (
+    router as url_router,
+    internal_router as url_internal_router,
+)
+from hawki_backend.url_ingestion.service import UrlIngestionService
+from hawki_backend.url_ingestion.repository import UrlRepository
+from hawki_backend.url_ingestion.settings import load_url_ingestion_settings
 from hawki_rag_retrieval import QueryDependencies, build_query_dependencies
 from hawki_backend.workflow_control.api import router as workflow_router
 from hawki_backend.workflow_control.repository import OperationRepository
@@ -69,6 +76,7 @@ def create_app(
     text_ingestion_service: TextIngestionService | None = None,
     text_ingestion_secret: str | None = None,
     managed_document_service: ManagedService | None = None,
+    url_ingestion_service: UrlIngestionService | None = None,
 ) -> FastAPI:
     """Create an application with health, authentication and query surfaces.
 
@@ -203,6 +211,29 @@ def create_app(
                 cleanup=ManagedCleanup(TextVectorDeletion(managed_settings)),
             )
 
+    resolved_url_service = url_ingestion_service
+    url_settings = load_url_ingestion_settings()
+    if resolved_url_service is None and url_settings.enabled:
+        if owned_engine is None:
+            url_database = database_settings or load_database_settings()
+            if url_database is not None:
+                owned_engine = build_engine(url_database)
+        if owned_engine is not None:
+            sink_settings = TextIngestionSettings(
+                shared_root=url_settings.shared_root,
+                qdrant_url=os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
+                qdrant_api_key=os.environ.get("QDRANT_API_KEY", ""),
+            )
+            resolved_url_service = UrlIngestionService(
+                repository=UrlRepository(owned_engine),
+                policy=resolved_policy,
+                query_settings=resolved_query_settings,
+                control=resolved_workflow_control,
+                settings=url_settings,
+                cleanup=ManagedCleanup(TextVectorDeletion(sink_settings)),
+                neo4j_database=os.environ.get("NEO4J_DATABASE", "neo4j"),
+            )
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         """Release the resources the application owns."""
@@ -227,6 +258,8 @@ def create_app(
     application.include_router(workflow_router)
     application.include_router(managed_router, prefix="/v1")
     application.include_router(managed_internal_router)
+    application.include_router(url_router, prefix="/v1")
+    application.include_router(url_internal_router)
     application.state.authenticator = resolved_authenticator
     application.state.grant_policy = resolved_policy
     application.state.query_settings = resolved_query_settings
@@ -238,6 +271,8 @@ def create_app(
     application.state.text_ingestion_secret = text_secret
     application.state.managed_document_service = resolved_managed_service
     application.state.managed_document_secret = control_secret
+    application.state.url_ingestion_service = resolved_url_service
+    application.state.url_ingestion_secret = control_secret
     return application
 
 

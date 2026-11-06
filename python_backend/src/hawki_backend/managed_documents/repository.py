@@ -128,6 +128,9 @@ class ManagedRepository:
         values: dict,
         build_candidate: Callable[[dict], tuple[dict, dict, dict]] | None,
         skip_reason: Callable[[dict], str | None] | None = None,
+        *,
+        expected_generation: int | None = None,
+        expected_revision_id: str | None = None,
     ) -> dict:
         with self.engine.begin() as connection:
             lock(connection, "managed-key:" + values["mutation_id"])
@@ -164,6 +167,21 @@ class ManagedRepository:
                 connection.execute(documents.insert().values(**doc))
             if doc is None:
                 raise ManagedError(404, "Document was not found.")
+            if (
+                expected_generation is not None
+                and doc["generation"] != expected_generation
+            ):
+                raise ManagedError(
+                    409, "Managed generation changed; reload before retrying."
+                )
+            if (
+                expected_revision_id is not None
+                and (doc["pending_revision_id"] or doc["current_revision_id"])
+                != expected_revision_id
+            ):
+                raise ManagedError(
+                    409, "Managed revision changed; reload before retrying."
+                )
             if doc.get("mutation_id"):
                 active = one(
                     connection, mutations, mutations.c.mutation_id == doc["mutation_id"]

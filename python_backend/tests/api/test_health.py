@@ -33,6 +33,11 @@ def test_health_and_query_are_the_only_endpoints() -> None:
         "/v1/documents",
         "/v1/documents/batch",
         "/v1/documents/{document_id}",
+        "/v1/pipeline/tasks/start",
+        "/v1/pipeline/tasks/{task_id}",
+        "/v1/pipeline/sources/{source_id}",
+        "/v1/pipeline/sources/{source_id}/recrawl",
+        "/v1/pipeline/recovery/{path}",
     }
     assert set(paths["/v1/health"]) == {"get"}
     assert set(paths["/v1/query"]) == {"post"}

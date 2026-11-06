@@ -58,6 +58,15 @@ class ManagedWriterRegistration:
             "job_id": self.workflow_input["job_id"],
             "targets": targets,
         }
+        if self.workflow_input.get("owner") == "url":
+            event.update(
+                owner="url",
+                url_ingestion_operation_id=self.workflow_input[
+                    "url_ingestion_operation_id"
+                ],
+                dataset_id=self.workflow_input["dataset_id"],
+                generation=self.workflow_input["generation"],
+            )
         with LaravelCallbackClient(
             LaravelCallbackSettings(
                 endpoint=self.settings.callback_url.rsplit("/", 1)[0]
@@ -87,6 +96,14 @@ class ManagedWriterRegistration:
             doc_id = grant.get("doc_id")
             namespace = grant.get("neo4j_namespace")
             target = requested.get(doc_id)
+            if self.workflow_input.get("owner") == "url" and (
+                grant.get("owner") != "url"
+                or grant.get("url_ingestion_operation_id")
+                != self.workflow_input["url_ingestion_operation_id"]
+                or grant.get("generation") != self.workflow_input["generation"]
+                or grant.get("neo4j_database") != scope.get("neo4j_database")
+            ):
+                raise RuntimeError("URL target grant differs from its generation")
             if (
                 not target
                 or doc_id in accepted
@@ -204,8 +221,15 @@ class ManagedWriterRegistration:
         if (
             not workflow_input.get("managed_document_id")
             and workflow_input.get("text_writer_protocol") != 1
+            and workflow_input.get("owner") != "url"
         ):
             return None
+        if workflow_input.get("owner") == "url" and (
+            not workflow_input.get("url_ingestion_operation_id")
+            or not workflow_input.get("generation")
+            or workflow_input.get("managed_writer_protocol") != 1
+        ):
+            raise RuntimeError("URL indexing requires an explicit fenced generation")
         registration = cls(settings, workflow_input, info)
         registration.register_targets([])
         return registration

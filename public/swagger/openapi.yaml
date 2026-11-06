@@ -828,7 +828,13 @@ paths:
       description: |
         Creates a dataset-backed ingestion task and starts the corresponding
         Temporal workflow for the supplied source URL, sitemap, or URL list.
-        The dataset is created automatically when it does not yet exist.
+        A concrete session/PAT principal or the sole active deployment user is
+        required. Invalid explicit Authorization returns 401.
+        CRAWLER_INGESTION_BACKEND defaults to laravel. In python mode the BFF
+        performs no ingestion persistence or dispatch; Python requires an exact
+        INGEST grant on an active dataset (no automatic dataset creation).
+        Python cutover is blocked until safe crawler fetching, sitemap expansion,
+        generation-aware schedules and external-job quiescence are available.
       security:
         []
       requestBody:
@@ -845,6 +851,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskCreateResponse"
+        "401":
+          description: A concrete mutation principal could not be resolved.
+        "409":
+          description: Idempotency or generation ownership conflict.
+        "503":
+          description: URL ingestion configuration or a mandatory safety capability is unavailable.
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/tasks/{task_id}:

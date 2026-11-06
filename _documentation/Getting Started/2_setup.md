@@ -128,6 +128,11 @@ and token settings live in
 
 ## Full-ingestion smoke test
 
+The example below uses the default `CRAWLER_INGESTION_BACKEND=laravel`.
+Python URL cutover is blocked pending the gates in the
+[Epoch 11 runbook](../Operations/python_url_ingestion.md). Do not use the
+Python selector for production smoke tests until those gates are complete.
+
 Use a small website you control, with the external tools running:
 
 ```bash

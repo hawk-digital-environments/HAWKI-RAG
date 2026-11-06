@@ -18,7 +18,7 @@ and the owning service remain the source of truth for runtime behavior.
 | Direct text | `POST /api/integrations/text-ingestions`, `DELETE /api/integrations/text-ingestions/{sourceId}` | Explicit token ability and dataset ingestion grant |
 | Dataset management | `GET/POST /api/datasets`, `GET /api/datasets/{datasetId}` | Management API |
 | Documents | `GET/POST /api/documents`, `POST /api/documents/batch`, `GET/PUT/DELETE /api/documents/{documentId}` | Management API |
-| Pipeline | `POST /api/pipeline/tasks/start`, `GET /api/pipeline/tasks/{taskId}`, `POST /api/pipeline/controller/files` | Management API |
+| Pipeline | `POST /api/pipeline/tasks/start`, `GET /api/pipeline/tasks/{taskId}`, `POST /api/pipeline/controller/files` | Concrete mutation principal; Python performs final dataset authorization when selected |
 | Recovery/control | Task cancel/retry and `/api/pipeline/recovery/...` routes | Management API |
 | Graph / statistics | `/api/rag/neo4j/...`, `GET /api/rag/stats` | Management API; semantic graph search adds query-principal middleware |
 | Worker events | `POST /api/internal/pipeline/worker-events` | Exact-body HMAC |

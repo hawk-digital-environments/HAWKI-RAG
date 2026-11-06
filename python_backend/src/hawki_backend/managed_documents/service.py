@@ -188,6 +188,9 @@ class ManagedService:
         key: str | None,
         document_id: str | None = None,
         extension_filename: str | None = None,
+        *,
+        expected_generation: int | None = None,
+        expected_revision_id: str | None = None,
     ) -> tuple[int, dict]:
         if purpose == "create":
             if not body.dataset_id:
@@ -365,6 +368,8 @@ class ManagedService:
                 values,
                 candidate if purpose != "delete" else None,
                 skip if purpose == "update" else None,
+                expected_generation=expected_generation,
+                expected_revision_id=expected_revision_id,
             )
             if (
                 operation["request"].get("artifact")

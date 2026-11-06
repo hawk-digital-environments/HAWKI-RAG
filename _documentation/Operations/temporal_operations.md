@@ -4,6 +4,13 @@ Laravel owns ingestion metadata and calls the bridge's Temporal controls.
 The bridge starts/cancels/schedules executions; deterministic workflows dispatch
 activities to workers. Temporal owns execution history and task routing.
 
+Ownership can be selected independently for text (Epoch 9), managed uploads
+(Epoch 10), and URL ingestion (Epoch 11). `CRAWLER_INGESTION_BACKEND=laravel`
+remains the URL default. The Python URL cutover is currently blocked; see
+[URL ingestion operations](python_url_ingestion.md) for required safety,
+refresh operations and external-job quiescence gates. Existing cadence
+instructions below describe Laravel-owned URL ingestion only.
+
 ## Workflows and worker ownership
 
 ```mermaid

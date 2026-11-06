@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use App\Models\Dataset;
+use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetRepository;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Document\ManagedDocumentRecoveryGuard;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\Pipeline\Exceptions\CrawlerAuthorityException;
 use App\Services\Pipeline\Recovery\PipelineRecoveryMetadataService;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
@@ -19,6 +21,7 @@ use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\TextIngestion\TextIngestionRecoveryService;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -38,6 +41,8 @@ readonly class PipelineRecoveryWorkflowService
         private PythonTemporalBridgeClient $control,
         private PipelineRecoveryMetadataService $metadata,
         private DatasetRepository $datasets,
+        private ConfigRepository $config,
+        private PipelineOwnership $ownership,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -56,12 +61,13 @@ readonly class PipelineRecoveryWorkflowService
             if (! $current || ($current->status !== PipelineJob::STATUS_FAILED && ! $this->hasPending($current))) {
                 return null;
             }
+            $source = $this->sources->lockBySourceId((string) $current->source_id);
+            $this->verifyCrawlerAuthority($current, $source);
             if ($this->hasPending($current)) {
                 return $current;
             }
             $metadata = $current->metadata ?? [];
             $attempt = (int) ($metadata['retry_count'] ?? 0) + 1;
-            $source = $this->sources->lockBySourceId((string) $current->source_id);
             $metadata['retry_count'] = $attempt;
             $metadata['retried_at'] = $this->clock->now()->format(\DateTimeInterface::ATOM);
             $metadata['pending_recovery'] = [
@@ -145,6 +151,7 @@ readonly class PipelineRecoveryWorkflowService
         }
         $pending = $job->metadata['pending_recovery'];
         $source = $this->sources->findBySourceId((string) $job->source_id);
+        $this->verifyCrawlerAuthority($job, $source);
         if (! $source) {
             throw new \RuntimeException('Ingestion source was not found.');
         }
@@ -200,5 +207,16 @@ readonly class PipelineRecoveryWorkflowService
                 'current_stage' => 'temporal.workflow_starting',
             ]);
         });
+    }
+
+    private function verifyCrawlerAuthority(PipelineJob $job, ?IngestionSource $source): void
+    {
+        if ($this->config->get('config.crawler_ingestion_backend', 'laravel') === 'laravel') {
+            return;
+        }
+        $owner = $this->ownership->classify('job_id', (string) $job->job_id);
+        if ($owner['status'] !== 200 || ($owner['payload']['owner'] ?? null) !== 'laravel') {
+            throw CrawlerAuthorityException::pythonOwned();
+        }
     }
 }

@@ -43,6 +43,12 @@ class WriterEvent(BaseModel):
     activity_id: str = Field(min_length=1, max_length=191)
     attempt: int = Field(ge=1)
     targets: list[WriterTarget] = Field(max_length=1000)
+    owner: Literal["url"] | None = None
+    url_ingestion_operation_id: str | None = Field(
+        default=None, min_length=1, max_length=64
+    )
+    dataset_id: str | None = Field(default=None, min_length=1, max_length=191)
+    generation: int | None = Field(default=None, ge=1)
 
     def key(self) -> str:
         return hashlib.sha256(
@@ -56,10 +62,30 @@ def update_writer(
     """Apply the managed writer state machine while the source lock is held."""
     metadata = copy.deepcopy(row["request_metadata"])
     workflow_input = metadata.get("workflow_input", {})
-    managed = (
-        bool(workflow_input.get("managed_document_id"))
-        and workflow_input.get("managed_writer_protocol") == 1
+    url = workflow_input.get("owner") == "url" and bool(
+        workflow_input.get("url_ingestion_operation_id")
     )
+    if url and (
+        event.owner != "url"
+        or event.url_ingestion_operation_id
+        != workflow_input["url_ingestion_operation_id"]
+        or event.dataset_id != row["dataset_id"]
+        or event.generation != workflow_input.get("generation")
+    ):
+        raise WriterConflict()
+    if not url and any(
+        value is not None
+        for value in (
+            event.owner,
+            event.url_ingestion_operation_id,
+            event.dataset_id,
+            event.generation,
+        )
+    ):
+        raise WriterConflict()
+    managed = (
+        bool(workflow_input.get("managed_document_id")) or url
+    ) and workflow_input.get("managed_writer_protocol") == 1
     if (
         row["source_id"] != event.source_id
         or row["job_id"] != event.job_id
@@ -93,6 +119,8 @@ def update_writer(
         if managed and scope.get("graph") and not scope.get("neo4j_namespace"):
             raise WriterConflict()
         for target in event.targets:
+            if url and target.graph and not scope.get("graph"):
+                raise WriterConflict()
             if not managed and (
                 target.graph
                 or target.relative_path != "document.md"
@@ -132,6 +160,16 @@ def update_writer(
                     else None,
                 }
             )
+        if url:
+            for grant in grants:
+                grant.update(
+                    owner="url",
+                    url_ingestion_operation_id=workflow_input[
+                        "url_ingestion_operation_id"
+                    ],
+                    generation=workflow_input["generation"],
+                    neo4j_database=scope.get("neo4j_database"),
+                )
         writers[event.key()] = {
             "workflow_id": event.workflow_id,
             "run_id": event.run_id,
@@ -166,7 +204,17 @@ def writers_released(metadata: dict[str, Any]) -> bool:
             metadata.get("workflow_input", {}).get("text_writer_protocol") == 1
             or (
                 metadata.get("workflow_input", {}).get("managed_writer_protocol") == 1
-                and bool(metadata.get("workflow_input", {}).get("managed_document_id"))
+                and (
+                    bool(metadata.get("workflow_input", {}).get("managed_document_id"))
+                    or (
+                        metadata.get("workflow_input", {}).get("owner") == "url"
+                        and bool(
+                            metadata.get("workflow_input", {}).get(
+                                "url_ingestion_operation_id"
+                            )
+                        )
+                    )
+                )
             )
         )
         and isinstance(metadata.get("managed_writers"), dict)

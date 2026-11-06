@@ -33,6 +33,7 @@ use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
+use App\Http\Middleware\CrawlerIngestionBoundary;
 use App\Http\Middleware\LimitTextIngestionRequestSize;
 use App\Http\Middleware\RequireManagedMutationPrincipal;
 use App\Http\Middleware\RequireTextIngestionToken;
@@ -189,14 +190,18 @@ Route::prefix('scraper')->group(function (): void {
     Route::get('/tasks', [ScrapeController::class, 'getCrawlerTasks'])
         ->defaults('openapi', false);
     Route::post('/tasks/start', [ScrapeController::class, 'startCrawlerTask'])
+        ->middleware(CrawlerIngestionBoundary::class)
         ->defaults('openapi', false);
     Route::get('/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus'])
         ->defaults('openapi', false);
     Route::post('/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob'])
+        ->middleware(CrawlerIngestionBoundary::class)
         ->defaults('openapi', false);
     Route::post('/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob'])
+        ->middleware(CrawlerIngestionBoundary::class)
         ->defaults('openapi', false);
     Route::post('/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob'])
+        ->middleware(CrawlerIngestionBoundary::class)
         ->defaults('openapi', false);
 });
 
@@ -211,11 +216,11 @@ Route::prefix('scraper')->group(function (): void {
 Route::prefix('pipeline')->group(function (): void {
     // Lightweight status lookup used while the browser follows one job.
     Route::get('/status/{jobId}', [PipelineStatusController::class, 'show'])
-        ->defaults('openapi', false);
+        ->middleware(CrawlerIngestionBoundary::class)->defaults('openapi', false);
 
     // Task routes expose the aggregate state, stage evidence, and controls
     // for a complete scrape -> convert -> ingest execution.
-    Route::prefix('tasks')->group(function (): void {
+    Route::prefix('tasks')->middleware(CrawlerIngestionBoundary::class)->group(function (): void {
         Route::get('/', [PipelineTaskController::class, 'index']);
         Route::post('/start', [PipelineTaskController::class, 'start']);
         Route::get('/{taskId}', [PipelineTaskController::class, 'show']);
@@ -235,7 +240,7 @@ Route::prefix('pipeline')->group(function (): void {
     Route::post('/controller/files', [PipelineControlController::class, 'uploadFile'])->middleware(RequireManagedMutationPrincipal::class);
 
     // Recovery mutations requeue failed jobs and tasks.
-    Route::prefix('recovery')->group(function (): void {
+    Route::prefix('recovery')->middleware(CrawlerIngestionBoundary::class)->group(function (): void {
         Route::get('/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
         Route::post('/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected']);
         Route::post('/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob']);
@@ -247,6 +252,11 @@ Route::prefix('pipeline')->group(function (): void {
     // Pipeline health provides detailed diagnostics; infrastructure probes
     // should continue to use the minimal /up liveness endpoint.
     Route::get('/health', [PipelineHealthController::class, 'show']);
+
+    Route::delete('/sources/{sourceId}', [PipelineTaskController::class, 'urlSourceBoundary'])
+        ->middleware(CrawlerIngestionBoundary::class)->defaults('openapi', false);
+    Route::post('/sources/{sourceId}/recrawl', [PipelineTaskController::class, 'urlSourceBoundary'])
+        ->middleware(CrawlerIngestionBoundary::class)->defaults('openapi', false);
 });
 
 /*

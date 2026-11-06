@@ -8,12 +8,14 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\Pipeline\Exceptions\CrawlerAuthorityException;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -35,6 +37,7 @@ readonly class PipelineTaskStarter
         private PipelineTransactionRepository $transactions,
         private PipelineTaskStatusRefresher $refresher,
         private PythonTemporalBridgeClient $temporalBridge,
+        private ConfigRepository $config,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -43,6 +46,9 @@ readonly class PipelineTaskStarter
      */
     public function start(array $input): PipelineTask
     {
+        if ($this->config->get('config.crawler_ingestion_backend', 'laravel') !== 'laravel') {
+            throw CrawlerAuthorityException::pythonOwned();
+        }
         [$task, $prepared] = $this->transactions->run(function () use ($input): array {
             $dataset = $this->datasets->ensure($input);
             $task = $this->taskRepository->createRunningTask(
