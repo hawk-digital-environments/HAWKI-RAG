@@ -4,22 +4,37 @@ The authenticator asks a `KeyProvider` for a signing key by key id and
 algorithm. It never learns whether the key came from static configuration or
 from a remote JWKS endpoint, and it never learns a URL it could fetch.
 
-`JwksKeyProvider` only ever contacts the URL held in `AuthSettings`. Key
-locations carried inside a token are never followed, because a token is not
-a trusted source of URLs.
+The remote provider, `PyJwkClientKeyProvider`, is a thin adapter around
+PyJWT's `PyJWKClient`. The library owns the transport, the JWK parsing and
+the key set cache, including hardening the backend used to carry itself:
+only http and https URLs are fetched, redirects are refused, and a failed
+fetch never wipes a usable cache.
+
+The adapter exists because the library cannot express three promises the
+authentication boundary makes elsewhere:
+
+* a key the authoritative key set does not hold is a refused token, while
+  a key set that could not be obtained leaves the answer unknown, and the
+  two are never confused;
+* a key service outage shorter than `jwks_max_stale_seconds` does not
+  lock every caller out, because the last usable key set is still served;
+* an unknown key id drives at most one refresh attempt per
+  `jwks_min_refresh_seconds`, so an outage is not contacted per request.
+
+Moving onto the library consciously gave up the response size cap, the
+`key_ops` filter and the duplicate key id check. The algorithm allowlist,
+the header hardening in `jwt.py` and the key type checks below carry the
+verification guarantees that remain.
 """
 
-import base64
-import binascii
-import json
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Container, Iterable, Mapping
 from typing import Protocol, runtime_checkable
 
-import httpx
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from jwt import PyJWKClient, PyJWKSet
+from jwt.exceptions import PyJWTError
 
 from hawki_backend.auth.errors import AuthenticationUnavailableError
 from hawki_backend.settings import AuthSettings
@@ -87,34 +102,21 @@ class StaticKeyProvider:
         return self._keys.get(kid, {}).get(alg)
 
 
-@dataclass(frozen=True, slots=True)
-class _UsableKey:
-    """A signing key that survived filtering, and the algorithms it serves."""
+class PyJwkClientKeyProvider:
+    """Serve signing keys from a remote JWKS endpoint through PyJWKClient.
 
-    kid: str
-    key: SigningKey
-    algorithms: frozenset[str]
-
-
-class _RefreshFailed(Exception):
-    """Internal signal that a refresh did not produce a usable key set."""
-
-
-class JwksKeyProvider:
-    """Serve signing keys from a remote JWKS endpoint.
-
-    The last usable key set is kept in memory. It is refreshed when it
-    expires and when a request names a key id the provider does not know.
-    A refresh that fails leaves the cached keys untouched, so a temporary
-    outage of the key service keeps the backend working until the stale
-    window closes.
+    The library fetches, parses and caches the key set. This provider
+    surrounds it with the failure semantics the boundary promises: an
+    authoritative set that does not hold a key is a refusal, a set that
+    could not be obtained or understood is an outage, and an outage
+    serves the last usable set until the stale window closes.
     """
 
     def __init__(
         self,
         settings: AuthSettings,
         *,
-        client: httpx.Client | None = None,
+        client: PyJWKClient | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Bind the provider to a validated configuration.
@@ -122,309 +124,127 @@ class JwksKeyProvider:
         Args:
             settings: The validated authentication configuration. Only
                 `settings.jwks_url` is ever fetched.
-            client: An HTTP client to use. When it is not supplied the
-                provider creates one and owns it.
-            clock: A monotonic clock used to age the cache. It must be
-                monotonic and must not be the wall clock used for token
-                timestamps.
+            client: The client to fetch key sets with. When it is not
+                supplied one is built from the settings, and the provider
+                owns it for its lifetime.
+            clock: A monotonic clock used to age the fallback key set and
+                to throttle refreshes. It must be monotonic and must not
+                be the wall clock used for token timestamps.
         """
         self._settings = settings
-        self._algorithms = frozenset(settings.algorithms)
         self._clock = clock
-        self._owns_client = client is None
         self._client = (
             client
             if client is not None
-            else httpx.Client(timeout=settings.jwks_timeout_seconds)
+            else PyJWKClient(
+                settings.jwks_url,
+                cache_jwk_set=True,
+                lifespan=settings.jwks_cache_ttl_seconds,
+                timeout=settings.jwks_timeout_seconds,
+            )
         )
         self._lock = threading.Lock()
-        self._refresh_lock = threading.Lock()
-        self._keys: dict[str, dict[str, SigningKey]] = {}
-        self._fetched_at: float | None = None
-        self._generation = 0
-        self._last_attempt_at: float | None = None
-        self._last_attempt_succeeded = False
+        self._usable_set: PyJWKSet | None = None
+        self._usable_at: float | None = None
+        self._forced_at: float | None = None
 
     def get_key(self, kid: str, alg: str) -> SigningKey | None:
         """Return the signing key for a key id and algorithm.
 
+        Lookups are serialized, like the library's own signing key
+        lookup. A fetch is rare, so the lock is held across one.
+
         Returns:
-            The key, or ``None`` when the current authoritative key set was
+            The key, or ``None`` when the authoritative key set was
             obtained and does not hold the key.
 
         Raises:
             AuthenticationUnavailableError: When the key set could not be
-                obtained, so whether the key exists is unknown. A key that is
-                already cached is still served while the key service is down.
+                obtained or understood and no usable key set is cached.
         """
         with self._lock:
             now = self._clock()
-            key = self._lookup(kid, alg)
-            if key is not None and self._is_fresh(now):
-                return key
-            if self._is_fresh(now) and self._has_kid(kid):
-                return None
-            observed = self._generation
-            throttled = self._recent_attempt(now)
-            throttled_outcome = self._last_attempt_succeeded
-
-        if throttled:
-            # A refresh was attempted recently. Its outcome decides what may
-            # be said about a key the cached set does not hold: a successful
-            # attempt knows the authoritative set, a failed one does not.
-            refreshed = throttled_outcome
-        else:
-            refreshed = self._refresh_keys(observed)
-
-        with self._lock:
-            now = self._clock()
-            if not self._cache_is_usable(now):
-                raise AuthenticationUnavailableError()
-            key = self._lookup(kid, alg)
+            try:
+                jwk_set = self._client.get_jwk_set()
+            except PyJWTError:
+                # The library folds every fetch failure into PyJWTError:
+                # an unreachable host, a refused redirect, a document that
+                # is not a key set. None of them says anything about the
+                # keys, so none of them may refuse a token.
+                return self._serve_usable(kid, alg, now)
+            self._remember(jwk_set, now)
+            key = _select(jwk_set, kid, alg, self._settings.algorithms)
             if key is not None:
                 return key
-            if refreshed:
-                return None
-            raise AuthenticationUnavailableError()
+            refreshed = self._force_refresh(now)
+            if refreshed is None:
+                raise AuthenticationUnavailableError() from None
+            return _select(refreshed, kid, alg, self._settings.algorithms)
 
     def close(self) -> None:
-        """Release the HTTP client, when this provider created it."""
-        if self._owns_client:
-            self._client.close()
+        """Release the resources the provider owns.
 
-    def _lookup(self, kid: str, alg: str) -> SigningKey | None:
-        """Return a cached key for a key id and algorithm."""
-        return self._keys.get(kid, {}).get(alg)
-
-    def _has_kid(self, kid: str) -> bool:
-        """Return whether the key set holds the key id under any algorithm."""
-        return kid in self._keys
-
-    def _is_fresh(self, now: float) -> bool:
-        """Return whether the cached key set is younger than its TTL."""
-        if self._fetched_at is None:
-            return False
-        return (now - self._fetched_at) < self._settings.jwks_cache_ttl_seconds
-
-    def _cache_is_usable(self, now: float) -> bool:
-        """Return whether the cached key set may still be served."""
-        if self._fetched_at is None or not self._keys:
-            return False
-        age = now - self._fetched_at
-        return (
-            age < self._settings.jwks_cache_ttl_seconds
-            or age < self._settings.jwks_max_stale_seconds
-        )
-
-    def _recent_attempt(self, now: float) -> bool:
-        """Return whether a refresh was attempted inside the minimum interval.
-
-        Every refresh attempt is throttled this way, whether it was driven by
-        an unknown key id or by the cache expiring. A key service that is
-        down is therefore contacted at most once per interval, instead of
-        once per request.
+        The client fetches with urllib and owns nothing to release, so
+        closing the provider is deliberately a no-op. It keeps the
+        ownership contract the application lifespan relies on.
         """
-        if self._last_attempt_at is None:
-            return False
-        return (now - self._last_attempt_at) < self._settings.jwks_min_refresh_seconds
 
-    def _refresh_keys(self, observed: int) -> bool:
-        """Refresh the cached key set. At most one refresh runs at a time.
+    def _force_refresh(self, now: float) -> PyJWKSet | None:
+        """Refresh the key set for an unknown key id, throttled.
 
         Returns:
-            True when the cached key set is the current authoritative set.
+            The authoritative key set, or ``None`` when it could not be
+            established. Inside the throttle window the newest set a
+            fetch produced is returned again, so a key it does not hold
+            is a refusal rather than an unknown; a window in which every
+            fetch failed returns ``None``, because nothing is known.
         """
-        if not self._refresh_lock.acquire(timeout=self._settings.jwks_timeout_seconds):
-            # Another thread is still refreshing and its outcome is not known
-            # yet, so the authoritative key set cannot be established. The
-            # previous attempt's outcome says nothing about the key set that is
-            # being fetched right now, and reusing it would report a missing
-            # key as unknown while the key service is merely slow. Report the
-            # state as unresolved instead.
-            return False
+        if (
+            self._forced_at is not None
+            and now - self._forced_at < self._settings.jwks_min_refresh_seconds
+        ):
+            if self._usable_at is not None and self._usable_at >= self._forced_at:
+                return self._usable_set
+            return None
+        self._forced_at = now
         try:
-            with self._lock:
-                now = self._clock()
-                if self._generation != observed:
-                    return True
-                if self._recent_attempt(now):
-                    return self._last_attempt_succeeded
-            return self._fetch_and_store()
-        finally:
-            self._refresh_lock.release()
+            jwk_set = self._client.get_jwk_set(refresh=True)
+        except PyJWTError:
+            return None
+        self._remember(jwk_set, now)
+        return jwk_set
 
-    def _fetch_and_store(self) -> bool:
-        """Fetch the remote key set and replace the cache when it is usable.
-
-        The attempt is recorded whether it succeeded or failed, so a later
-        request knows whether the authoritative key set is known.
+    def _serve_usable(self, kid: str, alg: str, now: float) -> SigningKey | None:
+        """Serve a key from the last usable set while the service is down.
 
         Returns:
-            True when the remote key set was obtained and stored.
+            A key the last usable set holds. A key it does not hold is
+            not a refusal: the authoritative set could not be obtained,
+            so the answer for that key is unknown rather than no.
         """
-        now = self._clock()
-        keys: dict[str, dict[str, SigningKey]] | None = None
-        try:
-            keys = self._fetch_keys()
-        except _RefreshFailed:
-            keys = None
-        succeeded = bool(keys)
-        with self._lock:
-            self._last_attempt_at = now
-            self._last_attempt_succeeded = succeeded
-            if keys:
-                self._keys = keys
-                self._fetched_at = now
-                self._generation += 1
-        return succeeded
+        jwk_set = self._usable_set
+        if jwk_set is not None and self._usable_at is not None:
+            age = now - self._usable_at
+            if age < self._settings.jwks_cache_ttl_seconds or (
+                age < self._settings.jwks_max_stale_seconds
+            ):
+                key = _select(jwk_set, kid, alg, self._settings.algorithms)
+                if key is not None:
+                    return key
+        raise AuthenticationUnavailableError() from None
 
-    def _fetch_keys(self) -> dict[str, dict[str, SigningKey]]:
-        """Fetch the remote key set and keep only the usable signing keys."""
-        try:
-            with self._client.stream(
-                "GET",
-                self._settings.jwks_url,
-                timeout=self._settings.jwks_timeout_seconds,
-                follow_redirects=False,
-                headers={"Accept-Encoding": "identity"},
-            ) as response:
-                if response.status_code != 200:
-                    raise _RefreshFailed(
-                        f"key service returned status {response.status_code}"
-                    )
-                body = self._read_body(response)
-        except httpx.InvalidURL as error:
-            raise _RefreshFailed("key service URL is not usable") from error
-        except (httpx.HTTPError, httpx.StreamError) as error:
-            # StreamError covers a response whose body cannot be read, which
-            # is a failed refresh rather than a server error.
-            raise _RefreshFailed("key service could not be reached") from error
-        return self._parse_key_set(body)
+    def _remember(self, jwk_set: PyJWKSet, now: float) -> None:
+        """Keep the newest key set the client actually fetched.
 
-    def _read_body(self, response: httpx.Response) -> bytes:
-        """Read the response body, refusing anything over the size limit.
-
-        The bytes are read raw, so a compressed body cannot be expanded past
-        the configured limit before the limit is applied.
+        The library serves a cached set as the same object until the next
+        fetch, so object identity tells a fetched set from a served one.
         """
-        limit = self._settings.jwks_max_bytes
-        encoding = response.headers.get("content-encoding")
-        if encoding is not None and encoding.strip().lower() not in ("", "identity"):
-            raise _RefreshFailed("key service returned an encoded key set")
-        declared = response.headers.get("content-length")
-        if declared is not None:
-            try:
-                if int(declared) > limit:
-                    raise _RefreshFailed("key set is larger than the configured limit")
-            except ValueError as error:
-                raise _RefreshFailed(
-                    "key service sent an invalid content length"
-                ) from (error)
-        chunks: list[bytes] = []
-        total = 0
-        for chunk in response.iter_raw():
-            total += len(chunk)
-            if total > limit:
-                raise _RefreshFailed("key set is larger than the configured limit")
-            chunks.append(chunk)
-        return b"".join(chunks)
-
-    def _parse_key_set(self, body: bytes) -> dict[str, dict[str, SigningKey]]:
-        """Parse a JWKS document and keep only the usable signing keys."""
-        try:
-            document = json.loads(body)
-        except (ValueError, RecursionError) as error:
-            # JSONDecodeError and UnicodeDecodeError are ValueError
-            # subclasses. RecursionError comes from deeply nested input, and a
-            # very large integer literal raises a plain ValueError.
-            raise _RefreshFailed("key set is not valid JSON") from error
-        if not isinstance(document, dict):
-            raise _RefreshFailed("key set is not a JSON object")
-        entries = document.get("keys")
-        if not isinstance(entries, list):
-            raise _RefreshFailed("key set does not hold a keys list")
-        index: dict[str, dict[str, SigningKey]] = {}
-        for entry in entries:
-            usable = self._parse_key(entry)
-            if usable is None:
-                continue
-            if usable.kid in index:
-                raise _RefreshFailed("key set defines a duplicate key identifier")
-            algorithms: dict[str, SigningKey] = {}
-            for algorithm in usable.algorithms:
-                algorithms[algorithm] = usable.key
-            index[usable.kid] = algorithms
-        return index
-
-    def _parse_key(self, entry: object) -> _UsableKey | None:
-        """Return a usable key, or None when the entry must be ignored."""
-        if not isinstance(entry, dict):
-            return None
-        kid = entry.get("kid")
-        if not isinstance(kid, str) or not kid:
-            return None
-        use = entry.get("use")
-        if use is not None and use != "sig":
-            return None
-        if not self._permits_verification(entry):
-            return None
-        key_type = entry.get("kty")
-        if key_type == "RSA":
-            compatible = _RSA_ALGORITHMS
-        elif key_type == "EC":
-            if entry.get("crv") != "P-256":
-                return None
-            compatible = _EC_ALGORITHMS
-        else:
-            return None
-        algorithms = self._declared_algorithms(entry, compatible)
-        if not algorithms:
-            return None
-        try:
-            key = _build_key(key_type, entry)
-        except (ValueError, TypeError, KeyError, binascii.Error):
-            return None
-        if not _algorithms_for_key(key):
-            return None
-        return _UsableKey(kid=kid, key=key, algorithms=algorithms)
-
-    def _permits_verification(self, entry: dict[str, object]) -> bool:
-        """Return whether the key may be used to verify a signature.
-
-        A key without `key_ops` is unconstrained. A key that declares them
-        must list exactly `verify`: a public verification key performs no
-        other operation, and repeated values are malformed.
-        """
-        if "key_ops" not in entry:
-            return True
-        operations = entry["key_ops"]
-        if not isinstance(operations, list):
-            return False
-        if not all(isinstance(operation, str) for operation in operations):
-            return False
-        if len(set(operations)) != len(operations):
-            return False
-        return set(operations) == {"verify"}
-
-    def _declared_algorithms(
-        self, entry: dict[str, object], compatible: frozenset[str]
-    ) -> frozenset[str]:
-        """Return the algorithms a key may serve.
-
-        A key that declares an `alg` is restricted to exactly that algorithm.
-        A key without one may serve any algorithm its type supports.
-        """
-        if "alg" not in entry:
-            return compatible & self._algorithms
-        declared = entry["alg"]
-        if not isinstance(declared, str):
-            return frozenset()
-        if declared not in self._algorithms or declared not in compatible:
-            return frozenset()
-        return frozenset({declared})
+        if jwk_set is not self._usable_set:
+            self._usable_set = jwk_set
+            self._usable_at = now
 
 
-def _algorithms_for_key(key: SigningKey) -> frozenset[str]:
+def _algorithms_for_key(key: object) -> frozenset[str]:
     """Return the approved algorithms a public key can sign with.
 
     A key that is too weak to be trusted is not offered for any algorithm.
@@ -440,33 +260,35 @@ def _algorithms_for_key(key: SigningKey) -> frozenset[str]:
     return frozenset()
 
 
-def _build_key(key_type: str, entry: Mapping[str, object]) -> SigningKey:
-    """Build a public key from a JWK, raising ValueError for bad material."""
-    if key_type == "RSA":
-        return rsa.RSAPublicNumbers(
-            e=_base64url_int(entry.get("e")),
-            n=_base64url_int(entry.get("n")),
-        ).public_key()
-    return ec.EllipticCurvePublicNumbers(
-        x=_base64url_int(entry.get("x")),
-        y=_base64url_int(entry.get("y")),
-        curve=ec.SECP256R1(),
-    ).public_key()
+def _select(
+    jwk_set: PyJWKSet,
+    kid: str,
+    alg: str,
+    allowed: Container[str],
+) -> SigningKey | None:
+    """Return the public key a key set offers for a key id and algorithm.
 
-
-def _base64url_int(value: object) -> int:
-    """Decode a base64url encoded big endian integer."""
-    if not isinstance(value, str):
-        raise ValueError("expected a base64url encoded string")
-    padded = value + "=" * (-len(value) % 4)
-    return int.from_bytes(
-        base64.b64decode(padded, altchars=b"-_", validate=True), "big"
-    )
+    The first signing entry that names the key id decides. A symmetric
+    key, a weak RSA key, a curve other than P-256 and an algorithm the
+    key cannot sign with all mean no key, and so does an algorithm the
+    configuration does not allow.
+    """
+    if alg not in allowed:
+        return None
+    for jwk in jwk_set.keys:
+        if jwk.key_id != kid:
+            continue
+        if jwk.public_key_use not in (None, "sig"):
+            continue
+        if alg in _algorithms_for_key(jwk.key):
+            return jwk.key
+        return None
+    return None
 
 
 __all__ = [
-    "JwksKeyProvider",
     "KeyProvider",
+    "PyJwkClientKeyProvider",
     "SigningKey",
     "StaticKeyProvider",
 ]

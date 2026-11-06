@@ -70,7 +70,6 @@ def test_defaults_are_applied_for_optional_variables() -> None:
     assert settings.jwks_min_refresh_seconds == 60
     assert settings.jwks_max_stale_seconds == 3600
     assert settings.jwks_timeout_seconds == 3
-    assert settings.jwks_max_bytes == 512 * 1024
 
 
 def test_a_partially_configured_authentication_fails() -> None:
@@ -233,7 +232,6 @@ def test_the_default_tenant_claim_name_is_accepted() -> None:
         "JWKS_MIN_REFRESH_SECONDS",
         "JWKS_MAX_STALE_SECONDS",
         "JWKS_TIMEOUT_SECONDS",
-        "JWKS_MAX_BYTES",
     ],
 )
 def test_a_non_numeric_value_is_rejected(suffix: str) -> None:
@@ -250,7 +248,6 @@ def test_a_non_numeric_value_is_rejected(suffix: str) -> None:
         "JWKS_MIN_REFRESH_SECONDS",
         "JWKS_MAX_STALE_SECONDS",
         "JWKS_TIMEOUT_SECONDS",
-        "JWKS_MAX_BYTES",
     ],
 )
 def test_a_negative_value_is_rejected(suffix: str) -> None:
