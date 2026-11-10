@@ -57,6 +57,10 @@ def execute_source_conversion(
         settings,
         artifact_store=artifact_store,
     )
+    if workflow_input.get("owner") == "url" and not config.uses_direct_extract:
+        raise RuntimeError(
+            "URL conversion requires synchronous extraction; asynchronous converter job drainage is not supported"
+        )
     run_result = _run_converter(
         config,
         source_id=source_id,

@@ -31,7 +31,12 @@ from temporalio.api.failure.v1 import Failure
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_workflow_control.settings import WorkflowControlSettings
-from hawki_rag_contracts.pipeline.temporal import INGEST_TEXT_WORKFLOW
+from hawki_rag_contracts.pipeline.temporal import (
+    INGEST_TEXT_WORKFLOW,
+    URL_DISPATCH_PROTOCOL_MEMO,
+    URL_TERMINAL_ACK_SIGNAL,
+    URL_TERMINAL_QUERY,
+)
 
 
 def _failure_chain_message(failure: Failure) -> str:
@@ -55,7 +60,7 @@ class TemporalUnavailable(Exception):
 
 
 class WorkflowOwnershipConflict(Exception):
-    """USE_EXISTING returned a different prepared operation or legacy execution."""
+    """An existing execution does not belong to the prepared operation."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,12 +68,18 @@ class TemporalExecution:
     workflow_id: str
     run_id: str | None = None
     schedule_id: str | None = None
+    url_dispatch_protocol: int | None = None
 
-    def to_payload(self) -> dict[str, str | None]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "workflow_id": self.workflow_id,
             "run_id": self.run_id,
             "schedule_id": self.schedule_id,
+            **(
+                {"url_dispatch_protocol": self.url_dispatch_protocol}
+                if self.url_dispatch_protocol
+                else {}
+            ),
         }
 
 
@@ -79,8 +90,8 @@ class TemporalControlClient:
         self.settings = settings
 
     async def workflow_status(
-        self, *, workflow_id: str, run_id: str
-    ) -> dict[str, str | None]:
+        self, *, workflow_id: str, run_id: str, include_result: bool = False
+    ) -> dict[str, Any]:
         """Read a specific execution; never wait for a running workflow's result."""
         client = await self.connect_temporal()
         handle = client.get_workflow_handle(workflow_id, run_id=run_id)
@@ -96,12 +107,65 @@ class TemporalControlClient:
                 if event.HasField("workflow_execution_failed_event_attributes"):
                     failure = event.workflow_execution_failed_event_attributes.failure
                     error = _failure_chain_message(failure)
-        return {
+        receipt = {
             "workflow_id": workflow_id,
             "run_id": run_id,
             "status": status,
             "error": error,
         }
+        if include_result and status == "COMPLETED":
+            # Read only this closed run. Never follow a successor execution or
+            # wait for a running workflow when reconciling URL ownership.
+            receipt["result"] = await handle.result(
+                follow_runs=False, rpc_timeout=timedelta(seconds=5)
+            )
+        elif include_result and status == "RUNNING":
+            memo = await description.memo()
+            if memo.get(URL_DISPATCH_PROTOCOL_MEMO) == 1:
+                terminal = await handle.query(
+                    URL_TERMINAL_QUERY, rpc_timeout=timedelta(seconds=5)
+                )
+                if terminal is not None:
+                    if not isinstance(terminal, dict) or terminal.get("status") not in {
+                        "COMPLETED",
+                        "FAILED",
+                    }:
+                        raise WorkflowOwnershipConflict()
+                    # The workflow has stopped ingestion and is waiting for a
+                    # durable PostgreSQL receipt before it may actually close.
+                    receipt.update(terminal, awaiting_ack=True)
+        return receipt
+
+    async def acknowledge_url_terminal(
+        self,
+        *,
+        workflow_id: str,
+        run_id: str,
+        operation_id: str,
+        workflow_input: dict[str, Any],
+    ) -> None:
+        """Acknowledge only after the caller durably recorded this exact outcome."""
+        client = await self.connect_temporal()
+        handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+        try:
+            description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+            self.check_url_owner(
+                description,
+                await description.memo(),
+                self.start_memo(workflow_input, operation_id),
+            )
+            if description.status != WorkflowExecutionStatus.RUNNING:
+                return
+            await handle.signal(
+                URL_TERMINAL_ACK_SIGNAL,
+                {"run_id": run_id, "control_operation": operation_id},
+                rpc_timeout=timedelta(seconds=5),
+            )
+        except RPCError as error:
+            # A previous acknowledgement may have closed this run and its
+            # history may have expired. The outcome is already in PostgreSQL.
+            if error.status != RPCStatusCode.NOT_FOUND:
+                raise
 
     async def start_ingest_workflow(
         self,
@@ -113,10 +177,20 @@ class TemporalControlClient:
     ) -> TemporalExecution:
         """Start or reuse an ingest workflow and return its execution identity.
 
-        Temporal allows workflow-ID reuse and returns an existing execution on
-        an active-ID conflict. Configured workflow timeouts remain attached.
+        URL generations reject every closed-ID reuse and adopt active conflicts.
+        Legacy source/replacement policies are preserved.
         """
-        client = await self.connect_temporal()
+        url_generation = workflow_input.get("owner") == "url"
+        memo = self.start_memo(workflow_input, control_operation)
+        start_memo = memo | ({URL_DISPATCH_PROTOCOL_MEMO: 1} if url_generation else {})
+        try:
+            client = (
+                await asyncio.wait_for(self.connect_temporal(), timeout=5)
+                if url_generation
+                else await self.connect_temporal()
+            )
+        except TimeoutError:
+            raise TemporalUnavailable() from None
         try:
             handle = await client.start_workflow(
                 self.settings.workflow_type,
@@ -124,33 +198,48 @@ class TemporalControlClient:
                 id=workflow_id,
                 task_queue=self.settings.workflow_task_queue,
                 id_reuse_policy=(
-                    WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+                    WorkflowIDReusePolicy.REJECT_DUPLICATE
+                    if url_generation
+                    else WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
                     if reuse_completed
                     else WorkflowIDReusePolicy.ALLOW_DUPLICATE
                 ),
                 id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
-                execution_timeout=self.settings.workflow_execution_timeout,
-                run_timeout=self.settings.workflow_run_timeout,
+                execution_timeout=None
+                if url_generation
+                else self.settings.workflow_execution_timeout,
+                run_timeout=None
+                if url_generation
+                else self.settings.workflow_run_timeout,
                 task_timeout=self.settings.workflow_task_timeout,
-                **(
-                    {"memo": {"hawki_control_operation": control_operation}}
-                    if control_operation
-                    else {}
-                ),
+                **({"memo": start_memo} if start_memo else {}),
+                **({"rpc_timeout": timedelta(seconds=5)} if url_generation else {}),
             )
-        except WorkflowAlreadyStartedError:
-            if not reuse_completed:
+        except WorkflowAlreadyStartedError as error:
+            if not (url_generation or reuse_completed):
                 raise
-            handle = client.get_workflow_handle(workflow_id)
+            handle = (
+                client.get_workflow_handle(workflow_id, run_id=error.run_id)
+                if url_generation
+                else client.get_workflow_handle(workflow_id)
+            )
         run_id = self.resolve_run_id(handle)
+        protocol = None
+        if url_generation:
+            # Pin verification to the server's returned run whenever available.
+            if run_id:
+                handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+            run_id, protocol = await self.verify_url_owner(handle, memo)
         if (reuse_completed or control_operation) and not run_id:
             run_id = (await handle.describe(rpc_timeout=timedelta(seconds=5))).run_id
-        if control_operation:
+        if control_operation and not url_generation:
             await self.verify_start_owner(handle, control_operation)
         logger.info(
             "temporal_bridge:start workflow_id=%s run_id=%s", workflow_id, run_id
         )
-        return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
+        return TemporalExecution(
+            workflow_id=workflow_id, run_id=run_id, url_dispatch_protocol=protocol
+        )
 
     async def start_managed_deletion(
         self,
@@ -344,16 +433,25 @@ class TemporalControlClient:
         )
 
     async def reconcile_start(
-        self, *, workflow_id: str, operation_id: str
+        self,
+        *,
+        workflow_id: str,
+        operation_id: str,
+        workflow_input: dict[str, Any] | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Adopt only a start bearing this ledger operation's memo.
 
-        Missing or unrelated history is never permission to blindly redispatch
-        an uncertain ALLOW_DUPLICATE start. Old histories remain readable but
-        require explicit reconciliation when provenance cannot be proved.
+        Describe reads active and closed executions directly, without visibility
+        indexing. Only NOT_FOUND means absent; transport errors and foreign URL
+        ownership must never be mistaken for permission to start.
         """
         client = await self.connect_temporal()
-        handle = client.get_workflow_handle(workflow_id)
+        handle = (
+            client.get_workflow_handle(workflow_id, run_id=run_id)
+            if run_id
+            else client.get_workflow_handle(workflow_id)
+        )
         try:
             description = await handle.describe(rpc_timeout=timedelta(seconds=5))
         except RPCError as exc:
@@ -361,13 +459,58 @@ class TemporalControlClient:
                 return None
             raise
         memo = await description.memo()
+        if workflow_input is not None and workflow_input.get("owner") == "url":
+            expected = self.start_memo(workflow_input, operation_id)
+            self.check_url_owner(description, memo, expected)
         if memo.get("hawki_control_operation") != operation_id:
             return None
         return {
             "workflow_id": workflow_id,
             "run_id": description.run_id,
             "schedule_id": None,
+            **(
+                {"url_dispatch_protocol": 1}
+                if memo.get(URL_DISPATCH_PROTOCOL_MEMO) == 1
+                else {}
+            ),
         }
+
+    def start_memo(
+        self, workflow_input: dict[str, Any], operation_id: str | None
+    ) -> dict[str, Any]:
+        """Freeze URL provenance in Temporal alongside the dispatch ledger ID."""
+        memo = {"hawki_control_operation": operation_id} if operation_id else {}
+        if workflow_input.get("owner") == "url":
+            if not operation_id or any(
+                not workflow_input.get(key)
+                for key in ("source_id", "generation", "url_ingestion_operation_id")
+            ):
+                raise WorkflowOwnershipConflict()
+            memo.update(
+                hawki_workflow_family="url",
+                hawki_workflow_type=self.settings.workflow_type,
+                hawki_source_id=workflow_input["source_id"],
+                hawki_url_generation=workflow_input["generation"],
+                hawki_url_operation=workflow_input["url_ingestion_operation_id"],
+            )
+        return memo
+
+    def check_url_owner(self, description: Any, memo: dict, expected: dict) -> None:
+        if (
+            not description.run_id
+            or description.workflow_type != self.settings.workflow_type
+            or memo.get(URL_DISPATCH_PROTOCOL_MEMO) not in (None, 1)
+            or any(memo.get(key) != value for key, value in expected.items())
+        ):
+            raise WorkflowOwnershipConflict()
+
+    async def verify_url_owner(
+        self, handle: WorkflowHandle, expected: dict
+    ) -> tuple[str, int | None]:
+        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        memo = await description.memo()
+        self.check_url_owner(description, memo, expected)
+        return description.run_id, memo.get(URL_DISPATCH_PROTOCOL_MEMO)
 
     @staticmethod
     async def verify_start_owner(handle: WorkflowHandle, operation_id: str) -> None:

@@ -103,6 +103,11 @@ class ExternalJobClient:
                     **kwargs,
                 )
                 response.raise_for_status()
+                if (
+                    getattr(self, "strict_http", False)
+                    and not 200 <= response.status_code < 300
+                ):
+                    raise RuntimeError("External crawler redirected its control API")
                 data = response.json()
                 if not isinstance(data, dict):
                     raise RuntimeError("External service returned non-object JSON.")

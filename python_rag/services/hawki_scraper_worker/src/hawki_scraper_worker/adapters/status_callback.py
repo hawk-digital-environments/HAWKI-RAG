@@ -105,6 +105,15 @@ class ScraperStatusReporter:
                 failed=0 if succeeded else 1,
             ),
             metrics={
+                **(
+                    {
+                        "external_job_id": result["external_job_id"],
+                        "crawler_receipt": result["crawler_receipt"],
+                    }
+                    if workflow_input.get("owner") == "url"
+                    and result.get("crawler_receipt")
+                    else {}
+                ),
                 "pages_crawled": pages,
                 "files_found": _nonnegative_int(result.get("files_found")),
             },
@@ -138,7 +147,7 @@ class ScraperStatusReporter:
         *,
         status: PipelineStageStatus,
         counts: StatusCounts,
-        metrics: dict[str, int],
+        metrics: dict[str, Any],
         raw_dir: str,
         error_message: str | None = None,
         error_code: str = "scrape_failed",

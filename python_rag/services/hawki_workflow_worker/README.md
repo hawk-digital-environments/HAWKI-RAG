@@ -24,6 +24,21 @@ Workflows without `resume` retain their original activity sequence. Deploy the
 updated Laravel app, bridge (shared input contract), workflow worker, and indexer
 worker together before using stage recovery.
 
+## URL dispatch acknowledgement
+
+URL starts with the `hawki_url_dispatch_protocol=1` memo retain their final
+outcome in an open workflow until PostgreSQL confirms it. They expose
+`url_terminal_outcome` and accept `acknowledge_url_terminal` only for the exact
+run and control operation. No ingestion activity runs again while awaiting this
+acknowledgement. The dispatcher omits execution/run deadlines for these URL
+workflows; activity timeouts and retries are unchanged. This allows backend
+outages longer than Temporal's closed-history retention.
+
+Deploy these workflow workers and remove older workflow worker processes before
+deploying the corresponding backend dispatcher. Workflows without the memo keep
+their original behavior. PostgreSQL records the terminal outcome before sending
+the acknowledgement and retries that handoff after crashes.
+
 ## Tests
 
 From `python_rag`, run `uv run --group test --package hawki-workflow-worker

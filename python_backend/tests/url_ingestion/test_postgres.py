@@ -338,3 +338,246 @@ def test_managed_recovery_observed_revision_is_rechecked_under_postgres_lock(pg)
         assert caught.value.status == 409
     with pg.engine.connect() as connection:
         assert connection.scalar(sa.select(sa.func.count()).select_from(revisions)) == 2
+
+
+def test_terminal_failure_and_writer_admission_are_serialized(pg):
+    from .test_retries import outcome
+
+    row = generation(pg, create(pg))
+    barrier = Barrier(2)
+
+    def admit():
+        barrier.wait(timeout=10)
+        try:
+            return writer(pg, row)["status"]
+        except UrlIngestionError as error:
+            return error.status
+
+    def finalize():
+        barrier.wait(timeout=10)
+        return pg.repository.fail_workflow(row, outcome(row, "FAILED"))
+
+    with ThreadPoolExecutor(2) as pool:
+        acquired = pool.submit(admit)
+        finalized = pool.submit(finalize)
+        admitted = acquired.result(timeout=15)
+        assert finalized.result(timeout=15) is True
+    assert admitted in {"active", 409}
+    stored = pg.repository.generation(row["url_ingestion_operation_id"])
+    assert stored["writer_state"]["managed_writer_gate"] == "closed"
+    assert (
+        pg.repository.source("default", row["source_id"])["pending_operation_id"]
+        is None
+    )
+    if admitted == "active":
+        assert all(
+            w["status"] == "active"
+            for w in stored["writer_state"]["managed_writers"].values()
+        )
+        writer(pg, row, "release")
+
+
+def test_postgres_successful_scraper_retry_retains_writer_and_publication_authority(pg):
+    from .test_retries import (
+        test_retryable_scrape_failure_then_success_admits_both_writers_and_publishes,
+    )
+
+    test_retryable_scrape_failure_then_success_admits_both_writers_and_publishes(pg)
+
+
+def test_concurrent_terminal_reconciliation_finalizes_once(pg):
+    from .test_retries import outcome
+
+    row = generation(pg, create(pg))
+    barrier = Barrier(2)
+
+    def finalize(_):
+        barrier.wait(timeout=10)
+        return pg.repository.fail_workflow(row, outcome(row, "FAILED"))
+
+    with ThreadPoolExecutor(2) as pool:
+        assert sorted(pool.map(finalize, [0, 1])) == [False, True]
+
+
+def test_delayed_terminal_observation_cannot_fail_concurrent_successor(pg):
+    from .test_retries import outcome
+
+    old = generation(pg, create(pg))
+    observed = Event()
+    proceed = Event()
+
+    async def status(**kwargs):
+        observed.set()
+        assert proceed.wait(10)
+        return outcome(old, "FAILED")
+
+    pg.port.workflow_status.side_effect = status
+    with ThreadPoolExecutor(2) as pool:
+        reconciliation = pool.submit(
+            lambda: asyncio.run(pg.service.reconcile_workflow(old))
+        )
+        assert observed.wait(10)
+        successor = generation(pg, create(pg, "recrawl"))
+        proceed.set()
+        assert reconciliation.result(timeout=15) is False
+    source = pg.repository.source("default", old["source_id"])
+    assert source["pending_operation_id"] == successor["url_ingestion_operation_id"]
+    assert writer(pg, successor)["status"] == "active"
+
+
+@pytest.mark.parametrize(
+    "boundary", ["before_start", "after_claim", "control_receipt", "url_receipt"]
+)
+def test_overlapping_scheduler_dispatch_recovery_uses_one_logical_start(pg, boundary):
+    from .test_dispatch_recovery import (
+        interrupted_start,
+        restart,
+        assert_same_operation,
+    )
+    from hawki_backend.url_ingestion.scheduler import tick
+
+    row = interrupted_start(pg, boundary)
+    recovered = (
+        configure(pg.engine, pg.root) if boundary == "after_claim" else restart(pg, row)
+    )
+    barrier = Barrier(2)
+    original = recovered.service.resume
+
+    async def selected(operation):
+        barrier.wait(timeout=10)
+        await original(operation)
+
+    recovered.service.resume = selected
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(lambda _: asyncio.run(tick(recovered.service)), [0, 1]))
+    assert any(result[0]["result"] == "resumed" for result in results)
+    assert_same_operation(recovered, row)
+    assert recovered.port.start_ingest_workflow.await_count == (
+        1 if boundary in {"before_start", "after_claim"} else 0
+    )
+    assert pg.port.start_ingest_workflow.await_count == (
+        0 if boundary in {"before_start", "after_claim"} else 1
+    )
+    recovered.service.resume = original
+    assert asyncio.run(tick(recovered.service)) == []
+
+
+@pytest.mark.parametrize("boundary", ["url_receipt", "after_claim"])
+def test_request_records_dispatch_after_scheduler_selection(pg, boundary):
+    from .test_dispatch_recovery import interrupted_start, assert_same_operation
+    from hawki_backend.url_ingestion.scheduler import tick
+
+    row = interrupted_start(pg, boundary)
+    selected = Event()
+    proceed = Event()
+    original = pg.service.resume
+
+    async def delayed(operation):
+        selected.set()
+        assert proceed.wait(10)
+        await original(operation)
+
+    pg.service.resume = delayed
+    with ThreadPoolExecutor(2) as pool:
+        recovery = pool.submit(lambda: asyncio.run(tick(pg.service)))
+        assert selected.wait(10)
+        asyncio.run(original(row))
+        proceed.set()
+        assert recovery.result(timeout=15)[0]["result"] == "resumed"
+    assert_same_operation(pg, row)
+    pg.port.start_ingest_workflow.assert_awaited_once()
+    assert pg.port.reconcile_start.await_count == (
+        1 if boundary == "after_claim" else 0
+    )
+
+
+@pytest.mark.parametrize("mutation", ["delete", "recrawl"])
+@pytest.mark.parametrize("boundary", ["url_receipt", "after_claim"])
+def test_mutation_wins_after_scheduler_selects_prepared_predecessor(
+    pg, mutation, boundary
+):
+    from .test_dispatch_recovery import interrupted_start
+    from hawki_backend.url_ingestion.scheduler import tick
+
+    old = interrupted_start(pg, boundary)
+    selected = Event()
+    proceed = Event()
+    original = pg.service.resume
+
+    async def delayed(operation):
+        if operation["url_ingestion_operation_id"] == old["url_ingestion_operation_id"]:
+            selected.set()
+            assert proceed.wait(10)
+        await original(operation)
+
+    pg.service.resume = delayed
+    with ThreadPoolExecutor(2) as pool:
+        recovery = pool.submit(lambda: asyncio.run(tick(pg.service)))
+        assert selected.wait(10)
+        if mutation == "delete":
+            asyncio.run(pg.service.delete(pg.principal, old["source_id"], "delete"))
+        else:
+            create(pg, "recrawl")
+        source = pg.repository.source("default", old["source_id"])
+        predecessor = pg.repository.generation(old["url_ingestion_operation_id"])
+        proceed.set()
+        assert recovery.result(timeout=15)[0]["result"] == "pending"
+    assert pg.repository.source("default", old["source_id"]) == source
+    assert pg.repository.generation(old["url_ingestion_operation_id"]) == predecessor
+    assert pg.port.start_ingest_workflow.await_count == (
+        1 if mutation == "delete" else 2
+    )
+
+
+@pytest.mark.parametrize("mutation", ["delete", "recrawl"])
+@pytest.mark.parametrize("boundary", ["before_start", "after_claim"])
+def test_dispatch_recovery_holds_source_lock_until_receipt_is_persisted(
+    pg, mutation, boundary
+):
+    from .test_dispatch_recovery import interrupted_start
+    from hawki_backend.url_ingestion.scheduler import tick
+
+    old = interrupted_start(pg, boundary)
+    dispatching = Event()
+    proceed = Event()
+    claiming = Event()
+    original_start = pg.port.start_ingest_workflow.side_effect
+    original_claim = pg.repository.claim
+
+    async def delayed_start(**kwargs):
+        if kwargs["workflow_id"] == old["workflow_id"]:
+            dispatching.set()
+            assert proceed.wait(10)
+        return await original_start(**kwargs)
+
+    def observed_claim(*args, **kwargs):
+        claiming.set()
+        return original_claim(*args, **kwargs)
+
+    pg.port.start_ingest_workflow.side_effect = delayed_start
+    pg.repository.claim = observed_claim
+
+    def mutate():
+        if mutation == "delete":
+            return asyncio.run(
+                pg.service.delete(pg.principal, old["source_id"], "delete")
+            )
+        return create(pg, "recrawl")
+
+    with ThreadPoolExecutor(2) as pool:
+        recovery = pool.submit(lambda: asyncio.run(tick(pg.service)))
+        assert dispatching.wait(10)
+        successor = pool.submit(mutate)
+        assert claiming.wait(10)
+        proceed.set()
+        recovery.result(timeout=15)
+        successor.result(timeout=15)
+    source = pg.repository.source("default", old["source_id"])
+    assert source["generation"] == 2
+    assert source["status"] == ("deleted" if mutation == "delete" else "running")
+    predecessor = pg.repository.generation(old["url_ingestion_operation_id"])
+    assert predecessor["retired"] is True
+    assert predecessor["run_id"] == "run-" + old["url_ingestion_operation_id"]
+    assert pg.port.start_ingest_workflow.await_count == (
+        1 if mutation == "delete" else 2
+    )

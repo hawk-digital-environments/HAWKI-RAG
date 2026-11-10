@@ -1,8 +1,7 @@
 """Central public-network policy; validation alone never authorizes a fetch.
 
-The external crawler currently has no verified IP pinning/redirect contract.
-Consequently the production boundary refuses dispatch even for a public URL.
-Do not replace this refusal with an environment flag or a single DNS lookup.
+CustomCrawler owns connection-bound fetching. Local validation remains an
+admission check and never authorizes an independently resolved HTTP fetch.
 """
 
 import ipaddress
@@ -16,6 +15,7 @@ from urllib.parse import urlsplit
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from .errors import UrlIngestionError
+from .crawler import ExternalCrawlerBoundary as ExternalCrawlerBoundary
 from .identity import normalize_url
 
 
@@ -99,16 +99,6 @@ class UrlSafetyValidator:
                 422, "URL must resolve only to public addresses."
             ) from None
         return ValidatedUrl(identity, host, port, tuple(sorted(set(addresses))))
-
-
-class ExternalCrawlerBoundary:
-    """Fail closed until the crawler can enforce safety for every network hop."""
-
-    def require_safe_fetch(self, urls: list[ValidatedUrl]) -> None:
-        raise UrlIngestionError(
-            503,
-            "URL ingestion is blocked: the crawler cannot prove pinned DNS and redirect safety.",
-        )
 
 
 def site_profile(value: object, root: str | None) -> str | None:

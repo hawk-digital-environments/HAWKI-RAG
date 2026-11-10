@@ -908,6 +908,7 @@ name = "hawki-external-jobs"
 version = "0.1.0"
 source = { editable = "packages/external_jobs" }
 dependencies = [
+    { name = "hawki-rag-contracts" },
     { name = "requests" },
 ]
 
@@ -917,7 +918,10 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "requests", specifier = "==2.34.2" }]
+requires-dist = [
+    { name = "hawki-rag-contracts", editable = "packages/contracts" },
+    { name = "requests", specifier = "==2.34.2" },
+]
 
 [package.metadata.requires-dev]
 test = [{ name = "pytest", specifier = "==8.4.2" }]

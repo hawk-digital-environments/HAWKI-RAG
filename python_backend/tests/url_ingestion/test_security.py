@@ -84,7 +84,7 @@ def test_external_boundary_never_claims_redirect_or_rebinding_protection():
     public = UrlSafetyValidator(lambda host, port: ("93.184.215.14",)).validate(
         "https://example.org"
     )
-    with pytest.raises(UrlIngestionError, match="pinned DNS and redirect"):
+    with pytest.raises(UrlIngestionError, match="not configured"):
         ExternalCrawlerBoundary().require_safe_fetch([public])
 
 
@@ -139,6 +139,8 @@ def test_anonymous_python_mutation_denied(env):
     ],
 )
 def test_sitemap_fails_closed_without_fetch_or_claim(env, field, value, status):
+    if field == "sitemap_url":
+        env.service.crawler = ExternalCrawlerBoundary()
     with pytest.raises(UrlIngestionError) as caught:
         create(env, **{field: value})
     assert caught.value.status == status

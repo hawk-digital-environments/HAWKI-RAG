@@ -124,6 +124,9 @@ def test_same_key_changed_request_conflicts(env):
 
 def test_uncertain_dispatch_never_allocates_another_workflow(env):
     env.port.start_ingest_workflow.side_effect = TimeoutError()
+    # An unavailable lookup is ambiguous. None now means definitive NOT_FOUND,
+    # which can safely retry the same URL identity under REJECT_DUPLICATE.
+    env.port.reconcile_start.side_effect = TimeoutError()
     for _ in range(2):
         with pytest.raises(UrlIngestionError):
             create(env)

@@ -14,6 +14,13 @@ from .test_lifecycle import event, generation
 def fail(env, row):
     value = event(row, "failure", status="failed")
     env.repository.complete(value, digest(value.model_dump(mode="json")), "failed")
+    env.port.workflow_status.side_effect = None
+    env.port.workflow_status.return_value = {
+        "workflow_id": row["workflow_id"],
+        "run_id": row["run_id"],
+        "status": "FAILED",
+    }
+    assert asyncio.run(env.service.reconcile_workflow(row)) is True
 
 
 @pytest.mark.parametrize("field", ["job_ids", "jobIds"])

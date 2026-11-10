@@ -63,16 +63,36 @@ class OperationRepository:
                 )
         return row
 
-    def claim(self, operation_id: str) -> bool:
+    def claim(
+        self, operation_id: str, *, url_dispatch_protocol: int | None = None
+    ) -> bool:
         try:
             with self.engine.begin() as connection:
+                fields = {"status": "dispatching", "updated_at": sa.func.now()}
+                if url_dispatch_protocol is not None:
+                    row = (
+                        connection.execute(
+                            sa.select(operations)
+                            .where(operations.c.operation_id == operation_id)
+                            .with_for_update()
+                        )
+                        .mappings()
+                        .one()
+                    )
+                    if row["status"] != "prepared":
+                        return False
+                    # Internal dispatch capability, committed BEFORE any RPC.
+                    # It is outside the immutable application input/digest.
+                    fields["payload"] = dict(
+                        row["payload"], url_dispatch_protocol=url_dispatch_protocol
+                    )
                 result = connection.execute(
                     operations.update()
                     .where(
                         operations.c.operation_id == operation_id,
                         operations.c.status == "prepared",
                     )
-                    .values(status="dispatching", updated_at=sa.func.now())
+                    .values(**fields)
                 )
                 return result.rowcount == 1
         except IntegrityError:
@@ -119,6 +139,29 @@ class OperationRepository:
                     operations.c.status == "dispatching",
                 )
                 .values(status="prepared", updated_at=sa.func.now())
+            )
+
+    def reject_url_ownership(self, operation_id: str) -> None:
+        """Retain a collision even after the foreign Temporal history expires."""
+        with self.engine.begin() as connection:
+            row = (
+                connection.execute(
+                    sa.select(operations)
+                    .where(operations.c.operation_id == operation_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
+            )
+            if row["status"] == "confirmed":
+                return
+            # A foreign run does not obey this operation's acknowledgement
+            # protocol. Its later absence is therefore no longer a start proof.
+            payload = dict(row["payload"], url_dispatch_protocol=0)
+            connection.execute(
+                operations.update()
+                .where(operations.c.operation_id == operation_id)
+                .values(status="uncertain", payload=payload, updated_at=sa.func.now())
             )
 
     def finish(self, operation_id: str, receipt: dict | None) -> None:

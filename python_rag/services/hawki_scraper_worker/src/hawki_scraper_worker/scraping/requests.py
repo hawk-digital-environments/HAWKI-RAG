@@ -31,6 +31,12 @@ def build_scraper_start_payload(
         "source_url": workflow_input.get("source_url"),
     }
 
+    if workflow_input.get("owner") == "url":
+        payload.update(
+            generation=workflow_input["generation"],
+            url_ingestion_operation_id=workflow_input["url_ingestion_operation_id"],
+        )
+
     if request_metadata.get("site_profile_path"):
         payload["site_profile_path"] = request_metadata["site_profile_path"]
 
@@ -42,6 +48,13 @@ def build_scraper_start_payload(
     if sitemap_url:
         payload["sitemap"] = True
         payload["sitemap_base"] = sitemap_url
+        if workflow_input.get("owner") == "url":
+            payload["sitemap_only"] = True
+            if not request_metadata.get("site_profile_path"):
+                # CustomCrawler parses resource sitemaps from the URL entrypoint;
+                # sitemap=True is its separate HTML/profile scraping mode.
+                payload["url"] = sitemap_url
+                payload["sitemap"] = False
 
     for key in (
         "rescrape_failed",

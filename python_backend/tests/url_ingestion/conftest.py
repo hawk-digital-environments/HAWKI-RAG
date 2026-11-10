@@ -46,11 +46,18 @@ def configure(engine, root):
             "run-" + kwargs["workflow_input"]["url_ingestion_operation_id"],
         )
 
+    async def workflow_status(**kwargs):
+        return {key: kwargs[key] for key in ("workflow_id", "run_id")} | {
+            "status": "RUNNING"
+        }
+
     port = SimpleNamespace(
         start_ingest_workflow=AsyncMock(side_effect=start),
         reconcile_start=AsyncMock(return_value=None),
         cancel_workflow_and_wait=AsyncMock(),
         delete_schedule=AsyncMock(),
+        workflow_status=AsyncMock(side_effect=workflow_status),
+        acknowledge_url_terminal=AsyncMock(),
     )
     control = WorkflowControl(OperationRepository(engine), port)
     instance = UrlIngestionService(

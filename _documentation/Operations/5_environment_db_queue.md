@@ -284,8 +284,8 @@ For Python-owned URLs, `EXTERNAL_SCRAPER_URL` is canonical. Composition may
 use `CUSTOM_CRAWLER_URL` only when that canonical value is absent; the service
 then receives one resolved scraper URL. `CRAWLER_INGESTION_BACKEND` defaults
 to `laravel`, and `HAWKI_BACKEND_URL_INGESTION_ENABLED` defaults to `false`.
-The Python cutover remains blocked on the external crawler safe-fetch and
-sealed-job drainage contract. Refresh ticks now claim URL generations. Site profiles require the server-owned
+Python URL activation requires the reviewed CustomCrawler permanent-job runtime
+and its protected Chromium namespace/seccomp preflight. Refresh ticks claim URL generations. Site profiles require the server-owned
 `HAWKI_URL_SITE_PROFILE_ROOT`; arbitrary paths are rejected. See the
 [Epoch 11 runbook](python_url_ingestion.md) before changing any replica.
 

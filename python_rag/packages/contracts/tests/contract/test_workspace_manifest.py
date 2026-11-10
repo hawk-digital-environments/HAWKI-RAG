@@ -110,6 +110,7 @@ def test_package_dependencies_are_limited_to_intentional_shared_edges() -> None:
                         imported_edges.add((project["name"], imported_owner))
 
     expected_edges = {
+        ("hawki-external-jobs", "hawki-rag-contracts"),
         ("hawki-graph-store", "hawki-observability"),
         ("hawki-vector-store", "hawki-observability"),
         ("hawki-rag-retrieval", "hawki-graph-store"),

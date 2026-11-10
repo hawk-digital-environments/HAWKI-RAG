@@ -1,15 +1,14 @@
 from hawki_backend.persistence.schema import dataset_grants
-from hawki_backend.url_ingestion.identity import digest
 
 from .conftest import create, request
-from .test_lifecycle import generation, event
+from .test_lifecycle import generation
+from .test_recovery import fail
 
 
 def test_tasks_jobs_status_events_and_logs_share_authorized_python_state(env):
     payload = create(env)
     row = generation(env, payload)
-    failure = event(row, "failure", status="failed")
-    env.repository.complete(failure, digest(failure.model_dump(mode="json")), "failed")
+    fail(env, row)
     task_id = payload["task_id"]
     detail = request(env, f"/v1/pipeline/tasks/{task_id}", method="GET").json()["task"]
     assert detail["counters"]["jobs_failed"] == 1
@@ -80,8 +79,7 @@ def test_legacy_read_authorization_deduplicates_python_authority(env):
 
 def test_recovery_inventory_respects_task_dataset_filters(env):
     row = generation(env, create(env))
-    value = event(row, "failure", status="failed")
-    env.repository.complete(value, digest(value.model_dump(mode="json")), "failed")
+    fail(env, row)
     for query in ("task_id=other", "dataset_id=other"):
         assert (
             request(

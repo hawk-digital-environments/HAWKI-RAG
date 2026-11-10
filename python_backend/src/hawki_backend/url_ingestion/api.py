@@ -298,8 +298,8 @@ async def event(request: Request) -> JSONResponse:
             and value.status is PipelineStageStatus.COMPLETED
         ):
             state = "ready"
-        elif value.status in {PipelineStageStatus.FAILED, PipelineStageStatus.SKIPPED}:
-            state = "failed"
+        # Failed stage callbacks describe activity attempts. Temporal alone
+        # decides whether the workflow can retry or has finally terminated.
         receipt = await run_in_threadpool(
             service(request).repository.complete,
             value,
@@ -353,6 +353,18 @@ async def ownership(request: Request) -> JSONResponse:
 @internal_router.get("/internal/url-ingestion/readiness")
 async def readiness(request: Request) -> JSONResponse:
     instance = getattr(request.app.state, "url_ingestion_service", None)
+    compatible = False
+    healthy = None
+    if instance is not None:
+        from .crawler import ExternalCrawlerBoundary
+
+        if isinstance(instance.crawler, ExternalCrawlerBoundary):
+            try:
+                await run_in_threadpool(instance.crawler.require_safe_fetch, [])
+                compatible = True
+                healthy = True
+            except UrlIngestionError:
+                healthy = False
     return JSONResponse(
         content={
             "enabled": instance is not None and instance.settings.enabled,
@@ -360,9 +372,11 @@ async def readiness(request: Request) -> JSONResponse:
             and bool(instance.settings.scraper_url),
             "workflow_control_configured": instance is not None
             and instance.control is not None,
-            "scraper_healthy": None,
-            "safe_fetch_supported": False,
+            "scraper_healthy": healthy,
+            "safe_fetch_supported": compatible,
             "schedule_generations_supported": True,
-            "ready": False,
+            "ready": compatible
+            and instance.settings.enabled
+            and instance.control is not None,
         }
     )

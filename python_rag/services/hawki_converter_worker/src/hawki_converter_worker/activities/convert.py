@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from temporalio import activity
+from hawki_pipeline_callbacks.artifact_writer import url_artifact_writer
 from temporalio.exceptions import ApplicationError
 
 from hawki_rag_contracts.pipeline.ingestion import (
@@ -56,11 +57,13 @@ def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
         log_event(logger, "inspect_and_convert_files:start", source_id=source_id)
 
         try:
-            result_contract = execute_source_conversion(
-                activity_input,
-                settings=settings,
-                dependencies=build_conversion_dependencies(),
-            )
+            info = activity.info() if workflow_input.get("owner") == "url" else None
+            with url_artifact_writer(workflow_input, info, settings):
+                result_contract = execute_source_conversion(
+                    activity_input,
+                    settings=settings,
+                    dependencies=build_conversion_dependencies(),
+                )
         except Exception as exc:
             report_status(
                 settings,

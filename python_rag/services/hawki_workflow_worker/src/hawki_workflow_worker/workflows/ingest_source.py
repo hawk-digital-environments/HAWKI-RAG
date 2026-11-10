@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from temporalio import workflow
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError
 from pydantic import ValidationError
 
 from hawki_rag_contracts.pipeline.ingestion import (
@@ -25,6 +25,9 @@ from hawki_rag_contracts.pipeline.temporal import (
     INGEST_SOURCE_WORKFLOW,
     MARK_SOURCE_READY_ACTIVITY,
     SCRAPE_SOURCE_ACTIVITY,
+    URL_DISPATCH_PROTOCOL_MEMO,
+    URL_TERMINAL_ACK_SIGNAL,
+    URL_TERMINAL_QUERY,
     resolve_activity_task_queue,
     resolve_legacy_ingestion_task_queue,
 )
@@ -114,8 +117,59 @@ class IngestSourceWorkflow:
     skipped, and their results are rebuilt from those directories.
     """
 
+    def __init__(self) -> None:
+        self._url_terminal: dict[str, Any] | None = None
+        self._url_terminal_acknowledged = False
+
+    @workflow.query(name=URL_TERMINAL_QUERY)
+    def url_terminal_outcome(self) -> dict[str, Any] | None:
+        return self._url_terminal
+
+    @workflow.signal(name=URL_TERMINAL_ACK_SIGNAL)
+    def acknowledge_url_terminal(self, receipt: dict[str, str]) -> None:
+        if (
+            self._url_terminal is not None
+            and receipt.get("run_id") == workflow.info().run_id
+            and receipt.get("control_operation")
+            == workflow.memo().get("hawki_control_operation")
+        ):
+            self._url_terminal_acknowledged = True
+
     @workflow.run
     async def run(self, workflow_input: dict[str, Any]) -> dict[str, Any]:
+        # Only starts carrying this memo opt in. Replaying existing histories
+        # and all other source families retains their original command sequence.
+        if (
+            workflow_input.get("owner") != "url"
+            or workflow.memo().get(URL_DISPATCH_PROTOCOL_MEMO) != 1
+        ):
+            return await self._ingest(workflow_input)
+
+        failure = None
+        result: dict[str, Any] = {}
+        try:
+            result = await self._ingest(workflow_input)
+        except (ActivityError, ApplicationError) as error:
+            # This is the workflow's final failure, after activity retries have
+            # exhausted. No further ingestion work is scheduled after this point.
+            failure = error
+            self._url_terminal = {"status": "FAILED", "error": str(error)[:2048]}
+        else:
+            self._url_terminal = {
+                "status": "COMPLETED",
+                "result": result,
+                "error": None,
+            }
+
+        # Open executions never enter Temporal retention. The dispatcher omits
+        # workflow execution/run deadlines for this protocol; activity deadlines
+        # remain unchanged. Backend outages therefore cannot erase this evidence.
+        await workflow.wait_condition(lambda: self._url_terminal_acknowledged)
+        if failure is not None:
+            raise failure
+        return result
+
+    async def _ingest(self, workflow_input: dict[str, Any]) -> dict[str, Any]:
         source_id = workflow_input.get("source_id")
         workflow.logger.info("IngestSourceWorkflow started source_id=%s", source_id)
         retry_policy = ingestion_activity_retry_policy()

@@ -7,7 +7,10 @@ authors = [
     { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
 ]
 requires-python = "==3.13.14"
-dependencies = ["requests==2.34.2"]
+dependencies = ["requests==2.34.2", "hawki-rag-contracts==0.1.0"]
+
+[tool.uv.sources]
+hawki-rag-contracts = { workspace = true }
 
 [dependency-groups]
 test = [

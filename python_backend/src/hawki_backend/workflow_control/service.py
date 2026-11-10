@@ -55,11 +55,24 @@ class WorkflowPort(Protocol):
         schedule_id: str,
     ) -> TemporalExecution: ...
     async def reconcile_start(
-        self, *, workflow_id: str, operation_id: str
+        self,
+        *,
+        workflow_id: str,
+        operation_id: str,
+        workflow_input: dict[str, Any] | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any] | None: ...
     async def workflow_status(
-        self, *, workflow_id: str, run_id: str
-    ) -> dict[str, str | None]: ...
+        self, *, workflow_id: str, run_id: str, include_result: bool = False
+    ) -> dict[str, Any]: ...
+    async def acknowledge_url_terminal(
+        self,
+        *,
+        workflow_id: str,
+        run_id: str,
+        operation_id: str,
+        workflow_input: dict[str, Any],
+    ) -> None: ...
     async def cancel_workflow(
         self, *, workflow_id: str, run_id: str | None
     ) -> None: ...
@@ -202,23 +215,48 @@ class WorkflowControl:
         payload = row["payload"]
         if row["status"] == "confirmed" and action != "deletion":
             return row["receipt"]
-        claimed = self.repository.claim(operation_id)
-        if not claimed and row["status"] != "confirmed":
-            # A delayed first RPC may still arrive. Never redispatch an uncertain
-            # ALLOW_DUPLICATE start, even when describe reports NOT_FOUND.
-            if action == "schedule":
-                raise DispatchUncertain()
-            receipt = await self.port.reconcile_start(
-                workflow_id=workflow_id, operation_id=operation_id
-            )
-            if receipt is None:
-                raise DispatchUncertain()
-            if action == "deletion":
-                receipt["status"] = "pending"
-            self.repository.finish(operation_id, receipt)
-            return receipt
+        url_generation = (
+            action == "source" and payload["workflow_input"].get("owner") == "url"
+        )
+        claimed = self.repository.claim(
+            operation_id, **({"url_dispatch_protocol": 1} if url_generation else {})
+        )
         # No repository transaction/connection is retained across any await.
         try:
+            if not claimed and row["status"] != "confirmed":
+                if action == "schedule":
+                    raise DispatchUncertain()
+                receipt = await self.port.reconcile_start(
+                    workflow_id=workflow_id,
+                    operation_id=operation_id,
+                    **(
+                        {"workflow_input": payload["workflow_input"]}
+                        if url_generation
+                        else {}
+                    ),
+                )
+                if receipt is not None:
+                    if receipt.get("workflow_id") != workflow_id or not receipt.get(
+                        "run_id"
+                    ):
+                        raise DispatchUncertain()
+                    if action == "deletion":
+                        receipt["status"] = "pending"
+                    self.repository.finish(operation_id, receipt)
+                    return receipt
+                # Only a definitive NOT_FOUND permits a URL retry. Temporal's
+                # REJECT_DUPLICATE also fences a delayed or concurrent first RPC,
+                # even if it finishes between this lookup and the next start.
+                # Legacy ALLOW_DUPLICATE families must remain reconciliation-only.
+                if not url_generation or row["status"] not in {
+                    "dispatching",
+                    "uncertain",
+                }:
+                    raise DispatchUncertain()
+                if payload.get("url_dispatch_protocol") != 1:
+                    # An old unacknowledged closed run may already have expired.
+                    # NOT_FOUND cannot distinguish that from never submitted.
+                    raise DispatchUncertain()
             kwargs = {
                 "workflow_id": workflow_id,
                 "workflow_input": payload["workflow_input"],
@@ -248,11 +286,17 @@ class WorkflowControl:
             self.repository.finish(operation_id, receipt)
             return receipt
         except TemporalUnavailable:
-            self.repository.release_unsubmitted(operation_id)
+            if claimed:
+                self.repository.release_unsubmitted(operation_id)
             raise DispatchUnavailable() from None
         except WorkflowOwnershipConflict:
-            self.repository.release_unsubmitted(operation_id)
+            if url_generation:
+                self.repository.reject_url_ownership(operation_id)
+            elif claimed:
+                self.repository.release_unsubmitted(operation_id)
             raise OperationConflict() from None
+        except DispatchUncertain:
+            raise
         except WorkflowAlreadyStartedError:
             self.repository.finish(operation_id, None)
             raise

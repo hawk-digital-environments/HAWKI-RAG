@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from hawki_external_jobs import ExternalJobClient
+from hawki_external_jobs.crawler import CustomCrawlerClient
 
 from hawki_scraper_worker.settings import ScraperWorkerSettings
 
@@ -17,13 +18,20 @@ def create_scraper_client(
 
     external = workflow_input.get("external_services")
     overrides = dict(external) if isinstance(external, dict) else {}
-    return ExternalJobClient(
+    owned = workflow_input.get("owner") == "url"
+    client_type = CustomCrawlerClient if owned else ExternalJobClient
+    return client_type(
+        **({"workflow_input": workflow_input} if owned else {}),
         base_url=str(overrides.get("scraper_url") or settings.scraper_url),
         start_path=str(
-            overrides.get("scraper_start_path") or settings.scraper_start_path
+            "/crawl"
+            if owned
+            else overrides.get("scraper_start_path") or settings.scraper_start_path
         ),
         status_path=str(
-            overrides.get("scraper_status_path") or settings.scraper_status_path
+            "/status/{job_id}"
+            if owned
+            else overrides.get("scraper_status_path") or settings.scraper_status_path
         ),
         token=str(overrides.get("scraper_token") or settings.scraper_token),
         timeout_seconds=settings.request_timeout_seconds,

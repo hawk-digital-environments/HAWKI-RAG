@@ -10,6 +10,35 @@ from .conftest import create
 from .test_lifecycle import generation
 
 
+def receipt(old, status="completed", sealed=True, **changes):
+    wire = old["workflow_input"]
+    terminal = status in {"completed", "failed", "cancelled"}
+    return dict(
+        job_id=old["job_id"],
+        external_job_id=old["job_id"],
+        status=status,
+        state=status,
+        terminal=terminal,
+        sealed=sealed,
+        sealed_at="2026-11-09T12:00:00Z" if sealed else None,
+        quiescent=sealed,
+        writer_admission_closed=sealed,
+        output_directory=str(
+            __import__("pathlib").Path(wire["raw_output_path"]) / old["job_id"]
+        ),
+        metadata={
+            key: wire[key]
+            for key in (
+                "source_id",
+                "source_url",
+                "generation",
+                "url_ingestion_operation_id",
+            )
+        },
+        **changes,
+    )
+
+
 def boundary(env, handler):
     return ExternalJobQuiescence(
         env.repository,
@@ -28,7 +57,7 @@ def test_workflow_closed_does_not_prove_remote_drainage(env, status):
 
     def respond(request):
         calls.append(request.method)
-        return httpx.Response(200, json={"job_id": old["job_id"], "status": status})
+        return httpx.Response(200, json=receipt(old, status, False))
 
     env.service.quiescence = boundary(env, respond)
     for _ in range(2):
@@ -54,12 +83,7 @@ def test_verified_terminal_remote_receipt_allows_cleanup_and_is_durable(env, sta
         env,
         lambda request: httpx.Response(
             200,
-            json={
-                "job_id": old["job_id"],
-                "status": status,
-                "quiescent": True,
-                "writer_admission_closed": True,
-            },
+            json=receipt(old, status),
         ),
     )
     asyncio.run(env.service.delete(env.principal, old["source_id"], None))
@@ -141,12 +165,7 @@ def test_retry_after_remote_drainage_reuses_fence_job_and_cancellation_intent(en
         seen.append(str(request.url))
         return httpx.Response(
             200,
-            json={
-                "job_id": old["job_id"],
-                "status": "cancelled" if terminal else "running",
-                "quiescent": terminal,
-                "writer_admission_closed": terminal,
-            },
+            json=receipt(old, "cancelled" if terminal else "running", terminal),
         )
 
     env.service.quiescence = boundary(env, respond)

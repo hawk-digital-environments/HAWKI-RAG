@@ -49,13 +49,26 @@ def normalize_scrape_result(
     if status == "success" and pages_crawled <= 0:
         status = "failed"
         error_details = error_details or "Scraper completed without crawled page files."
-    elif status == "success" and page_limit is not None and pages_crawled < page_limit:
+    elif (
+        status == "success"
+        and page_limit is not None
+        and pages_crawled < page_limit
+        and "sealed" not in response
+    ):
         status = "failed"
         error_details = error_details or (
             f"Scraper stopped at {pages_crawled}/{page_limit} pages before reaching "
             "the configured page limit."
         )
 
+    # Modern crawler completion means its queue drained; max_pages is a cap,
+    # not a promised count. Keep the legacy incomplete-crawl rule unchanged.
+    if "sealed" in response:
+        from hawki_rag_contracts.pipeline.crawler import CrawlerReceipt
+
+        if not CrawlerReceipt.model_validate(response).drained:
+            raise RuntimeError("Crawler completion is not sealed")
+        status = normalize_status(response) if pages_crawled > 0 else "failed"
     result = {
         "source_id": source_id,
         "external_job_id": response.get("external_job_id"),
@@ -66,6 +79,8 @@ def normalize_scrape_result(
         "status": status,
         "error_details": error_details,
     }
+    if "sealed" in response:
+        result["crawler_receipt"] = response
     if page_limit is not None:
         result["max_pages"] = page_limit
     return result

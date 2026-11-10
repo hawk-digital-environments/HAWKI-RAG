@@ -424,6 +424,14 @@ class UrlRepository:
                     run_id=receipt["run_id"],
                     workflow_operation_id=control[0]["operation_id"],
                     stage="completed" if row["stage"] == "completed" else "dispatched",
+                    writer_state=dict(
+                        row["writer_state"],
+                        **(
+                            {"url_dispatch_protocol": 1}
+                            if receipt.get("url_dispatch_protocol") == 1
+                            else {}
+                        ),
+                    ),
                 )
             )
             if (
@@ -435,6 +443,115 @@ class UrlRepository:
                     .where(sources.c.source_id == row["source_id"])
                     .values(status="running")
                 )
+
+    def workflow_operation(self, operation: dict) -> dict:
+        """Read the existing dispatch identity, including publication-before-receipt."""
+        with self.engine.connect() as connection:
+            rows = list(
+                connection.execute(
+                    sa.select(operations).where(
+                        operations.c.workflow_id == operation["workflow_id"],
+                        operations.c.action == "source",
+                    )
+                ).mappings()
+            )
+        if (
+            len(rows) != 1
+            or rows[0]["payload"]["workflow_input"] != operation["workflow_input"]
+        ):
+            raise UrlIngestionError(409, "URL dispatch ownership differs.")
+        return dict(rows[0])
+
+    def record_workflow_terminal(self, operation: dict, evidence: dict) -> dict:
+        """Persist the exact final outcome before allowing Temporal to close."""
+        if (
+            evidence.get("workflow_id") != operation["workflow_id"]
+            or evidence.get("run_id") != operation["run_id"]
+            or evidence.get("status") not in {"COMPLETED", "FAILED"}
+            or evidence.get("awaiting_ack") is not True
+        ):
+            raise UrlIngestionError(409, "URL terminal evidence differs.")
+        with self.engine.begin() as connection:
+            row = one(
+                connection,
+                generations,
+                generations.c.url_ingestion_operation_id
+                == operation["url_ingestion_operation_id"],
+            )
+            if row["run_id"] != evidence["run_id"]:
+                raise UrlIngestionError(409, "URL terminal run differs.")
+            state = dict(row["writer_state"])
+            result = evidence.get("result")
+            failed = evidence["status"] == "FAILED" or (
+                isinstance(result, dict)
+                and result.get("status") in {"failed", "skipped"}
+            )
+            if (
+                not failed
+                and not row["retired"]
+                and state.get("managed_writer_gate") == "open"
+                and row["stage"] != "completed"
+            ):
+                raise UrlIngestionError(
+                    503, "URL publication has not been durably confirmed."
+                )
+            previous = state.get("url_workflow_terminal")
+            if previous is not None and previous != evidence:
+                raise UrlIngestionError(409, "URL terminal evidence changed.")
+            state["url_workflow_terminal"] = evidence
+            connection.execute(
+                generations.update()
+                .where(
+                    generations.c.url_ingestion_operation_id
+                    == row["url_ingestion_operation_id"]
+                )
+                .values(writer_state=state)
+            )
+        return evidence
+
+    def acknowledge_workflow_terminal(self, operation: dict) -> None:
+        with self.engine.begin() as connection:
+            row = one(
+                connection,
+                generations,
+                generations.c.url_ingestion_operation_id
+                == operation["url_ingestion_operation_id"],
+            )
+            if row["run_id"] != operation["run_id"]:
+                raise UrlIngestionError(409, "URL terminal run differs.")
+            state = dict(row["writer_state"], url_workflow_acknowledged=True)
+            connection.execute(
+                generations.update()
+                .where(
+                    generations.c.url_ingestion_operation_id
+                    == row["url_ingestion_operation_id"]
+                )
+                .values(writer_state=state)
+            )
+
+    def dispatch_owner(self, operation: dict) -> dict:
+        """Recheck a selected start while resume holds the source session lock."""
+        with self.engine.begin() as connection:
+            source = one(
+                connection, sources, sources.c.source_id == operation["source_id"]
+            )
+            row = one(
+                connection,
+                generations,
+                generations.c.url_ingestion_operation_id
+                == operation["url_ingestion_operation_id"],
+            )
+            if (
+                source["pending_operation_id"] != row["url_ingestion_operation_id"]
+                or source["generation"] != row["generation"]
+                or source["status"] not in {"pending", "running"}
+                or row["purpose"] != "start"
+                or row["stage"] not in {"prepared", "dispatched"}
+                or row["retired"]
+                or row["writer_state"].get("managed_writer_gate") != "open"
+            ):
+                raise UrlIngestionError(409, "URL dispatch ownership changed.")
+            return row
 
     def record_external_job(self, operation_id: str, evidence: dict) -> dict:
         with self.engine.begin() as connection:
@@ -448,12 +565,16 @@ class UrlRepository:
             state = dict(row["external_job"])
             # A verified drain is monotone. Observations only update their own
             # generation; they never publish source/current-generation state.
-            if (
-                state.get("quiescent") is True
-                and state.get("writer_admission_closed") is True
-                and state.get("lifecycle") in {"completed", "failed", "cancelled"}
-            ):
-                return state
+            if state.get("terminal_evidence"):
+                from hawki_rag_contracts.pipeline.crawler import CrawlerReceipt
+
+                try:
+                    previous = CrawlerReceipt.model_validate(state["terminal_evidence"])
+                    previous.verify_owner(row["workflow_input"])
+                    if previous.drained:
+                        return state
+                except ValueError:
+                    pass
             state.update(evidence)
             state["observed_at"] = datetime.now(timezone.utc).isoformat()
             connection.execute(
@@ -555,6 +676,10 @@ class UrlRepository:
             return receipt
 
     def complete(self, event: object, payload_hash: str, state: str) -> dict:
+        # Attempt failures remain visible in the event ledger, but cannot
+        # release the generation while Temporal may still retry the activity.
+        if state != "ready":
+            state = "running"
         with self.engine.begin() as connection:
             lock(connection, "url-event:" + event.event_id)
             previous = one(connection, events, events.c.event_id == event.event_id)
@@ -578,6 +703,44 @@ class UrlRepository:
             ):
                 raise UrlIngestionError(
                     409, "URL callback differs from expected execution."
+                )
+            if (
+                event.stage.value == "scrape"
+                and event.metrics.get("crawler_receipt") is not None
+            ):
+                from hawki_rag_contracts.pipeline.crawler import CrawlerReceipt
+
+                try:
+                    crawler = CrawlerReceipt.model_validate(
+                        event.metrics["crawler_receipt"]
+                    )
+                    crawler.verify_owner(row["workflow_input"])
+                except ValueError:
+                    raise UrlIngestionError(
+                        409, "Crawler callback receipt ownership differs."
+                    ) from None
+                if not crawler.drained:
+                    raise UrlIngestionError(
+                        409, "Scraper completion requires a sealed crawler receipt."
+                    )
+                connection.execute(
+                    generations.update()
+                    .where(
+                        generations.c.url_ingestion_operation_id
+                        == row["url_ingestion_operation_id"]
+                    )
+                    .values(
+                        external_job=dict(
+                            row["external_job"],
+                            external_job_id=crawler.external_job_id,
+                            lifecycle=crawler.status,
+                            sealed=crawler.sealed,
+                            sealed_at=crawler.sealed_at.isoformat(),
+                            quiescent=True,
+                            writer_admission_closed=True,
+                            terminal_evidence=event.metrics["crawler_receipt"],
+                        )
+                    )
                 )
             ignored = (
                 source["pending_operation_id"] != row["url_ingestion_operation_id"]
@@ -609,12 +772,8 @@ class UrlRepository:
                     raise UrlIngestionError(
                         409, "Publication requires a released URL writer manifest."
                     )
-                if state in {"ready", "failed"}:
-                    content_identity = (
-                        verify_manifest(row, event)
-                        if state == "ready"
-                        else row["content_identity"]
-                    )
+                if state == "ready":
+                    content_identity = verify_manifest(row, event)
                     connection.execute(
                         generations.update()
                         .where(
@@ -644,6 +803,78 @@ class UrlRepository:
                 connection, event.event_id, payload_hash, row, "completion", receipt
             )
             return receipt
+
+    def fail_workflow(self, operation: dict, evidence: dict) -> bool:
+        """Finalize only the exact terminal Temporal run, under the source lock.
+
+        A completed workflow can return the existing failure envelope instead
+        of raising. Neither a running run nor an unknown result proves failure.
+        Active/uncertain writers remain in the ledger for retirement to drain.
+        """
+        status = evidence.get("status")
+        result = evidence.get("result")
+        failed = status in {"FAILED", "TIMED_OUT", "CANCELED", "TERMINATED"} or (
+            status == "COMPLETED"
+            and isinstance(result, dict)
+            and result.get("status") in {"failed", "skipped"}
+        )
+        if (
+            not operation.get("run_id")
+            or evidence.get("workflow_id") != operation["workflow_id"]
+            or evidence.get("run_id") != operation["run_id"]
+        ):
+            raise UrlIngestionError(409, "URL terminal run ownership differs.")
+        if not failed:
+            return False
+        with self.engine.begin() as connection:
+            source = one(
+                connection, sources, sources.c.source_id == operation["source_id"]
+            )
+            row = self.owner(connection, operation["workflow_id"])
+            row = one(
+                connection,
+                generations,
+                generations.c.url_ingestion_operation_id
+                == row["url_ingestion_operation_id"],
+            )
+            if (
+                row["run_id"] != operation["run_id"]
+                or row["stage"] not in {"prepared", "dispatched"}
+                or row["retired"]
+                or source["pending_operation_id"] != row["url_ingestion_operation_id"]
+                or source["generation"] != row["generation"]
+                or row["writer_state"].get("managed_writer_gate") != "open"
+            ):
+                return False
+            writer_state = copy.deepcopy(row["writer_state"])
+            writer_state["managed_writer_gate"] = "closed"
+            connection.execute(
+                generations.update()
+                .where(
+                    generations.c.url_ingestion_operation_id
+                    == row["url_ingestion_operation_id"]
+                )
+                .values(
+                    stage="completed",
+                    writer_state=writer_state,
+                    completion={
+                        "status": "failed",
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                        "workflow_id": row["workflow_id"],
+                        "run_id": row["run_id"],
+                        "workflow_status": status,
+                    },
+                    updated_at=sa.func.now(),
+                )
+            )
+            connection.execute(
+                sources.update()
+                .where(sources.c.source_id == row["source_id"])
+                .values(
+                    status="failed", pending_operation_id=None, updated_at=sa.func.now()
+                )
+            )
+            return True
 
     @staticmethod
     def _event(

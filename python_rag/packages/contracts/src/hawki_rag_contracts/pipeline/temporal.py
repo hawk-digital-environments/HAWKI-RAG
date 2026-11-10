@@ -12,6 +12,9 @@ SCRAPE_SOURCE_ACTIVITY = "scrape_source"
 CONVERT_FILES_ACTIVITY = "inspect_and_convert_files"
 INDEX_MARKDOWN_ACTIVITY = "ingest_markdown_files"
 MARK_SOURCE_READY_ACTIVITY = "mark_source_ready"
+URL_DISPATCH_PROTOCOL_MEMO = "hawki_url_dispatch_protocol"
+URL_TERMINAL_QUERY = "url_terminal_outcome"
+URL_TERMINAL_ACK_SIGNAL = "acknowledge_url_terminal"
 
 WORKFLOW_TASK_QUEUE = "rag-workflow-task-queue"
 SCRAPER_TASK_QUEUE = "rag-scraper-task-queue"
@@ -87,6 +90,9 @@ __all__ = [
     "MARK_SOURCE_READY_ACTIVITY",
     "SCRAPER_TASK_QUEUE",
     "SCRAPE_SOURCE_ACTIVITY",
+    "URL_DISPATCH_PROTOCOL_MEMO",
+    "URL_TERMINAL_ACK_SIGNAL",
+    "URL_TERMINAL_QUERY",
     "WORKFLOW_TASK_QUEUE",
     "resolve_activity_task_queue",
     "resolve_legacy_ingestion_task_queue",

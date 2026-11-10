@@ -1,5 +1,8 @@
 # Epoch 11 remaining-blocker validation — 2026-11-06
 
+Historical report. The external runtime findings below are superseded by the
+[2026-11-09 crawler integration validation](epoch11_crawler_integration_validation.md).
+
 Branch: `feat/python-url-crawler-ingestion`. The existing uncommitted implementation
 was retained. No commit, push, reset, clean, production selector change, or traffic
 migration was performed.
