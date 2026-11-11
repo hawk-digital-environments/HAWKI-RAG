@@ -17,6 +17,21 @@ class LazyCrossEncoder:
         self._model: RerankingModel | None = None
         self._lock = Lock()
 
+    def preload(self) -> None:
+        """Load the model eagerly; idempotent and thread-safe.
+
+        Keeps the lazy path intact: when preload fails or is skipped, the
+        first rerank request still loads the model on demand.
+        """
+
+        self._get_model()
+
+    @property
+    def is_loaded(self) -> bool:
+        """Whether the underlying model is resident in this process."""
+
+        return self._model is not None
+
     def predict(self, pairs: list[list[str]]) -> Any:
         return self._get_model().predict(pairs)
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 
 DEFAULT_GRAPH_EMBEDDING_DIMENSIONS = (
-    "hawki-ollama-embedding=1024,hawki-openai-embedding=1536,hawki-embedding=1024"
+    "ollama/bge-m3=1024,openai/text-embedding-3-small=1536"
 )
 
 

@@ -102,13 +102,36 @@ def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract()
 
 
 def test_compose_files_delegate_runtime_environment_to_dotenv() -> None:
-    for compose_file in COMPOSE_FILES:
+    # Override files stay fully delegated to the dotenv.
+    for compose_file in COMPOSE_FILES[1:]:
         compose = compose_file.read_text(encoding="utf-8")
         assert re.search(r"(?m)^\s+environment:\s*$", compose) is None
 
     base_compose = COMPOSE_FILE.read_text(encoding="utf-8")
     assert "x-service-env: &service_env" in base_compose
     assert "${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}" in base_compose
+
+    # The base file may pin fixed, non-secret image settings (HF_HOME) or
+    # pass a variable through with a default; every passthrough variable
+    # must be declared in the dotenv template so operators keep one
+    # source of truth and no secret ever rides an environment: block.
+    env_example = ENV_EXAMPLE_FILE.read_text(encoding="utf-8")
+    fixed_settings = frozenset({"HF_HOME"})
+    passthrough = re.compile(r"^([A-Z][A-Z0-9_]*)=\$\{([A-Z0-9_]+):-[^}]+\}$")
+    for block in re.finditer(
+        r"(?ms)^ {4}environment:\n((?:[ ]+- [^\n]*\n)+)", base_compose
+    ):
+        entries = [entry.strip()[2:] for entry in block.group(1).splitlines()]
+        assert entries, block.group(0)
+        for entry in entries:
+            passed = passthrough.match(entry)
+            if passed is not None:
+                assert passed.group(1) == passed.group(2), entry
+                assert re.search(
+                    rf"(?m)^#?{re.escape(passed.group(1))}=", env_example
+                ), entry
+            else:
+                assert entry.split("=", 1)[0] in fixed_settings, entry
 
 
 def test_neo4j_receives_only_its_server_auth_adapter() -> None:

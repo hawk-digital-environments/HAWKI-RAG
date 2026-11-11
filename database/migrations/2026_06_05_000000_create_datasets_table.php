@@ -102,15 +102,18 @@ return new class extends Migration
      */
     private function embeddingDefaults(): array
     {
-        $provider = strtolower(trim((string) config(
-            'temporal.ingestion.provider',
-            config('config.graph_provider', 'ollama'),
-        )));
+        $provider = strtolower(trim((string) config('config.provider')));
+
+        if ($provider === '') {
+            throw new InvalidArgumentException(
+                'RAG_PROVIDER is not configured; set it to "ollama" or "litellm" in .env.'
+            );
+        }
 
         if ($provider === 'litellm') {
             return [
                 'litellm',
-                (string) config('model_providers.providers.litellm.models.embedding', 'hawki-ollama-embedding'),
+                (string) config('model_providers.providers.litellm.models.embedding', 'ollama/bge-m3'),
             ];
         }
 

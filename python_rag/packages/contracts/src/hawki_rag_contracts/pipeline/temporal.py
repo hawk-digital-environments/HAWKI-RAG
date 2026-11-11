@@ -8,10 +8,14 @@ from enum import StrEnum
 
 INGEST_SOURCE_WORKFLOW = "IngestSourceWorkflow"
 INGEST_TEXT_WORKFLOW = "IngestTextWorkflow"
+MODEL_WARMUP_WORKFLOW = "ModelWarmupWorkflow"
+MODEL_WARMUP_SCHEDULE_ID = "model-warmup-daily"
 SCRAPE_SOURCE_ACTIVITY = "scrape_source"
 CONVERT_FILES_ACTIVITY = "inspect_and_convert_files"
 INDEX_MARKDOWN_ACTIVITY = "ingest_markdown_files"
 MARK_SOURCE_READY_ACTIVITY = "mark_source_ready"
+WARM_MODEL_ACTIVITY = "warm_model"
+WARM_RETRIEVAL_ACTIVITY = "warm_retrieval"
 
 WORKFLOW_TASK_QUEUE = "rag-workflow-task-queue"
 SCRAPER_TASK_QUEUE = "rag-scraper-task-queue"
@@ -85,8 +89,12 @@ __all__ = [
     "INGEST_TEXT_WORKFLOW",
     "LEGACY_INGESTION_TASK_QUEUE",
     "MARK_SOURCE_READY_ACTIVITY",
+    "MODEL_WARMUP_SCHEDULE_ID",
+    "MODEL_WARMUP_WORKFLOW",
     "SCRAPER_TASK_QUEUE",
     "SCRAPE_SOURCE_ACTIVITY",
+    "WARM_MODEL_ACTIVITY",
+    "WARM_RETRIEVAL_ACTIVITY",
     "WORKFLOW_TASK_QUEUE",
     "resolve_activity_task_queue",
     "resolve_legacy_ingestion_task_queue",

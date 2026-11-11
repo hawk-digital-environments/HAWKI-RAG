@@ -5,9 +5,11 @@ from hawki_workflow_worker.workflows.ingest_text import IngestTextWorkflow
 from hawki_workflow_worker.workflows.delete_managed_document import (
     DeleteManagedDocumentWorkflow,
 )
+from hawki_workflow_worker.workflows.model_warmup import ModelWarmupWorkflow
 
 __all__ = [
     "IngestSourceWorkflow",
     "IngestTextWorkflow",
     "DeleteManagedDocumentWorkflow",
+    "ModelWarmupWorkflow",
 ]

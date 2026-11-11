@@ -75,7 +75,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 "qdrant_collection": " hawki_dataset_a ",
                 "neo4j_namespace": " hawki_dataset_a ",
                 "embedding_provider": " ollama ",
-                "embedding_model": " hawki-ollama-embedding ",
+                "embedding_model": " ollama/bge-m3 ",
                 "graph_enabled": False,
             },
         )
@@ -83,9 +83,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
         self.assertEqual(request.authorized_scope.dataset_id, "dataset-a")
         self.assertEqual(request.authorized_scope.qdrant_collection, "hawki_dataset_a")
         self.assertEqual(request.authorized_scope.embedding_provider, "ollama")
-        self.assertEqual(
-            request.authorized_scope.embedding_model, "hawki-ollama-embedding"
-        )
+        self.assertEqual(request.authorized_scope.embedding_model, "ollama/bge-m3")
         self.assertFalse(request.authorized_scope.graph_enabled)
 
     def test_scope_rejects_unknown_internal_fields(self) -> None:
@@ -97,7 +95,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
                 embedding_provider="ollama",
-                embedding_model="hawki-ollama-embedding",
+                embedding_model="ollama/bge-m3",
                 graph_enabled=False,
                 caller_collection="hawki_dataset_b",
             )
@@ -120,7 +118,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             qdrant_collection="hawki_dataset_a",
             neo4j_namespace="graph_dataset_a",
             embedding_provider="ollama",
-            embedding_model="hawki-ollama-embedding",
+            embedding_model="ollama/bge-m3",
             graph_enabled=True,
         )
 
@@ -132,7 +130,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
                 embedding_provider="ollama",
-                embedding_model="hawki-ollama-embedding",
+                embedding_model="ollama/bge-m3",
                 graph_enabled=True,
             )
 
@@ -143,7 +141,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                     "qdrant_collection": "hawki_dataset_a",
                     "neo4j_namespace": "graph_dataset_a",
                     "embedding_provider": "ollama",
-                    "embedding_model": "hawki-ollama-embedding",
+                    "embedding_model": "ollama/bge-m3",
                     "graph_enabled": "true",
                 }
             )
@@ -158,8 +156,8 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             QueryRequest(
                 query="Find the PDF",
                 provider="litellm",
-                chat_model="hawki-ollama-chat",
-                vision_model="hawki-ollama-vision",
+                chat_model="ollama_chat/llama3.1:8b",
+                vision_model="ollama_chat/qwen2.5vl:7b",
                 authorized_scope={
                     "dataset_id": "dataset-a",
                     "qdrant_collection": "hawki_dataset_a",

@@ -310,7 +310,9 @@ def test_workflow_module_is_deterministic_and_service_package_is_exactly_pinned(
     )
     assert pyproject["project"]["requires-python"] == "==3.13.14"
     assert pyproject["project"]["dependencies"] == [
+        "hawki-model-providers==0.1.0",
         "hawki-rag-contracts==0.1.0",
+        "requests==2.34.2",
         "temporalio==1.30.0",
     ]
     assert pyproject["build-system"]["requires"] == ["uv_build==0.11.26"]

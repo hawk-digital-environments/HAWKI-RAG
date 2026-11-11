@@ -185,12 +185,14 @@ An existence check does not establish compatible vector dimensions or distance.
 
 | Variable | Template default | Read by | Change when | Restart? | Data impact |
 |---|---|---|---|---|---|
-| `RAG_DEFAULT_PROVIDER`, `GRAPH_PROVIDER` | `ollama` | Laravel defaults/settings | Change default runtime | Yes | Existing dataset scope persists |
+| `RAG_PROVIDER` | Required (`ollama` or `litellm`) | Laravel defaults/settings, Python warmup | The single RAG runtime provider | Yes | Missing configuration fails loud; existing dataset scope persists |
 | `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Provider clients | Ollama endpoint changes | Yes | None |
-| `OLLAMA_RAG_MODEL` | `llama3.1:8b` | Laravel settings / provider | Chat/graph default changes | Yes | New answers/extraction |
-| `OLLAMA_EMBED_MODEL` | `bge-m3` | Laravel settings / provider | New embedding contract | Yes | Rebuild existing target intentionally |
-| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Laravel settings / provider | Vision model changes | Yes | New multimodal extraction |
-| `OLLAMA_CHAT_MODELS`, `OLLAMA_EMBED_MODELS`, `OLLAMA_VISION_MODELS` | The matching models above | Laravel Settings allowlists | Offer additional models | Yes | Dataset model selected at creation |
+| `EMBED_MODEL` | `ollama/bge-m3` | Laravel settings / provider / warmup | New embedding contract | Yes | Rebuild existing target intentionally |
+| `CHAT_MODEL` | `ollama_chat/llama3.1:8b` | Laravel settings / provider / warmup | Chat/graph default changes | Yes | New answers/extraction |
+| `VISION_MODEL` | `ollama_chat/qwen2.5vl:7b` | Laravel settings / provider / warmup | Vision model changes | Yes | New multimodal extraction |
+| `GRAPH_RAG_MODEL` | Follows `CHAT_MODEL` | Laravel settings / provider | Graph-extraction override | Yes | New extraction |
+| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | The matching models above | Laravel Settings allowlists | Offer additional models | Yes | Dataset model selected at creation |
+| `OLLAMA_KEEP_ALIVE` | `24h` | Ollama server / provider clients | Model residency tuning | Yes | None |
 | `CHUNK_SIZE`, `CHUNK_OVERLAP_SIZE` | `1200`, `250` | Laravel workflow payloads | Change text segmentation | Yes | Controlled reindex |
 | `INGEST_BATCH_SIZE` | `64` | Laravel / indexer options | Throughput tuning | Yes | No semantic rebuild |
 | `RAG_GENERATE_ANSWER` | `true` | Bridge | Enable generated answers | Yes | No index change |
@@ -210,19 +212,21 @@ through Settings. No upstream cloud key is needed for direct Ollama.
 |---|---|---|
 | `LITELLM_API_URL` | `http://litellm:4000/v1` | Gateway endpoint |
 | `LITELLM_API_KEY` | Empty | Client bearer credential if gateway requires it |
-| `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Chat/graph alias |
-| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Embedding alias |
-| `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Vision alias |
-| `LITELLM_CHAT_ALIASES`, `LITELLM_EMBED_ALIASES`, `LITELLM_VISION_ALIASES` | Lists in the template | Settings allowlists |
+| `EMBED_MODEL`, `CHAT_MODEL`, `VISION_MODEL` | Bare gateway aliases when the gateway runs | Model aliases (provider-prefixed keys stay valid) |
+| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | Lists in the template | Settings allowlists; they also render the gateway's route menu |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Empty | Upstream gateway credentials |
+| `OPENAI_API_BASE`, `ANTHROPIC_API_BASE` | Empty | Optional standard endpoints for corporate proxies |
 | `LITELLM_PORT` | `4000` | Loopback host port |
 
-`LITELLM_OLLAMA_*`, `LITELLM_OPENAI_*`, and `LITELLM_ANTHROPIC_*` map aliases
-to upstream models in [gateway config](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/litellm/config.yaml).
-Legacy aliases `hawki-chat`, `hawki-embedding`, and `hawki-vision` are
-COMPATIBILITY options; prefer explicit provider aliases.
-Cloud keys are consumed for gateway calls, but are not exclusively injected into
-that container under the current shared-env wiring.
+The gateway renders its proxy config at container startup from the canonical
+model keys: every allowlisted model becomes one passthrough route named by
+its provider-prefixed string, with the credential chosen by prefix. See
+[gateway_config.py](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/model_providers/src/hawki_model_providers/gateway_config.py)
+in the hawki-model-providers package (mounted read-only into the gateway
+container). Credentials resolve through `os.environ/...` references, so secrets
+never land in the rendered file. Preview the config an env file produces
+without booting anything: `make gateway-render`, or
+`python -m hawki_model_providers.gateway_config --env .env --output -`.
 
 ## Reranker and retrieval controls
 
@@ -272,7 +276,7 @@ thresholds do not guarantee abstention, and the context budget is approximate.
 | `GRAPH_DOC_MAX_CHUNKS` | `6` | First N chunks per document; `0` selects all chunks; rebuild graph to apply to existing facts |
 | `GRAPH_DOC_MAX_CHARS` | `6000` | Total characters across selected chunks per document; `0` keeps all selected text; rebuild graph to apply to existing facts |
 | `GRAPH_RESET_CACHE_PER_DOC` | `true` | ADVANCED extraction cache lifecycle |
-| `GRAPH_EMBEDDING_DIMENSIONS` | `hawki-ollama-embedding=1024,hawki-openai-embedding=1536,hawki-embedding=1024` | ADVANCED trusted dimensions for graph-only alias use |
+| `GRAPH_EMBEDDING_DIMENSIONS` | `ollama/bge-m3=1024,openai/text-embedding-3-small=1536` | ADVANCED trusted dimensions for graph-only use; provider-prefixed canonical names (`ollama/nomic-embed-text=768`) are the keys |
 | `RAG_WORKING_DIR` | `/app/rag_storage` | Intermediate extraction files; not the shared artifact root |
 
 [Ingestion with Graph Processing Enabled](../Core%20Concepts/Ingestion/graph_enrichment.md) explains library

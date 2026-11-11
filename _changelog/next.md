@@ -13,10 +13,35 @@
   scheduler resumes scoped cleanup automatically after writer drain, failures or
   restarts. Verified completion retains a dataset tombstone; other datasets and
   shared graph contributions remain intact.
+- **One model client, canonical model keys.** The hand-rolled Ollama and LiteLLM
+  HTTP clients were replaced by a single LiteLLM SDK client behind the unchanged
+  provider names (`RAG_PROVIDER`, replacing `RAG_DEFAULT_PROVIDER` and
+  `GRAPH_PROVIDER`; it is required and fails loud when unset). Model
+  configuration now uses the
+  provider-prefixed keys `EMBED_MODEL`, `CHAT_MODEL`, `VISION_MODEL` (allowlist
+  plurals feed the Settings UI), and `GRAPH_RAG_MODEL` optionally overrides the
+  graph model. The SDK talks to direct Ollama, a LiteLLM gateway, or hosted
+  APIs without code changes; verified against live Ollama (cosine 1.0 vs the
+  previous route; safe under `QDRANT_DISTANCE=Cosine`). The gateway container
+  renders its proxy config at startup from the same canonical keys through the
+  `hawki_model_providers.gateway_config` module, replacing the eleven
+  per-provider `LITELLM_OLLAMA_*` / `LITELLM_OPENAI_*` / `LITELLM_ANTHROPIC_*`
+  variables.
+- **Model warmup workflow.** A Temporal workflow loads every configured model
+  at worker startup and daily at 06:00, then validates the stack with one real
+  retrieval query through the bridge API. The reranker preloads its model
+  during container startup (`HAWKI_RERANKER_PRELOAD`) and keeps its weights in
+  the `hf_models` volume; `OLLAMA_KEEP_ALIVE` (default 24h) pins loaded Ollama
+  models between queries.
 
 ### Quality of Life
 
 [//]: # (- Improvements and enhancements that improve the user experience.)
+
+- **Gateway config preview.** `make gateway-render` prints the proxy config
+  an env file would render — env-file values override the ambient
+  environment, mirroring how the container receives its env_file — so
+  route changes can be reviewed before booting anything.
 
 - **Automatic cleanup after cancellation.** Current managed writers acknowledge
   completion only after in-flight sink calls finish, then resume pending deletion
@@ -28,6 +53,21 @@
 ### Bugfix
 
 [//]: # (- Bug fixes included in this version.)
+
+- **Gateway model routing.** Every model string now routes through the
+  LiteLLM gateway: the SDK client wraps the canonical value in the
+  OpenAI-compatible transport prefix and passes it as the proxy deployment
+  name, so bare names that are not famous hosted models (previously
+  rejected by the SDK's parser before transport with "LLM Provider NOT
+  provided") and provider-prefixed values (`ollama_chat/…`,
+  `anthropic/…`, which would have spoken the wrong wire protocol at the
+  proxy) both reach a rendered route. The retired `hawki-*` proxy aliases
+  are gone — every gateway route is named by a canonical provider-prefixed
+  model. The rendered proxy config also sets a master key — the configured
+  `LITELLM_API_KEY`, or the shared internal placeholder the client sends
+  when none is configured — so the gateway boots on current LiteLLM images
+  that refuse to start without authentication. Verified live end to end
+  (client → gateway → Ollama) through the new `make gateway-smoke` target.
 
 - **Deleted content stays deleted.** Fence pending and undispatched managed sources,
   reject late writer retries, and prevent stale callbacks or replacement
@@ -96,7 +136,7 @@
   production builds the `-gpu` variants for the single-GPU machine.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
-read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,
+read model-selection environment variables (`RAG_PROVIDER`,
 `OLLAMA_*_MODEL`, `LITELLM_*_MODEL`, `GRAPH_OLLAMA_*` on the Python side).
 Provider and model names now travel exclusively with each Laravel request:
 
@@ -106,7 +146,7 @@ Provider and model names now travel exclusively with each Laravel request:
 Any client that called the bridge `/query` endpoint directly (outside Laravel)
 must send these fields explicitly; missing fields now fail validation instead of
 falling back to environment defaults. The provider startup probe was removed
-along with `RAG_DEFAULT_PROVIDER`; startup checks cover Qdrant and Neo4j only.
+along with the provider probe; startup checks cover Qdrant and Neo4j only.
 Endpoint/auth variables (`OLLAMA_API_URL`, `LITELLM_API_URL/KEY`, Qdrant/Neo4j
 addresses) remain unchanged.
 

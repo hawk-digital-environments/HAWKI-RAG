@@ -442,9 +442,9 @@ class PipelineControllerDashboardTest extends TestCase
                 ],
                 'models' => [
                     'provider' => 'litellm',
-                    'graphModel' => 'hawki-ollama-chat',
-                    'embeddingModel' => 'hawki-ollama-embedding',
-                    'visionModel' => 'hawki-ollama-vision',
+                    'graphModel' => 'ollama_chat/llama3.1:8b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk();
@@ -469,9 +469,9 @@ class PipelineControllerDashboardTest extends TestCase
             return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
                 && data_get($data, 'workflow_input.converter_mode') === 'custom'
                 && data_get($data, 'workflow_input.ingestion.provider') === 'litellm'
-                && data_get($data, 'workflow_input.ingestion.graph_model') === 'hawki-ollama-chat'
-                && data_get($data, 'workflow_input.ingestion.embedding_model') === 'hawki-ollama-embedding'
-                && data_get($data, 'workflow_input.ingestion.vision_model') === 'hawki-ollama-vision'
+                && data_get($data, 'workflow_input.ingestion.graph_model') === 'ollama_chat/llama3.1:8b'
+                && data_get($data, 'workflow_input.ingestion.embedding_model') === 'ollama/bge-m3'
+                && data_get($data, 'workflow_input.ingestion.vision_model') === 'ollama_chat/qwen2.5vl:7b'
                 && is_string($profilePath)
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
         });
@@ -628,9 +628,9 @@ class PipelineControllerDashboardTest extends TestCase
                 ],
                 'models' => [
                     'provider' => 'litellm',
-                    'graphModel' => 'hawki-ollama-chat',
-                    'embeddingModel' => 'hawki-ollama-embedding',
-                    'visionModel' => 'hawki-ollama-vision',
+                    'graphModel' => 'ollama_chat/llama3.1:8b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk();
