@@ -6,10 +6,12 @@ namespace App\Services\Dataset;
 
 use App\Models\Dataset;
 use App\Services\Authorization\DatasetGrantTokenService;
+use App\Services\Dataset\Exceptions\DatasetBackendUnavailableException;
 use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Dataset\Exceptions\DatasetNotFoundException;
 use App\Services\Dataset\Values\DatasetCreationResult;
+use App\Services\Dataset\Values\DatasetProjection;
 use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
@@ -24,6 +26,15 @@ use Symfony\Component\Clock\Clock;
 #[Singleton]
 readonly class DatasetService
 {
+    /** The only creation-conflict fields the Python authority may report. */
+    private const CONFLICT_FIELDS = [
+        'dataset_id',
+        'name',
+        'description',
+        'status',
+        'physical_scope',
+    ];
+
     public function __construct(
         private DatasetRepository $datasets,
         private DatasetIdentifierFactory $identifiers,
@@ -36,6 +47,8 @@ readonly class DatasetService
         private ManagedDocumentOutputDeletionService $managedDeletion,
         private ManagedDocumentDeletionRepository $deletionOperations,
         private LoggerInterface $logger,
+        private DatasetBackend $backend,
+        private PythonDatasetClient $python,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -57,6 +70,8 @@ readonly class DatasetService
 
     public function create(array $input): DatasetCreationResult
     {
+        $this->backend->assertLegacyWriter();
+
         return $this->database->transaction(function () use ($input): DatasetCreationResult {
             $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
             $safe = $this->identifiers->safeName($datasetId);
@@ -109,6 +124,10 @@ readonly class DatasetService
             $dataset = null;
         }
 
+        if ($this->backend->selected() === DatasetBackend::PYTHON) {
+            return $this->ensureFromPython($dataset, $input);
+        }
+
         $datasetId = $this->identifiers->datasetId($dataset ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
         $embedding = $this->embeddingRuntime();
@@ -133,10 +152,83 @@ readonly class DatasetService
     }
 
     /**
+     * Resolve dataset metadata from the Python authority without writing
+     * Laravel's frozen dataset tables.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function ensureFromPython(string|array|null $dataset, array $input): Dataset
+    {
+        $datasetId = $this->identifiers->datasetId(
+            $dataset ?? $input['dataset_id'] ?? $input['datasetId'] ?? null,
+        );
+        // The Python authority derives tenant-aware physical scope itself. A
+        // caller-supplied collection or namespace is never forwarded, so it
+        // can neither select nor reserve a physical target.
+        $payload = ['dataset_id' => $datasetId];
+        foreach (['name', 'description'] as $field) {
+            if (array_key_exists($field, $input)) {
+                $payload[$field] = $this->identifiers->stringValue($input[$field]);
+            }
+        }
+
+        $result = $this->python->create($payload);
+        if (! in_array($result['status'], [200, 201], true)) {
+            if ($result['status'] === 409
+                && ($result['payload']['error'] ?? null) === 'dataset_creation_conflict') {
+                $message = $result['payload']['message'] ?? null;
+                $field = is_string($message)
+                    ? $this->creationConflictField($datasetId, $message)
+                    : null;
+                if ($field === 'status') {
+                    throw DatasetInactiveException::forId($datasetId);
+                }
+                if ($field !== null) {
+                    throw DatasetCreationConflictException::forField($datasetId, $field);
+                }
+            }
+
+            throw DatasetBackendUnavailableException::upstreamUnavailable();
+        }
+
+        $resolved = $result['payload']['dataset'] ?? null;
+        if (! is_array($resolved)
+            || ($resolved['dataset_id'] ?? null) !== $datasetId
+            || ($resolved['status'] ?? null) !== Dataset::STATUS_ACTIVE) {
+            if (is_array($resolved) && ($resolved['status'] ?? null) !== Dataset::STATUS_ACTIVE) {
+                throw DatasetInactiveException::forId($datasetId);
+            }
+
+            throw DatasetBackendUnavailableException::upstreamUnavailable();
+        }
+
+        return DatasetProjection::fromPayload($resolved);
+    }
+
+    /**
+     * Read the conflicting field from the Python creation-conflict message.
+     *
+     * The message is already restricted to the documented shape by the BFF
+     * client. An unrecognized message is never guessed at; the caller fails
+     * closed instead.
+     */
+    private function creationConflictField(string $datasetId, string $message): ?string
+    {
+        $pattern = '/\ADataset \['.preg_quote($datasetId, '/').'\] already exists with a different \[([a-z_]+)\]\.\z/';
+        if (preg_match($pattern, $message, $matches) !== 1) {
+            return null;
+        }
+
+        return in_array($matches[1], self::CONFLICT_FIELDS, true) ? $matches[1] : null;
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function delete(string $datasetId): ?array
     {
+        $this->backend->assertLegacyWriter();
+
         $dataset = $this->database->transaction(fn () => $this->datasets->archiveForDeletion($datasetId));
 
         return $dataset ? ['dataset_id' => $datasetId, 'status' => $dataset->status,
@@ -146,6 +238,8 @@ readonly class DatasetService
     /** The archived row is the durable work item, including after a process restart. */
     public function resumeArchivedDeletions(): void
     {
+        $this->backend->assertLegacyWriter();
+
         foreach ($this->datasets->pendingDeletions() as $dataset) {
             try {
                 $result = $this->cleanup($dataset->dataset_id);
@@ -162,6 +256,8 @@ readonly class DatasetService
     /** Resume existing document operations; never reactivate a dataset or start replacement ingestion. */
     public function cleanup(string $datasetId): ?array
     {
+        $this->backend->assertLegacyWriter();
+
         $dataset = $this->datasets->findByDatasetId($datasetId);
         if (! $dataset) {
             return null;

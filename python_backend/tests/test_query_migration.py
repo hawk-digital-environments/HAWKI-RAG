@@ -234,7 +234,14 @@ def test_verify_detects_drift(inventory, engine, mutation):
         elif mutation == "extra":
             connection.execute(
                 datasets.insert().values(
-                    tenant_id="default", dataset_id="unexpected", status="active"
+                    tenant_id="default",
+                    dataset_id="unexpected",
+                    status="active",
+                    name="Unexpected",
+                    qdrant_collection="hawki_unexpected",
+                    neo4j_namespace="hawki_unexpected",
+                    embedding_provider="ollama",
+                    embedding_model="bge-m3",
                 )
             )
         elif mutation == "status":

@@ -23,6 +23,12 @@ readonly class QueryTokenSigner
      */
     private const INGEST_SCOPE = 'rag:ingest';
 
+    /**
+     * The dataset-management scope. Only the trusted BFF mints it; it is never
+     * derived from a browser request and never exposed to a client.
+     */
+    private const DATASET_ADMIN_SCOPE = 'rag:datasets:manage';
+
     public function __construct(
         private ConfigRepository $config,
         private ClockInterface $clock,
@@ -30,30 +36,42 @@ readonly class QueryTokenSigner
 
     public function sign(User $user): string
     {
-        return $this->encode($user, self::QUERY_SCOPE);
+        return $this->encode((string) $user->getAuthIdentifier(), self::QUERY_SCOPE, (bool) $user->isRemoved);
     }
 
     public function signIngest(User $user): string
     {
-        return $this->encode($user, self::INGEST_SCOPE);
+        return $this->encode((string) $user->getAuthIdentifier(), self::INGEST_SCOPE, (bool) $user->isRemoved);
     }
 
-    private function encode(User $user, string $scope): string
+    /**
+     * Sign a dataset-management request for the BFF's own service identity.
+     *
+     * Dataset management routes are not user-attributed, so the subject is the
+     * BFF client rather than a user id. The token is minted only inside this
+     * process and never returned to a caller.
+     */
+    public function signDatasetAdmin(): string
+    {
+        return $this->encode('hawki-bff', self::DATASET_ADMIN_SCOPE, false);
+    }
+
+    private function encode(string $subject, string $scope, bool $removed): string
     {
         try {
             $issuer = $this->text('issuer');
             $audience = $this->text('audience');
             $client = $this->text('client_id');
-            if ($scope === self::INGEST_SCOPE && $client !== 'hawki-bff') {
+            if (in_array($scope, [self::INGEST_SCOPE, self::DATASET_ADMIN_SCOPE], true)
+                && $client !== 'hawki-bff') {
                 throw QueryTokenSigningException::unavailable();
             }
             $tenant = $this->text('tenant');
             $kid = $this->text('key_id');
-            $subject = (string) $user->getAuthIdentifier();
             $configuredTtl = $this->config->get('config.query_bff.token_ttl');
             $ttl = is_int($configuredTtl) || is_string($configuredTtl)
                 ? filter_var($configuredTtl, FILTER_VALIDATE_INT) : false;
-            if ($subject === '' || strlen($subject) > 255 || $user->isRemoved
+            if ($subject === '' || strlen($subject) > 255 || $removed
                 || ! preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\z/', $tenant)
                 || ! preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\z/', $kid)
                 || $ttl === false || $ttl < 1 || $ttl > 60) {

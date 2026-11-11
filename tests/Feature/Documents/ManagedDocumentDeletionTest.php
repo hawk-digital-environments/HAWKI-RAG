@@ -14,6 +14,7 @@ use App\Services\Authorization\DatasetIngestionAuthorizationService;
 use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Profile\Values\ApiTokenAbility;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\UploadedFile;
@@ -39,7 +40,7 @@ class ManagedDocumentDeletionTest extends TestCase
     {
         parent::setUp();
         config()->set('temporal.callbacks.secret', 'managed-test-secret');
-        $user = $this->actingAsApiUser();
+        $user = $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
         $dataset = Dataset::query()->create(['dataset_id' => 'delete-test', 'name' => 'delete-test', 'status' => 'active', 'qdrant_collection' => 'test_collection', 'neo4j_namespace' => 'test_namespace']);
         app(DatasetIngestionAuthorizationService::class)->grantAccess($user, $dataset);
         ManagedDocument::query()->create(['document_id' => 'adoc_delete_test', 'dataset_id' => 'delete-test', 'source_type' => 'upload', 'status' => 'indexed', 'graph_enabled' => true, 'latest_source_id' => 'source-old']);
@@ -178,6 +179,7 @@ class ManagedDocumentDeletionTest extends TestCase
     public function test_dataset_delete_archives_then_reuses_verified_document_cleanup(): void
     {
         $this->flushHeaders();
+        $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
         $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted()->assertJsonPath('success', true);
         Http::assertNothingSent();
         app(DatasetService::class)->resumeArchivedDeletions();

@@ -7,6 +7,7 @@ namespace App\Services\Authorization\Repositories;
 use App\Models\Dataset;
 use App\Models\DatasetGrant;
 use App\Services\Authorization\Values\AuthenticatedPrincipal;
+use App\Services\Dataset\DatasetBackend;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -14,6 +15,10 @@ use Illuminate\Support\Collection;
 #[Singleton]
 readonly class DatasetGrantRepository
 {
+    public function __construct(
+        private DatasetBackend $backend,
+    ) {}
+
     public function findActiveDatasetForQuery(
         AuthenticatedPrincipal $principal,
         string $datasetId,
@@ -75,6 +80,8 @@ readonly class DatasetGrantRepository
         AuthenticatedPrincipal $principal,
         string $permission,
     ): DatasetGrant {
+        $this->backend->assertLegacyWriter();
+
         return DatasetGrant::query()->firstOrCreate([
             'dataset_id' => $dataset->dataset_id,
             'principal_type' => $principal->type,

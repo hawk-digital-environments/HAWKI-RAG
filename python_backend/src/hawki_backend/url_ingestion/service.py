@@ -3,6 +3,7 @@
 import uuid
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
 from hawki_backend.auth.models import AuthenticatedPrincipal, PrincipalKind
 from hawki_backend.authorization import (
@@ -11,6 +12,12 @@ from hawki_backend.authorization import (
     AuthorizationPort,
 )
 from hawki_backend.managed_documents.cleanup import ManagedCleanup
+from hawki_backend.persistence.datasets import (
+    DatasetInactiveError as StoreInactiveError,
+)
+from hawki_backend.persistence.datasets import (
+    DatasetNotFoundError as StoreNotFoundError,
+)
 from hawki_backend.query.settings import QuerySettings
 from hawki_backend.workflow_control.identity import source_retry, source_workflow
 from hawki_backend.workflow_control.repository import OperationConflict
@@ -146,14 +153,19 @@ class UrlIngestionService:
         unique = {}
         for original, value in zip(urls, validated, strict=True):
             unique.setdefault(value.identity, original)
-        task, children = self.repository.claim(
-            principal,
-            values,
-            [(original, normalized) for normalized, original in unique.items()],
-            candidate,
-            expected_generations=expected_generations,
-            scheduled=scheduled,
-        )
+        try:
+            task, children = self.repository.claim(
+                principal,
+                values,
+                [(original, normalized) for normalized, original in unique.items()],
+                candidate,
+                expected_generations=expected_generations,
+                scheduled=scheduled,
+            )
+        except (StoreNotFoundError, StoreInactiveError):
+            raise UrlIngestionError(
+                404, "The requested dataset is not available."
+            ) from None
         for operation in children:
             await self.resume(operation)
         return 201, self.task_payload(principal, task["task_id"])
@@ -230,7 +242,9 @@ class UrlIngestionService:
         if request["purpose"] == "delete":
             return row
         scope = (
-            self.query_settings.resolve_scope(source["dataset_id"])
+            self.query_settings.resolve_scope(
+                source["dataset_id"], request["tenant_id"]
+            )
             if self.query_settings
             else None
         )
@@ -561,16 +575,61 @@ class UrlIngestionService:
             key or "delete:" + source_id + ":" + str(delete_generation),
             "delete",
         )
+        try:
+            task, children = self.repository.claim(
+                principal,
+                values,
+                [(source["original_url"], source["normalized_url"])],
+                lambda row, request: self._candidate(row, request, {}),
+                expected_generations={source_id: source["generation"]},
+            )
+        except (StoreNotFoundError, StoreInactiveError):
+            raise UrlIngestionError(
+                404, "The requested dataset is not available."
+            ) from None
+        for operation in children:
+            await self.resume(operation)
+        return 200, self.task_payload(principal, task["task_id"])
+
+    async def cleanup_dataset(self, tenant_id: str, dataset_id: str) -> None:
+        """Drive every owned URL source through its delete protocol.
+
+        This is the narrow internal cleanup authority. It reuses the durable
+        URL generation/deletion state machine without a user grant.
+        """
+
+        for source_id in self.repository.list_blocking_sources(tenant_id, dataset_id):
+            await self.delete_internal(tenant_id, source_id)
+
+    async def delete_internal(self, tenant_id: str, source_id: str) -> None:
+        """Claim and resume one deterministic delete without user authorization."""
+
+        source = self.repository.source(tenant_id, source_id)
+        if source["status"] == "deleted":
+            return
+        delete_generation = source["generation"]
+        if source["status"] in {"deleting", "deleted"}:
+            delete_generation -= 1
+        owner = SimpleNamespace(
+            tenant_id=tenant_id,
+            principal_id=source["principal_id"],
+        )
+        values = self._request(
+            owner,
+            {"dataset_id": source["dataset_id"], "source_id": source_id},
+            "delete:" + source_id + ":" + str(delete_generation),
+            "delete",
+        )
         task, children = self.repository.claim(
-            principal,
+            owner,
             values,
             [(source["original_url"], source["normalized_url"])],
             lambda row, request: self._candidate(row, request, {}),
             expected_generations={source_id: source["generation"]},
+            internal=True,
         )
         for operation in children:
             await self.resume(operation)
-        return 200, self.task_payload(principal, task["task_id"])
 
     async def recrawl(
         self,

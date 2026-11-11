@@ -20,12 +20,14 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Protocol
 
 _PREFIX = "HAWKI_BACKEND_QUERY_"
 
 _KNOWN_SUFFIXES = frozenset(
     {
         "DATASETS",
+        "DATASET_SOURCE",
         "MODELS",
         "RERANKER",
         "RERANK_TOP_N",
@@ -33,6 +35,8 @@ _KNOWN_SUFFIXES = frozenset(
         "RERANKER_MIX_WEIGHT",
     }
 )
+
+_DATASET_SOURCES = frozenset({"environment", "database"})
 
 _DATASET_KEYS = frozenset(
     {
@@ -81,6 +85,24 @@ class DatasetScope:
     graph_enabled: bool = False
 
 
+class DatasetScopeResolver(Protocol):
+    """Resolve trusted physical scope for one tenant and dataset.
+
+    A resolver is the database-backed authority. It is injected into
+    `QuerySettings` when the deployment selects Python dataset authority. The
+    static mapping stays available for tests and for the pre-cutover
+    environment source; the two are never active at the same time.
+    """
+
+    def resolve_scope(
+        self,
+        dataset_id: str,
+        tenant_id: str | None = None,
+    ) -> DatasetScope | None:
+        """Return trusted scope, or ``None`` when no active scope exists."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderModels:
     """Server-owned generation models for one model provider."""
@@ -97,22 +119,44 @@ class QuerySettings:
     mappings, so a request cannot widen or replace them.
     """
 
-    datasets: Mapping[str, DatasetScope] = field(hash=False)
-    models: Mapping[str, ProviderModels] = field(hash=False)
+    datasets: Mapping[str, DatasetScope] = field(default_factory=dict, hash=False)
+    models: Mapping[str, ProviderModels] = field(default_factory=dict)
     reranker: str = _DEFAULT_RERANKER
     rerank_top_n: int = _DEFAULT_RERANK_TOP_N
     reranker_mix_mode: bool = _DEFAULT_MIX_MODE
     reranker_mix_weight: float = _DEFAULT_MIX_WEIGHT
+    dataset_scope_resolver: DatasetScopeResolver | None = field(
+        default=None,
+        hash=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
-        """Freeze the registries so the settings cannot be mutated."""
+        """Freeze the registries and refuse two dataset authorities."""
 
+        if self.dataset_scope_resolver is not None and self.datasets:
+            raise ValueError(
+                "QuerySettings cannot carry both a dataset resolver and a "
+                "static dataset registry"
+            )
         object.__setattr__(self, "datasets", MappingProxyType(dict(self.datasets)))
         object.__setattr__(self, "models", MappingProxyType(dict(self.models)))
 
-    def resolve_scope(self, dataset_id: str) -> DatasetScope | None:
-        """Return the trusted scope for a dataset, or ``None`` when absent."""
+    def resolve_scope(
+        self,
+        dataset_id: str,
+        tenant_id: str | None = None,
+    ) -> DatasetScope | None:
+        """Return the trusted scope for a dataset, or ``None`` when absent.
 
+        The static mapping is a single-tenant compatibility source. A
+        database-backed resolver requires the authenticated tenant and fails
+        closed when it is missing.
+        """
+
+        resolver = self.dataset_scope_resolver
+        if resolver is not None:
+            return resolver.resolve_scope(dataset_id, tenant_id)
         return self.datasets.get(dataset_id)
 
     def models_for(self, provider: str) -> ProviderModels | None:
@@ -123,12 +167,18 @@ class QuerySettings:
 
 def load_query_settings(
     environ: Mapping[str, str] | None = None,
+    *,
+    dataset_scope_resolver: DatasetScopeResolver | None = None,
 ) -> QuerySettings | None:
     """Load the query scope configuration from an environment mapping.
 
     Args:
         environ: The environment to read. Defaults to ``os.environ`` when it is
             not supplied, so the call site decides what is read.
+        dataset_scope_resolver: The database-backed dataset authority. When it
+            is supplied, ``HAWKI_BACKEND_QUERY_DATASETS`` must be absent and
+            ``HAWKI_BACKEND_QUERY_DATASET_SOURCE`` must be ``database`` (or
+            absent). The two authorities are never combined.
 
     Returns:
         The validated configuration, or ``None`` when no
@@ -143,13 +193,32 @@ def load_query_settings(
 
     source = os.environ if environ is None else environ
     present = {name for name in source if name.startswith(_PREFIX)}
-    if not present:
+    if not present and dataset_scope_resolver is None:
         return None
 
     _reject_unknown_names(present)
-    datasets = _datasets(source)
+    authority = _dataset_source(source)
+    if dataset_scope_resolver is None:
+        if authority == "database":
+            raise QueryConfigurationError(
+                "HAWKI_BACKEND_QUERY_DATASET_SOURCE=database requires a "
+                "database-backed dataset registry"
+            )
+        datasets = _datasets(source)
+    else:
+        if authority == "environment":
+            raise QueryConfigurationError(
+                "HAWKI_BACKEND_QUERY_DATASET_SOURCE=environment conflicts with "
+                "a database-backed dataset registry"
+            )
+        if _env_name("DATASETS") in source:
+            raise QueryConfigurationError(
+                "HAWKI_BACKEND_QUERY_DATASETS must be absent in database dataset mode"
+            )
+        datasets = {}
     models = _models(source)
-    _require_models_for_datasets(datasets, models)
+    if dataset_scope_resolver is None:
+        _require_models_for_datasets(datasets, models)
 
     return QuerySettings(
         datasets=datasets,
@@ -174,6 +243,7 @@ def load_query_settings(
             0.0,
             1.0,
         ),
+        dataset_scope_resolver=dataset_scope_resolver,
     )
 
 
@@ -181,6 +251,26 @@ def _env_name(suffix: str) -> str:
     """Return the full environment variable name for a query suffix."""
 
     return f"{_PREFIX}{suffix}"
+
+
+def _dataset_source(source: Mapping[str, str]) -> str:
+    """Return the selected dataset authority: ``environment`` or ``database``.
+
+    The selector is explicit and defaults to the environment registry, which is
+    the pre-cutover behavior. Any other value fails startup: a deployment must
+    never guess which store owns dataset scope.
+    """
+
+    raw = source.get(_env_name("DATASET_SOURCE"))
+    if raw is None:
+        return "environment"
+    authority = raw.strip().lower()
+    if authority not in _DATASET_SOURCES:
+        raise QueryConfigurationError(
+            f"{_env_name('DATASET_SOURCE')} must be one of: "
+            + ", ".join(sorted(_DATASET_SOURCES))
+        )
+    return authority
 
 
 def _reject_unknown_names(present: set[str]) -> None:
@@ -510,6 +600,7 @@ def _float(
 
 __all__ = [
     "DatasetScope",
+    "DatasetScopeResolver",
     "ProviderModels",
     "QueryConfigurationError",
     "QuerySettings",

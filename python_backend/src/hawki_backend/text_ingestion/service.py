@@ -9,6 +9,7 @@ prepared operation to ``ready`` or ``failed``.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from collections.abc import Mapping
@@ -25,6 +26,12 @@ from hawki_backend.authorization import (
     AuthorizationUnavailableError,
 )
 from hawki_backend.query.settings import DatasetScope, ProviderModels, QuerySettings
+from hawki_backend.persistence.datasets import (
+    DatasetInactiveError as StoreInactiveError,
+)
+from hawki_backend.persistence.datasets import (
+    DatasetNotFoundError as StoreNotFoundError,
+)
 from hawki_backend.workflow_control.repository import OperationConflict
 from hawki_backend.workflow_control.service import (
     DispatchUncertain,
@@ -188,7 +195,7 @@ class TextIngestionService:
         if self._workflow_control is None:
             raise WorkflowUnavailable()
 
-        scope, models = self._scope(request.dataset_id)
+        scope, models = self._scope(request.dataset_id, principal.tenant_id)
         source = identity.source_id(request.dataset_id, request.external_document_id)
         task = identity.task_id(request.dataset_id, idempotency_key)
         job = identity.job_id(task, source)
@@ -259,6 +266,8 @@ class TextIngestionService:
             row, created = self._repository.claim(values, store_artifact)
         except SourceBusy:
             raise Busy() from None
+        except (StoreNotFoundError, StoreInactiveError):
+            raise DatasetNotFound() from None
 
         if not created:
             if row["fingerprint"] != fingerprint:
@@ -291,6 +300,8 @@ class TextIngestionService:
             raise NotFound() from None
         except SourceBusy:
             raise Busy() from None
+        except (StoreNotFoundError, StoreInactiveError):
+            raise DatasetNotFound() from None
         if replayed:
             return DeleteOutcome(
                 source_id=source_id, dataset_id=dataset_id, replayed=True
@@ -300,6 +311,46 @@ class TextIngestionService:
             replayed=False,
             workflow_closed=workflow_closed,
         )
+
+    async def cleanup_dataset(self, tenant_id: str, dataset_id: str) -> None:
+        """Drive every owned direct-text source through its deletion protocol.
+
+        This is the narrow internal cleanup authority used only after the
+        dataset row has been archived. It never grants, widens or reads a user
+        authorization; it reuses the same durable deletion state machine and
+        leaves failed cleanup retryable by the reconciler.
+        """
+
+        for source_id in self._repository.list_blocking_sources(tenant_id, dataset_id):
+            latest = self._repository.find_by_source(tenant_id, source_id)
+            if latest is None or latest["lifecycle_status"] == STATUS_DELETED:
+                continue
+            identity = str(latest["idempotency_key"])
+            digest_input = "\0".join(
+                (tenant_id, dataset_id, source_id, identity)
+            ).encode("utf-8")
+            deletion_key = "dataset-cleanup:" + hashlib.sha256(digest_input).hexdigest()
+            try:
+                snapshot, replayed, workflow_closed = self._repository.prepare_delete(
+                    tenant_id=tenant_id,
+                    source_id=source_id,
+                    deletion_key=deletion_key,
+                    dataset_id=dataset_id,
+                    require_active_dataset=False,
+                )
+            except OperationNotFound:
+                continue
+            except SourceBusy:
+                # Another mutation still owns the source. Leave it archived
+                # and retryable; the reconciler will run the same protocol.
+                continue
+            if replayed:
+                continue
+            await self._cleanup(
+                snapshot,
+                replayed=False,
+                workflow_closed=workflow_closed,
+            )
 
     async def complete(
         self,
@@ -509,11 +560,13 @@ class TextIngestionService:
             raise DatasetNotFound()
         return
 
-    def _scope(self, dataset_id: str) -> tuple[DatasetScope, ProviderModels]:
+    def _scope(
+        self, dataset_id: str, tenant_id: str
+    ) -> tuple[DatasetScope, ProviderModels]:
         settings = self._query_settings
         if settings is None:
             raise DatasetNotReady()
-        scope = settings.resolve_scope(dataset_id)
+        scope = settings.resolve_scope(dataset_id, tenant_id)
         if scope is None:
             raise DatasetNotReady()
         models = settings.models_for(scope.embedding_provider)

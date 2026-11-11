@@ -14,6 +14,12 @@ from hawki_backend.authorization import (
     AuthorizationRequest,
     AuthorizationPort,
 )
+from hawki_backend.persistence.datasets import (
+    DatasetInactiveError as StoreInactiveError,
+)
+from hawki_backend.persistence.datasets import (
+    DatasetNotFoundError as StoreNotFoundError,
+)
 from hawki_backend.query.settings import QuerySettings
 from hawki_backend.workflow_control.service import WorkflowControl
 from hawki_backend.workflow_control.service import (
@@ -298,6 +304,7 @@ class ManagedService:
             attrs["graph_enabled"] = graph
             wire, profile = self._workflow(
                 dataset,
+                principal.tenant_id,
                 current["managed_document_id"],
                 source_id,
                 task_id,
@@ -370,6 +377,7 @@ class ManagedService:
                 skip if purpose == "update" else None,
                 expected_generation=expected_generation,
                 expected_revision_id=expected_revision_id,
+                dataset_id=dataset,
             )
             if (
                 operation["request"].get("artifact")
@@ -433,10 +441,13 @@ class ManagedService:
                 "The uploaded file could not be stored. No dataset, task, or job was created.",
                 {"dataset_id": dataset, "task_id": None, "job_id": None, "error": None},
             ) from None
+        except (StoreNotFoundError, StoreInactiveError):
+            raise ManagedError(404, "The requested dataset is not available.") from None
 
     def _workflow(
         self,
         dataset: str,
+        tenant_id: str,
         doc_id: str,
         source: str,
         task: str,
@@ -448,7 +459,9 @@ class ManagedService:
         graph: bool,
     ) -> tuple[dict, dict | None]:
         scope = (
-            self.query_settings.resolve_scope(dataset) if self.query_settings else None
+            self.query_settings.resolve_scope(dataset, tenant_id)
+            if self.query_settings
+            else None
         )
         models = (
             self.query_settings.models_for(scope.embedding_provider) if scope else None
@@ -517,6 +530,69 @@ class ManagedService:
         # Construct and validate all worker input before committing the intent;
         # this method never publishes uploads or converter credentials.
         return self.control.trusted_input("source", wire), profile
+
+    async def cleanup_dataset(self, tenant_id: str, dataset_id: str) -> None:
+        """Drive every owned managed document through its delete protocol.
+
+        This is the narrow internal cleanup authority used after archive. It
+        reuses pending deterministic delete mutations and never consults a
+        user grant, because the dataset is intentionally inactive.
+        """
+
+        for document in self.repository.list_blocking_documents(tenant_id, dataset_id):
+            try:
+                await self.delete_document_internal(
+                    tenant_id,
+                    str(document["managed_document_id"]),
+                )
+            except ManagedError as error:
+                if error.status in {202, 409}:
+                    # The document is still owned by an in-flight mutation or
+                    # cleanup. Leave it retryable for the next reconciliation.
+                    continue
+                raise
+
+    async def delete_document_internal(
+        self,
+        tenant_id: str,
+        document_id: str,
+    ) -> tuple[int, dict]:
+        """Resume the deterministic delete mutation without user authorization."""
+
+        doc = self.repository.document(tenant_id, document_id)
+        if doc["status"] == "deleted":
+            return 200, {"success": True}
+        body = ManagedInput()
+        fingerprint_input = body.model_dump(mode="json")
+        fingerprint_input["metadata_json"] = body.metadata_json or []
+        key = "delete:" + str(doc["generation"])
+        values = dict(
+            mutation_id=digest(
+                [
+                    tenant_id,
+                    doc["principal_id"],
+                    "delete",
+                    doc["managed_document_id"],
+                    key,
+                ]
+            ),
+            tenant_id=tenant_id,
+            principal_id=doc["principal_id"],
+            idempotency_key=key,
+            purpose="delete",
+            target=doc["managed_document_id"],
+            managed_document_id=doc["managed_document_id"],
+            request_hash=digest([fingerprint_input, None, None, None]),
+            request=body.canonical(),
+            stage="claimed",
+        )
+        operation = self.repository.claim(
+            values,
+            None,
+            dataset_id=doc["dataset_id"],
+            require_active_dataset=False,
+        )
+        return await self.resume(operation)
 
     async def resume(self, operation: dict) -> tuple[int, dict]:
         if (

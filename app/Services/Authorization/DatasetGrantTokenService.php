@@ -9,6 +9,7 @@ use App\Models\DatasetGrant;
 use App\Models\DatasetGrantToken;
 use App\Models\User;
 use App\Services\Authorization\Exceptions\GrantTokenInvalidException;
+use App\Services\Dataset\DatasetBackend;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\DB;
 use Psr\Clock\ClockInterface;
@@ -23,6 +24,7 @@ final readonly class DatasetGrantTokenService
 
     public function __construct(
         private DatasetIngestionAuthorizationService $authorization,
+        private DatasetBackend $backend,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -33,6 +35,8 @@ final readonly class DatasetGrantTokenService
      */
     public function issue(Dataset $dataset): string
     {
+        $this->backend->assertLegacyWriter();
+
         $plaintext = self::TOKEN_PREFIX.bin2hex(random_bytes(32));
 
         DatasetGrantToken::query()->create([
@@ -53,6 +57,8 @@ final readonly class DatasetGrantTokenService
      */
     public function redeem(Dataset $dataset, User $user, string $plaintext): DatasetGrant
     {
+        $this->backend->assertLegacyWriter();
+
         return DB::transaction(function () use ($dataset, $user, $plaintext): DatasetGrant {
             $token = DatasetGrantToken::query()
                 ->where('token_hash', hash('sha256', trim($plaintext)))

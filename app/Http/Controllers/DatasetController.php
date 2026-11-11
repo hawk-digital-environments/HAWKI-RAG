@@ -6,74 +6,40 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Dataset\CreateDatasetRequest;
 use App\Http\Requests\Dataset\ListDatasetsRequest;
-use App\Services\Dataset\DatasetService;
+use App\Services\Dataset\DatasetAuthority;
 use Illuminate\Http\JsonResponse;
 
 class DatasetController extends Controller
 {
     public function __construct(
-        private readonly DatasetService $datasets,
+        private readonly DatasetAuthority $datasets,
     ) {}
 
     public function index(ListDatasetsRequest $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'datasets' => $this->datasets->list($request->limit()),
-        ]);
+        $result = $this->datasets->list($request->limit());
+
+        return response()->json($result['payload'], $result['status']);
     }
 
     public function store(CreateDatasetRequest $request): JsonResponse
     {
-        $creation = $this->datasets->create($request->validated());
+        $result = $this->datasets->create($request->validated());
 
-        $payload = [
-            'success' => true,
-            'dataset_id' => $creation->dataset->dataset_id,
-            'dataset' => $this->datasets->show($creation->dataset->dataset_id),
-        ];
-
-        if ($creation->grantToken !== null) {
-            // One-time bootstrap capability for the creator: redeem it via
-            // POST /datasets/{id}/ingest-grants/self. Shown exactly once.
-            $payload['grant_token'] = $creation->grantToken;
-        }
-
-        return response()->json($payload, $creation->created ? 201 : 200);
+        return response()->json($result['payload'], $result['status']);
     }
 
     public function show(string $datasetId): JsonResponse
     {
-        $dataset = $this->datasets->show($datasetId);
-        if (! $dataset) {
-            return response()->json([
-                'success' => false,
-                'message' => "Dataset {$datasetId} was not found.",
-            ], 404);
-        }
+        $result = $this->datasets->show($datasetId);
 
-        return response()->json([
-            'success' => true,
-            'dataset' => $dataset,
-        ]);
+        return response()->json($result['payload'], $result['status']);
     }
 
     public function destroyStorage(string $datasetId): JsonResponse
     {
         $result = $this->datasets->delete($datasetId);
-        if (! $result) {
-            return response()->json([
-                'success' => false,
-                'message' => "Dataset {$datasetId} was not found.",
-            ], 404);
-        }
 
-        return response()->json([
-            'success' => true,
-            'message' => $result['cleanup_pending']
-                ? "Dataset {$datasetId} is hidden. Scoped cleanup will continue automatically in the background."
-                : "Dataset {$datasetId} cleanup is complete.",
-            'cleanup' => $result,
-        ], $result['cleanup_pending'] ? 202 : 200);
+        return response()->json($result['payload'], $result['status']);
     }
 }

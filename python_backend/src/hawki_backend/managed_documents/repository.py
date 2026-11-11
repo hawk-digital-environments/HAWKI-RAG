@@ -22,6 +22,10 @@ from hawki_backend.text_ingestion.writers import (
     update_writer,
     writers_released,
 )
+from hawki_backend.persistence.datasets import (
+    lock_active_dataset,
+    lock_dataset_for_cleanup,
+)
 from hawki_backend.workflow_control.schema import operations
 from hawki_rag_contracts.pipeline.identity import document_id
 
@@ -74,6 +78,25 @@ class ManagedRepository:
                     )
                 ).scalars()
             )
+
+    def list_blocking_documents(self, tenant: str, dataset_id: str) -> list[dict]:
+        """Return undeleted documents of one dataset for internal cleanup."""
+
+        with self.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    sa.select(documents)
+                    .where(
+                        documents.c.tenant_id == tenant,
+                        documents.c.dataset_id == dataset_id,
+                        documents.c.status != "deleted",
+                    )
+                    .order_by(documents.c.managed_document_id)
+                )
+                .mappings()
+                .all()
+            )
+            return [dict(row) for row in rows]
 
     def document(self, tenant: str, document_id: str) -> dict:
         with self.engine.connect() as connection:
@@ -131,8 +154,20 @@ class ManagedRepository:
         *,
         expected_generation: int | None = None,
         expected_revision_id: str | None = None,
+        dataset_id: str | None = None,
+        require_active_dataset: bool = True,
     ) -> dict:
         with self.engine.begin() as connection:
+            # The dataset row is the admission fence. It is taken before the
+            # document lock so archive waits for every accepted mutation and a
+            # mutation can never commit after the dataset became inactive.
+            if dataset_id is not None:
+                if require_active_dataset:
+                    lock_active_dataset(connection, values["tenant_id"], dataset_id)
+                else:
+                    lock_dataset_for_cleanup(
+                        connection, values["tenant_id"], dataset_id
+                    )
             lock(connection, "managed-key:" + values["mutation_id"])
             existing = one(
                 connection, mutations, mutations.c.mutation_id == values["mutation_id"]

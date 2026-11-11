@@ -38,6 +38,7 @@ use App\Http\Middleware\LimitTextIngestionRequestSize;
 use App\Http\Middleware\RequireManagedMutationPrincipal;
 use App\Http\Middleware\RequireTextIngestionToken;
 use App\Http\Middleware\VerifyPipelineWorkerSignature;
+use App\Services\Dataset\RequireDatasetManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -147,14 +148,16 @@ Route::put('/settings/config', [SettingsController::class, 'update'])
 */
 Route::prefix('datasets')->group(function (): void {
     Route::get('/', [DatasetController::class, 'index']);
-    Route::post('/', [DatasetController::class, 'store']);
+    Route::post('/', [DatasetController::class, 'store'])
+        ->middleware(['auth:sanctum', RequireDatasetManager::class]);
     Route::get('/{datasetId}', [DatasetController::class, 'show']);
     Route::post('/{datasetId}/query-grants/self', [DatasetQueryGrantController::class, 'store'])
         ->middleware('browser-query-principal')
         ->defaults('openapi', false);
     Route::post('/{datasetId}/ingest-grants/self', [DatasetIngestionGrantController::class, 'store'])
         ->middleware(['auth:sanctum', RequireTextIngestionToken::class]);
-    Route::delete('/{datasetId}/storage', [DatasetController::class, 'destroyStorage']);
+    Route::delete('/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])
+        ->middleware(['auth:sanctum', RequireDatasetManager::class]);
 });
 
 /*

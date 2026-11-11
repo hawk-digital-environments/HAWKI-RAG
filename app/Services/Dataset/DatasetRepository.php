@@ -9,6 +9,8 @@ use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Dataset\Exceptions\DatasetBackendUnavailableException;
+use App\Services\Dataset\Values\DatasetProjection;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
@@ -16,6 +18,11 @@ use Illuminate\Support\LazyCollection;
 #[Singleton]
 readonly class DatasetRepository
 {
+    public function __construct(
+        private DatasetBackend $backend,
+        private PythonDatasetClient $python,
+    ) {}
+
     /**
      * @return Collection<int, Dataset>
      */
@@ -36,9 +43,36 @@ readonly class DatasetRepository
 
     public function findByDatasetId(string $datasetId): ?Dataset
     {
+        if ($this->backend->selected() === DatasetBackend::PYTHON) {
+            return $this->findFromPythonDatasetAuthority($datasetId);
+        }
+
         return Dataset::query()
             ->where('dataset_id', $datasetId)
             ->first();
+    }
+
+    /**
+     * Read dataset metadata from Python without touching Laravel's frozen
+     * dataset tables. A failed authority is never reported as "not found".
+     */
+    private function findFromPythonDatasetAuthority(string $datasetId): ?Dataset
+    {
+        $id = trim($datasetId);
+        $result = $this->python->show($id);
+        if ($result['status'] === 404) {
+            return null;
+        }
+        if ($result['status'] !== 200) {
+            throw DatasetBackendUnavailableException::upstreamUnavailable();
+        }
+
+        $payload = $result['payload']['dataset'] ?? null;
+        if (! is_array($payload) || ($payload['dataset_id'] ?? null) !== $id) {
+            throw DatasetBackendUnavailableException::upstreamUnavailable();
+        }
+
+        return DatasetProjection::fromPayload($payload);
     }
 
     /**
@@ -46,11 +80,15 @@ readonly class DatasetRepository
      */
     public function firstOrCreate(string $datasetId, array $attributes): Dataset
     {
+        $this->backend->assertLegacyWriter();
+
         return Dataset::query()->firstOrCreate(['dataset_id' => $datasetId], $attributes);
     }
 
     public function completeDeletion(Dataset $dataset): bool
     {
+        $this->backend->assertLegacyWriter();
+
         // Retain the tombstone so the same dataset identity cannot be re-created.
         return (bool) Dataset::query()->whereKey($dataset->getKey())
             ->where('status', Dataset::STATUS_ARCHIVED)->update(['status' => Dataset::STATUS_DELETED]);
@@ -65,6 +103,8 @@ readonly class DatasetRepository
     /** Caller commits this short transaction before invoking cleanup or Temporal. */
     public function archiveForDeletion(string $datasetId): ?Dataset
     {
+        $this->backend->assertLegacyWriter();
+
         $dataset = Dataset::query()->where('dataset_id', $datasetId)->lockForUpdate()->first();
         if ($dataset && $dataset->status !== Dataset::STATUS_DELETED) {
             $dataset->forceFill(['status' => Dataset::STATUS_ARCHIVED])->save();

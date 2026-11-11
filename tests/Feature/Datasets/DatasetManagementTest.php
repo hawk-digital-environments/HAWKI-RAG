@@ -8,6 +8,7 @@ use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
+use App\Services\Profile\Values\ApiTokenAbility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
@@ -31,7 +32,7 @@ class DatasetManagementTest extends TestCase
 
     public function test_dataset_creation_is_retry_safe_for_compatible_metadata(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
         $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
         $payload = [
             'dataset_id' => 'assistant_42',
@@ -56,7 +57,7 @@ class DatasetManagementTest extends TestCase
 
     public function test_dataset_creation_rejects_conflicting_metadata(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
         $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
 
         $this->postJson('/api/datasets', [
@@ -303,7 +304,7 @@ class DatasetManagementTest extends TestCase
             'active' => true,
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
 
         $this->deleteJson('/api/datasets/delete-dataset/storage')
             ->assertAccepted()
@@ -339,6 +340,7 @@ class DatasetManagementTest extends TestCase
 
             return Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]);
         });
+        $this->actingAsApiUser(['query', ApiTokenAbility::Admin->value]);
         $this->deleteJson('/api/datasets/scoped-delete/storage')->assertAccepted();
         Http::assertNothingSent();
         $this->artisan('schedule:run')->assertExitCode(0);

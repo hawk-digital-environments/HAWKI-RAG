@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequireBrowserQueryPrincipal;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\Dataset\DatasetBackend;
 use App\Services\Dataset\DatasetService;
 use App\Services\TextIngestion\Exceptions\TextIngestionDeletionException;
 use App\Services\TextIngestion\Exceptions\TextIngestionIdempotencyException;
@@ -25,6 +26,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([__DIR__.'/../app/Console/Commands'])
     ->withSchedule(function (Schedule $schedule): void {
+        // Legacy cleanup writes Laravel's frozen dataset tables. It only runs
+        // while Laravel owns the dataset authority; Python owns its own
+        // deletion lifecycle.
+        if (! app(DatasetBackend::class)->laravelOwnsAuthority()) {
+            return;
+        }
+
         $schedule->call(fn (DatasetService $datasets) => $datasets->resumeArchivedDeletions())
             ->name('dataset-cleanup')->everyMinute()->withoutOverlapping(5);
     })

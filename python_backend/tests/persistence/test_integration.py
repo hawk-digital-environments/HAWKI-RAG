@@ -55,14 +55,21 @@ def _add_dataset(
     dataset_id: str = DATASET,
     tenant_id: str = TENANT,
     status: str = "active",
+    scope: str | None = None,
 ) -> None:
     """Insert one dataset."""
+    physical = scope or ("hawki_" + dataset_id.replace("-", "_"))
     with engine.begin() as connection:
         connection.execute(
             datasets.insert().values(
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
                 status=status,
+                name=dataset_id,
+                qdrant_collection=physical,
+                neo4j_namespace=physical,
+                embedding_provider="ollama",
+                embedding_model="bge-m3",
             )
         )
 
@@ -182,8 +189,10 @@ def test_a_missing_grant_is_not_found(database: Engine) -> None:
 
 
 def test_the_same_dataset_id_may_exist_in_two_tenants(database: Engine) -> None:
-    _add_dataset(database, tenant_id=TENANT)
-    _add_dataset(database, tenant_id=OTHER_TENANT)
+    # Physical scope is globally unique, so the same logical id needs distinct
+    # collections in each tenant.
+    _add_dataset(database, tenant_id=TENANT, scope="hawki_tenant_a_dataset_1")
+    _add_dataset(database, tenant_id=OTHER_TENANT, scope="hawki_tenant_b_dataset_1")
     _add_grant(database, tenant_id=TENANT)
     reader = DatabaseGrantReader(database)
 

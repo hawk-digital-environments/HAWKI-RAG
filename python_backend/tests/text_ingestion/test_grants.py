@@ -131,7 +131,14 @@ def test_wrong_confirmation_and_other_tenant_fail_closed(env):
             grants.apply_plan(conn, plan, "wrong")
         conn.execute(
             datasets.insert().values(
-                tenant_id="other", dataset_id="dataset-a", status="active"
+                tenant_id="other",
+                dataset_id="dataset-a",
+                status="active",
+                name="Dataset A",
+                qdrant_collection="hawki_dataset_a_other",
+                neo4j_namespace="hawki_dataset_a_other",
+                embedding_provider="ollama",
+                embedding_model="bge-m3",
             )
         )
         with pytest.raises(grants.MigrationError):

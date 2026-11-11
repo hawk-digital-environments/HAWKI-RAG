@@ -10,13 +10,17 @@ use App\Models\ManagedDocument;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Authorization\DatasetIngestionAuthorizationService;
+use App\Services\Profile\Values\ApiTokenAbility;
 
 trait ManagedWriterFixture
 {
     private function seedWriter(): void
     {
         config()->set('temporal.callbacks.secret', 'writer-test-secret');
-        $user = $this->actingAsApiUser();
+        $user = $this->actingAsApiUser([
+            'query',
+            ApiTokenAbility::Admin->value,
+        ]);
         $dataset = Dataset::query()->create(['dataset_id' => 'writer-test', 'name' => 'writer-test', 'status' => 'active', 'qdrant_collection' => 'current_collection', 'neo4j_namespace' => 'current_namespace']);
         app(DatasetIngestionAuthorizationService::class)->grantAccess($user, $dataset);
         ManagedDocument::query()->create(['document_id' => 'adoc_writer_test', 'dataset_id' => 'writer-test', 'source_type' => 'upload', 'status' => 'failed', 'graph_enabled' => true, 'latest_source_id' => 'source-writer']);

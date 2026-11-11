@@ -1,21 +1,22 @@
-"""The Python-owned database schema for the backend's authorization boundary.
+"""The Python-owned database schema for the backend's dataset authority.
 
-The authorization boundary owns two tables in `hawki_backend`. Workflow control
-extends the same metadata from its separate schema module. Laravel owns `public`:
-its connection pins
-its search path to `public`, so the legacy application never addresses them
-and its migrations never collide with them.
+The backend owns the ``hawki_backend`` schema. Authorization, dataset
+metadata, physical scope, grants and one-time grant tokens all live here.
+Laravel owns ``public``: its connection pins its search path to ``public``, so
+the legacy application never addresses the Python tables and its migrations
+never collide with them.
 
-The schema is defined once, here, in SQLAlchemy Core. The runtime query and
-the migration both read this definition, so the two cannot drift apart.
+The schema is defined once, here, in SQLAlchemy Core. The runtime code and the
+migrations both read this definition, so the two cannot drift apart.
 
-The tables start empty. There is no data migration and no dual write: the
-backend's own grant management populates them, and Laravel's rows stay in
-Laravel's tables.
+There is no dual write. In Python dataset mode an operator imports the legacy
+rows once with the migration tooling; after that the backend's own dataset
+management is the only writer.
 """
 
 import sqlalchemy as sa
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     ForeignKeyConstraint,
@@ -23,6 +24,8 @@ from sqlalchemy import (
     MetaData,
     PrimaryKeyConstraint,
     Table,
+    Text,
+    UniqueConstraint,
 )
 
 SCHEMA_NAME = "hawki_backend"
@@ -46,12 +49,25 @@ datasets = Table(
     metadata,
     Column("tenant_id", sa.String(_TENANT_ID_LENGTH), nullable=False),
     Column("dataset_id", sa.String(_DATASET_ID_LENGTH), nullable=False),
+    Column("name", sa.String(255), nullable=False),
+    Column("description", Text, nullable=True),
     Column(
         "status",
         sa.String(32),
         nullable=False,
         server_default=sa.text(f"'{ACTIVE_STATUS}'"),
     ),
+    Column("qdrant_collection", sa.String(191), nullable=False),
+    Column("neo4j_namespace", sa.String(191), nullable=True),
+    Column("embedding_provider", sa.String(80), nullable=False),
+    Column("embedding_model", sa.String(160), nullable=False),
+    Column(
+        "graph_enabled",
+        Boolean,
+        nullable=False,
+        server_default=sa.text("false"),
+    ),
+    Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     Column(
         "created_at",
         sa.DateTime(timezone=True),
@@ -69,6 +85,14 @@ datasets = Table(
         name="ck_datasets_status",
     ),
     PrimaryKeyConstraint("tenant_id", "dataset_id", name="pk_datasets"),
+    UniqueConstraint(
+        "qdrant_collection",
+        name="uq_datasets_qdrant_collection",
+    ),
+    UniqueConstraint(
+        "neo4j_namespace",
+        name="uq_datasets_neo4j_namespace",
+    ),
 )
 
 dataset_grants = Table(
@@ -116,6 +140,45 @@ Index(
     dataset_grants.c.principal_id,
 )
 
+dataset_grant_tokens = Table(
+    "dataset_grant_tokens",
+    metadata,
+    Column("token_hash", sa.String(64), nullable=False),
+    Column("tenant_id", sa.String(_TENANT_ID_LENGTH), nullable=False),
+    Column("dataset_id", sa.String(_DATASET_ID_LENGTH), nullable=False),
+    Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+    Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+    Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    Column(
+        "updated_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    CheckConstraint(
+        "length(token_hash) = 64",
+        name="ck_dataset_grant_tokens_hash_length",
+    ),
+    PrimaryKeyConstraint("token_hash", name="pk_dataset_grant_tokens"),
+    ForeignKeyConstraint(
+        ["tenant_id", "dataset_id"],
+        ["datasets.tenant_id", "datasets.dataset_id"],
+        name="fk_dataset_grant_tokens_dataset",
+        ondelete="CASCADE",
+    ),
+)
+
+Index(
+    "ix_dataset_grant_tokens_dataset",
+    dataset_grant_tokens.c.tenant_id,
+    dataset_grant_tokens.c.dataset_id,
+)
+
 
 __all__ = [
     "ACTIVE_STATUS",
@@ -125,6 +188,7 @@ __all__ = [
     "PERMISSIONS",
     "PRINCIPAL_TYPES",
     "SCHEMA_NAME",
+    "dataset_grant_tokens",
     "dataset_grants",
     "datasets",
     "metadata",

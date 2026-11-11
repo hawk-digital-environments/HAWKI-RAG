@@ -7,6 +7,8 @@ namespace Tests\Feature\Authorization;
 use App\Models\Dataset;
 use App\Models\DatasetGrantToken;
 use App\Models\User;
+use App\Services\Profile\Values\ApiTokenAbility;
+use Illuminate\Auth\AuthManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -17,6 +19,7 @@ final class SelfDatasetIngestionGrantTest extends TestCase
 
     public function test_creating_a_dataset_issues_a_one_time_grant_token(): void
     {
+        $this->authenticateDatasetManager();
         $response = $this->postJson('/api/datasets', ['dataset_id' => 'token-issue-dataset']);
 
         $response->assertCreated()
@@ -40,6 +43,7 @@ final class SelfDatasetIngestionGrantTest extends TestCase
 
     public function test_failed_token_issuance_rolls_back_dataset_creation_and_retry_succeeds(): void
     {
+        $this->authenticateDatasetManager();
         // The token service is final, so issuance is failed for real: the
         // underlying table is renamed away to make its INSERT blow up.
         Schema::rename('dataset_grant_tokens', 'dataset_grant_tokens_broken');
@@ -222,11 +226,20 @@ final class SelfDatasetIngestionGrantTest extends TestCase
      */
     private function createDatasetViaHttp(string $datasetId): string
     {
+        $this->authenticateDatasetManager();
         $response = $this->postJson('/api/datasets', ['dataset_id' => $datasetId]);
 
         $this->assertSame(201, $response->status(), 'Dataset creation did not return 201: '.$response->getContent());
 
         return (string) $response->json('grant_token');
+    }
+
+    private function authenticateDatasetManager(): void
+    {
+        $this->authenticateWithAbilities(
+            $this->user('dataset-manager-'.uniqid()),
+            [ApiTokenAbility::Admin->value],
+        );
     }
 
     /**
@@ -237,7 +250,7 @@ final class SelfDatasetIngestionGrantTest extends TestCase
         $token = $user->createToken('self-ingest-grant-test', $abilities)->plainTextToken;
         // The sanctum guard caches its resolved user across requests within
         // one test; forget it so the next request re-resolves the new token.
-        $this->app->make(\Illuminate\Auth\AuthManager::class)->forgetGuards();
+        $this->app->make(AuthManager::class)->forgetGuards();
         $this->withToken($token);
     }
 

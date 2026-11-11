@@ -64,7 +64,14 @@ def pg(env, monkeypatch):
             conn.execute(table.delete())
         conn.execute(
             datasets.insert().values(
-                tenant_id="default", dataset_id="dataset-a", status="active"
+                tenant_id="default",
+                dataset_id="dataset-a",
+                status="active",
+                name="Dataset A",
+                qdrant_collection="hawki_dataset_a",
+                neo4j_namespace="hawki_dataset_a",
+                embedding_provider="ollama",
+                embedding_model="bge-m3",
             )
         )
         conn.execute(

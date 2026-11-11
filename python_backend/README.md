@@ -178,8 +178,15 @@ The registry is **migration-time** configuration: a server-owned source of
 physical dataset scope that an operator fills from the deployment inventory.
 It is never read from Laravel's `public` tables, and this service never writes
 it. It exists so the Python query API can resolve trusted Qdrant and Neo4j
-targets before Python owns dataset metadata itself. A later migration epoch
-is expected to replace it with a Python-owned dataset registry.
+targets before Python owns dataset metadata itself.
+
+Epoch 12 adds the Python-owned database registry. Select it with
+`HAWKI_BACKEND_QUERY_DATASET_SOURCE=database` and leave
+`HAWKI_BACKEND_QUERY_DATASETS` unset. In that mode the authenticated tenant's
+row in `hawki_backend.datasets` is the only source of physical scope; the
+environment registry is not consulted. The default selector stays
+`environment`, so existing deployments keep the pre-cutover behavior until an
+operator changes it.
 
 All settings are read from `HAWKI_BACKEND_QUERY_*` variables. A present but
 incomplete or invalid configuration refuses to start; an unknown
@@ -187,7 +194,8 @@ incomplete or invalid configuration refuses to start; an unknown
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `HAWKI_BACKEND_QUERY_DATASETS` | yes | — | JSON object keyed by logical `dataset_id`. |
+| `HAWKI_BACKEND_QUERY_DATASET_SOURCE` | no | `environment` | `environment` or `database`. `database` requires `HAWKI_BACKEND_DB_DSN` and forbids `HAWKI_BACKEND_QUERY_DATASETS`. |
+| `HAWKI_BACKEND_QUERY_DATASETS` | environment mode | — | JSON object keyed by logical `dataset_id`. Forbidden in `database` mode. |
 | `HAWKI_BACKEND_QUERY_MODELS` | yes | — | JSON object keyed by model provider. |
 | `HAWKI_BACKEND_QUERY_RERANKER` | no | `none` | Server-owned default reranker mode. |
 | `HAWKI_BACKEND_QUERY_RERANK_TOP_N` | no | `20` | 1–1000. |
@@ -471,24 +479,28 @@ it. The authorization package imports no database driver.
 
 ### The owned schema
 
-The backend owns one PostgreSQL schema, `hawki_backend`, with two tables in
-it. The application that still serves the legacy surfaces owns `public` and
-pins its search path to it, so the backend's tables are never addressed by
-it and the two migration histories never collide. The backend never reads
-the application's tables.
+The backend owns one PostgreSQL schema, `hawki_backend`. The application that
+still serves the legacy surfaces owns `public` and pins its search path to it,
+so the backend's tables are never addressed by it and the two migration
+histories never collide. The backend never reads the application's tables.
 
 | Table | Primary key | Purpose |
 |---|---|---|
-| `hawki_backend.datasets` | `(tenant_id, dataset_id)` | which datasets exist, and in which state |
+| `hawki_backend.datasets` | `(tenant_id, dataset_id)` | which datasets exist, their lifecycle state, metadata and physical scope |
 | `hawki_backend.dataset_grants` | `(tenant_id, dataset_id, principal_type, principal_id, permission)` | which principal holds which action on which dataset |
+| `hawki_backend.dataset_grant_tokens` | `id` | one-time bootstrap tokens, stored as SHA-256 hashes only |
 
 The tenant is part of both identities. A grant references its dataset by
 `(tenant_id, dataset_id)`, so a grant that names a dataset of another
 tenant cannot be stored at all. The dataset status is limited to `active`,
-`archived` and `deleted`, and only an active dataset answers a lookup.
+`archived` and `deleted`; `deleted_at` records the final tombstone, and only an
+active dataset answers a lookup.
 
-The tables carry no storage target. The collection, the namespace and the
-embedding configuration stay with the application that owns them.
+`datasets` carries the canonical name, description, embedding configuration,
+Qdrant collection and Neo4j namespace, so database-mode runtime resolution has
+no second source. `dataset_grant_tokens` keeps the `dgt_` prefix convention,
+a 24-hour expiry and only the SHA-256 hash; the plaintext exists once in the
+create response and is never stored or logged.
 
 ### The lookup
 
@@ -545,11 +557,18 @@ port, an account or a schema name.
 
 ### Current surface
 
-The tables start empty. There is no data migration and no dual write: the
-backend's own grant management populates them, and the rows of the legacy
-application stay where they are. `main.py` builds the reader when
-`HAWKI_BACKEND_DB_DSN` is configured, and `POST /v1/query` consults it
-through `LocalGrantPolicy`.
+Revision `0001` created the grant tables. Revision `0007` adds the dataset
+metadata, physical scope, lifecycle tombstone and one-time token table that
+Epoch 12 needs; it backfills deterministic placeholders for existing
+authorization rows. The one-time operator tool
+[`scripts/dataset_authority.py`](scripts/dataset_authority.py) replaces those
+placeholders and imports the reviewed legacy grants and token hashes before
+activation. There is no dual write: after activation the backend's dataset
+service is the only writer, and the legacy application's rows stay where they
+are. `main.py` builds the reader when `HAWKI_BACKEND_DB_DSN` is configured, and
+`POST /v1/query` consults it through `LocalGrantPolicy`. In database dataset
+mode it also builds the tenant-scoped scope resolver and the dataset
+management service.
 
 > **A dedicated database account is required before the reader is wired
 > into production.** The connection above is expected to use an account
@@ -794,3 +813,117 @@ Epoch 11 now consumes CustomCrawler's current permanent-job contract. See the
 [current URL runbook](../_documentation/Operations/python_url_ingestion.md) and
 [integration validation](../_documentation/Operations/epoch11_crawler_integration_validation.md)
 for receipt semantics, deployment preflight and current test/smoke evidence.
+
+## Epoch 12 dataset authority (opt-in)
+
+`DATASET_BACKEND=laravel` remains the default. The public Laravel dataset
+routes keep their names, payloads, HTTP statuses and error codes. With
+`DATASET_BACKEND=python`, Laravel is a compatibility BFF: it validates the same
+public input, mints an internal RS256 token, forwards the operation to Python
+and maps the Python answer back onto the legacy envelope. It creates no
+dataset, grant or grant-token row. An unknown selector, or a Python activation
+whose query/text/managed/crawler selectors are not all `python` or whose
+query-all compatibility flag is not `false`, fails every dataset route with
+`503 dataset_backend_configuration_invalid`; there is no fallback and no dual
+write.
+
+Create and delete are authenticated management operations on the shared BFF
+routes, including Python mode. They require a Sanctum principal with the
+`admin` token ability or an administrator role. Unauthenticated create/delete
+returns `401`; a
+non-manager token returns `403`. A caller may not choose `qdrant_collection` or
+`neo4j_namespace` (or the camel-case aliases): the BFF rejects them with `422`
+and Python derives a bounded `hawki_<slug>_<digest>` identity from the
+authenticated tenant and logical dataset id for both stores. The migration
+script is the only direct-import exception.
+
+Python owns `hawki_backend.datasets`, `hawki_backend.dataset_grants` and
+`hawki_backend.dataset_grant_tokens`. Revision `0007` adds the dataset
+metadata, physical scope, lifecycle tombstone and token table. In Python mode
+the Laravel `public.*` dataset rows are frozen legacy data: the Python runtime
+never reads them, and neither service updates them.
+
+### Routes and scopes
+
+| Route | Internal scope | Behavior |
+|---|---|---|
+| `GET /v1/datasets` | `rag:datasets:manage` | Active datasets, newest first, with Qdrant readiness. |
+| `POST /v1/datasets` | `rag:datasets:manage` | Idempotent create: `201` first, `200` compatible replay, one `dgt_…` token on first create. |
+| `GET /v1/datasets/{dataset_id}` | `rag:datasets:manage` | One active dataset with details and graph readiness. |
+| `DELETE /v1/datasets/{dataset_id}/storage` | `rag:datasets:manage` | Archive first; tombstone once owned sources are clear. |
+| `POST /v1/datasets/{dataset_id}/query-grants/self` | `rag:query` | Exact self grant; requires a ready active dataset. |
+| `POST /v1/datasets/{dataset_id}/ingest-grants/self` | `rag:ingest` | Redeems the one-time token into an exact ingest grant. |
+| `GET /v1/query/datasets` | `rag:query` | Active, fully scoped datasets with an exact query grant, ordered by name then id. |
+
+`rag:datasets:manage` is minted only by the trusted BFF and is never exposed to
+a browser. The self-grant routes take the user identity from the authenticated
+token `sub`; they never accept a tenant, a principal, a physical target or a
+wildcard. One-time tokens keep the `dgt_` prefix, 32 random bytes, SHA-256-only
+persistence and a 24-hour TTL. Redemption locks the token row, consumes it
+atomically and binds it to exactly one dataset and one permission.
+
+`GET /v1/query/datasets` has no query-all fallback. Service principals receive
+an empty list. A dataset whose Qdrant collection cannot be verified is omitted
+from the list, and an ordinary query grant for it fails with
+`dataset_not_ready` rather than becoming queryable.
+
+### Deletion
+
+Deletion is archive-first. The dataset disappears from listing and query
+resolution immediately. A `202` `cleanup_pending` answer means Python-owned
+text, managed-document or URL source rows still exist; each is driven through
+its own deletion protocol by the cleanup coordinator. The archived dataset row
+is the durable work item: startup and a periodic reconciler resume it after a
+restart without a new delete request. Repeating the delete finalizes `deleted`
+only when those source counts are zero. The dataset lifecycle does not bypass a
+source protocol, delete a Qdrant collection or clear Neo4j. A source failure
+leaves the row archived and retryable, never reported as complete.
+
+In Python mode, Laravel runs a read-only preflight before forwarding a delete.
+If the id still has a legacy active/archived dataset row, grant, token,
+undeleted managed document/output, ingestion source or non-terminal pipeline
+task/job, the BFF returns `409 legacy_dataset_state_present` and sends nothing
+to Python. Python never reads `public.*`; migrated datasets remain undeletable
+through this route until their legacy state is retired.
+
+### One-time migration and activation
+
+Apply Alembic through `0007`, then run the reviewed operator tool
+[`scripts/dataset_authority.py`](scripts/dataset_authority.py). It reads
+Laravel `public.datasets`, `public.dataset_grants` and
+`public.dataset_grant_tokens` through a SELECT-only source credential, derives a
+deterministic SHA-256 plan, imports exact grants and token *hashes* (never
+plaintext), and refuses extra or mismatched target rows. `--apply` and
+`--verify` require the reviewed `query:cutover-export` report with
+`query_all: false`; `--laravel-report` also supplies graph readiness. A
+report-free plan imports every dataset with `graph_enabled=false` but cannot be
+applied. The reviewed digest binds the source rows, report, desired state,
+target snapshot and permitted transitions. Only an exact revision-`0007`
+placeholder may be updated; canonical target metadata, extras, mismatched
+tokens, tombstones and archived-to-active transitions refuse all writes.
+Tombstones are never revived, and `--verify` reports revival separately. A
+successful apply changes the target, so re-plan and re-review before the
+idempotency apply; the old digest must fail closed.
+
+Activate only after query, direct-text, managed-document and crawler ingestion
+selectors are already Python, exact grants are imported, and
+`HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=false`. Set `DATASET_BACKEND=python`,
+`HAWKI_QUERY_BACKEND=python`, `TEXT_INGESTION_BACKEND=python`,
+`MANAGED_DOCUMENT_BACKEND=python`, `CRAWLER_INGESTION_BACKEND=python` and
+`HAWKI_BACKEND_QUERY_DATASET_SOURCE=database`, and leave
+`HAWKI_BACKEND_QUERY_DATASETS` unset. The checked-in defaults remain `laravel`
+and `environment`. A half-cutover can create datasets that the active query
+registry cannot resolve, and Laravel fails closed rather than falling back. No
+production activation is implied by this implementation.
+
+```bash
+uv run --frozen --no-sync pytest tests/datasets tests/test_dataset_authority_migration.py
+HAWKI_BACKEND_DB_TESTING=1 \
+HAWKI_BACKEND_DB_DSN='<disposable PostgreSQL DSN ending in _test>' \
+  uv run --frozen --no-sync pytest \
+    tests/persistence/test_dataset_authority_postgres.py \
+    tests/persistence/test_dataset_cleanup_postgres.py
+```
+
+See the [Epoch 12 runbook](../_documentation/Operations/python_dataset_authority.md)
+for the coordinated migration, verification and rollback procedure.

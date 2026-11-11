@@ -26,6 +26,13 @@ return [
 
     'query_backend' => env('HAWKI_QUERY_BACKEND', 'laravel'),
     'python_query_url' => env('HAWKI_PYTHON_QUERY_URL', 'http://hawki_backend/v1/query'),
+    'dataset_backend' => env('DATASET_BACKEND', 'laravel'),
+    'python_dataset_url' => env('HAWKI_PYTHON_DATASET_URL', 'http://hawki_backend/v1/datasets'),
+    'python_query_datasets_url' => env(
+        'HAWKI_PYTHON_QUERY_DATASETS_URL',
+        'http://hawki_backend/v1/query/datasets',
+    ),
+    'python_dataset_timeout' => (int) env('HAWKI_PYTHON_DATASET_TIMEOUT', 10),
     'query_bff' => [
         'issuer' => env('HAWKI_QUERY_BFF_ISSUER', ''),
         'audience' => env('HAWKI_QUERY_BFF_AUDIENCE', 'hawki-backend'),

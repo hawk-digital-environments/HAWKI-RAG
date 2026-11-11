@@ -328,9 +328,19 @@ def apply_plan(connection: Connection, plan: Plan, confirmation: str) -> dict[st
     )
     changes = {"datasets_inserted": 0, "datasets_updated": 0, "grants_inserted": 0}
     for name in before["missing"]["datasets"]:
+        scope = plan.scope.get(name, {})
+        safe = re.sub("[^a-z0-9_]+", "_", name.lower()).strip("_") or "default"
         connection.execute(
             datasets.insert().values(
-                tenant_id=TENANT, dataset_id=name, status=plan.dataset_status[name]
+                tenant_id=TENANT,
+                dataset_id=name,
+                status=plan.dataset_status[name],
+                name=name,
+                qdrant_collection=scope.get("qdrant_collection") or "hawki_" + safe,
+                neo4j_namespace=scope.get("neo4j_namespace"),
+                embedding_provider=scope.get("embedding_provider") or "ollama",
+                embedding_model=scope.get("embedding_model") or "bge-m3",
+                graph_enabled=bool(scope.get("graph_enabled", False)),
             )
         )
         changes["datasets_inserted"] += 1

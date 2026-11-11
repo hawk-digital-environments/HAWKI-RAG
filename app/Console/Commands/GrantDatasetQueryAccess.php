@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Services\Authorization\DatasetQueryAuthorizationService;
+use App\Services\Dataset\DatasetBackend;
 use App\Services\Dataset\DatasetRepository;
 use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
@@ -19,12 +20,19 @@ class GrantDatasetQueryAccess extends Command
         private readonly DatasetRepository $datasets,
         private readonly UserRepository $users,
         private readonly DatasetQueryAuthorizationService $authorization,
+        private readonly DatasetBackend $backend,
     ) {
         parent::__construct();
     }
 
     public function handle(): int
     {
+        if (! $this->backend->laravelOwnsAuthority()) {
+            $this->error('Dataset grants are owned by the Python dataset authority.');
+
+            return self::FAILURE;
+        }
+
         $datasetId = trim((string) $this->argument('dataset_id'));
         $userId = trim((string) $this->argument('user_id'));
         $dataset = $this->datasets->findByDatasetId($datasetId);

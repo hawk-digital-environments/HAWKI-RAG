@@ -9,6 +9,10 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection, Engine
 
 from hawki_backend.auth.models import AuthenticatedPrincipal
+from hawki_backend.persistence.datasets import (
+    lock_active_dataset,
+    lock_dataset_for_cleanup,
+)
 from hawki_backend.persistence.schema import datasets, dataset_grants
 from hawki_backend.text_ingestion.writers import (
     WriterConflict,
@@ -70,6 +74,22 @@ class UrlRepository:
             raise UrlIngestionError(404, "URL source was not found.")
         return row
 
+    def list_blocking_sources(self, tenant: str, dataset_id: str) -> list[str]:
+        """Return source ids of one dataset that are not deleted yet."""
+
+        with self.engine.connect() as connection:
+            return list(
+                connection.execute(
+                    sa.select(sources.c.source_id)
+                    .where(
+                        sources.c.tenant_id == tenant,
+                        sources.c.dataset_id == dataset_id,
+                        sources.c.status != "deleted",
+                    )
+                    .order_by(sources.c.source_id)
+                ).scalars()
+            )
+
     def generation(self, operation_id: str) -> dict:
         with self.engine.connect() as connection:
             row = one(
@@ -109,9 +129,21 @@ class UrlRepository:
         *,
         expected_generations: dict[str, int] | None = None,
         scheduled: bool = False,
+        internal: bool = False,
     ) -> tuple[dict, list[dict]]:
         with self.engine.begin() as connection:
-            require_grant(connection, principal, values["dataset_id"])
+            # The dataset row is the admission fence for URL authority too.
+            # Internal cleanup may act on an archived dataset but still locks
+            # the same row, so it cannot race finalization.
+            if internal:
+                lock_dataset_for_cleanup(
+                    connection, principal.tenant_id, values["dataset_id"]
+                )
+            else:
+                lock_active_dataset(
+                    connection, principal.tenant_id, values["dataset_id"]
+                )
+                require_grant(connection, principal, values["dataset_id"])
             lock(connection, "url-request:" + values["request_id"])
             previous = one(
                 connection, requests, requests.c.request_id == values["request_id"]

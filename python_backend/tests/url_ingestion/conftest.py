@@ -101,7 +101,14 @@ def seed(engine):
     with engine.begin() as connection:
         connection.execute(
             datasets.insert().values(
-                tenant_id="default", dataset_id="web", status="active"
+                tenant_id="default",
+                dataset_id="web",
+                status="active",
+                name="Web",
+                qdrant_collection="hawki_web",
+                neo4j_namespace="hawki_web",
+                embedding_provider="ollama",
+                embedding_model="bge-m3",
             )
         )
         connection.execute(

@@ -245,7 +245,7 @@ def query(
     if not allowed:
         raise dataset_not_found()
 
-    scope = settings.resolve_scope(body.dataset_id)
+    scope = settings.resolve_scope(body.dataset_id, principal.tenant_id)
     if scope is None:
         raise dataset_not_ready()
     models = settings.models_for(scope.embedding_provider)

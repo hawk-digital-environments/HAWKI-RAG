@@ -19,6 +19,11 @@ from sqlalchemy.exc import IntegrityError
 
 from .deletion import DeletionSnapshot, owner_identity
 from .identity import document_id
+from hawki_backend.persistence.datasets import (
+    lock_active_dataset,
+    lock_dataset_for_cleanup,
+)
+
 from .writers import WriterConflict, WriterEvent, update_writer, writers_released
 
 from .schema import (
@@ -121,6 +126,23 @@ class TextOperationRepository:
             )
         return dict(row) if row is not None else None
 
+    def list_blocking_sources(self, tenant_id: str, dataset_id: str) -> list[str]:
+        """Return distinct sources whose direct-text rows are not deleted."""
+
+        with self._engine.connect() as connection:
+            return list(
+                connection.execute(
+                    sa.select(ingest_text_operations.c.source_id)
+                    .where(
+                        ingest_text_operations.c.tenant_id == tenant_id,
+                        ingest_text_operations.c.dataset_id == dataset_id,
+                        ingest_text_operations.c.lifecycle_status != STATUS_DELETED,
+                    )
+                    .distinct()
+                    .order_by(ingest_text_operations.c.source_id)
+                ).scalars()
+            )
+
     def claim(
         self, values: dict[str, Any], store_artifact: Callable[[], None] | None = None
     ) -> tuple[dict[str, Any], bool]:
@@ -135,6 +157,10 @@ class TextOperationRepository:
         idempotency_key = values["idempotency_key"]
         inserted = False
         with self._engine.begin() as connection:
+            # The dataset row is the admission fence: a claim cannot commit
+            # once the dataset has been archived, and archive waits for every
+            # in-flight claim to finish.
+            lock_active_dataset(connection, tenant_id, values["dataset_id"])
             self._lock_source(connection, tenant_id, values["source_id"])
             existing = (
                 connection.execute(
@@ -350,8 +376,14 @@ class TextOperationRepository:
         source_id: str,
         deletion_key: str,
         dataset_id: str | None = None,
+        require_active_dataset: bool = True,
     ) -> tuple[DeletionSnapshot, bool, bool]:
         """Mark one owned source as deleting and return its snapshot.
+
+        A user delete passes through the active-dataset admission fence. The
+        internal dataset cleanup uses the same deletion state machine with
+        ``require_active_dataset=False`` because the dataset is already
+        archived; it still holds the same dataset row lock.
 
         Returns:
             The immutable deletion snapshot, whether deletion is complete, and
@@ -365,6 +397,23 @@ class TextOperationRepository:
                 different deletion owns the source.
         """
         with self._engine.begin() as connection:
+            resolved_dataset_id = dataset_id
+            if resolved_dataset_id is None:
+                resolved_dataset_id = connection.execute(
+                    sa.select(ingest_text_operations.c.dataset_id)
+                    .where(
+                        ingest_text_operations.c.tenant_id == tenant_id,
+                        ingest_text_operations.c.source_id == source_id,
+                    )
+                    .order_by(ingest_text_operations.c.created_at.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                if resolved_dataset_id is None:
+                    raise OperationNotFound()
+            if require_active_dataset:
+                lock_active_dataset(connection, tenant_id, resolved_dataset_id)
+            else:
+                lock_dataset_for_cleanup(connection, tenant_id, resolved_dataset_id)
             self._lock_source(connection, tenant_id, source_id)
             previous = (
                 connection.execute(

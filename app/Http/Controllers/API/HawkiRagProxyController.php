@@ -7,7 +7,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Rag\ListAuthorizedQueryDatasetsRequest;
 use App\Http\Requests\Rag\QueryDatasetRequest;
-use App\Services\Authorization\DatasetQueryAuthorizationService;
+use App\Services\Dataset\DatasetAuthority;
 use App\Services\Rag\RagQueryService;
 use Illuminate\Http\JsonResponse;
 
@@ -22,10 +22,10 @@ class HawkiRagProxyController extends Controller
 
     public function datasets(
         ListAuthorizedQueryDatasetsRequest $request,
-        DatasetQueryAuthorizationService $authorization,
+        DatasetAuthority $datasets,
     ): JsonResponse {
-        return response()->json([
-            'datasets' => $authorization->authorizedDatasets($request->authenticatedUser()),
-        ]);
+        $result = $datasets->queryDatasets($request->authenticatedUser());
+
+        return response()->json($result['payload'], $result['status']);
     }
 }
