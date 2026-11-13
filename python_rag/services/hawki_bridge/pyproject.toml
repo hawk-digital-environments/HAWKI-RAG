@@ -22,6 +22,13 @@ dependencies = [
     "uvicorn[standard]==0.30.6",
 ]
 
+[project.optional-dependencies]
+local-reranker = [
+    "sentence-transformers==5.6.0",
+    "transformers==4.57.6",
+    "torch==2.13.0",
+]
+
 [dependency-groups]
 test = [
     "httpx==0.28.1",

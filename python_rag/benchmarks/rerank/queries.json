@@ -1,0 +1,242 @@
+[
+  {
+    "id": "ingestion-en-1",
+    "topic": "ingestion",
+    "language": "en",
+    "query": "How does a source document move from upload to searchable chunks?"
+  },
+  {
+    "id": "ingestion-de-1",
+    "topic": "ingestion",
+    "language": "de",
+    "query": "Wie wird ein hochgeladenes Dokument in durchsuchbare Chunks umgewandelt?"
+  },
+  {
+    "id": "ingestion-en-2",
+    "topic": "ingestion",
+    "language": "en",
+    "query": "Which stages convert PDFs and preserve page references?"
+  },
+  {
+    "id": "ingestion-de-2",
+    "topic": "ingestion",
+    "language": "de",
+    "query": "Welche Verarbeitungsschritte erhalten die Seitenreferenzen eines PDFs?"
+  },
+  {
+    "id": "ingestion-en-3",
+    "topic": "ingestion",
+    "language": "en",
+    "query": "How are failed document conversions reported?"
+  },
+  {
+    "id": "deletion-en-1",
+    "topic": "deletion",
+    "language": "en",
+    "query": "What is removed when a dataset is deleted?"
+  },
+  {
+    "id": "deletion-de-1",
+    "topic": "deletion",
+    "language": "de",
+    "query": "Welche Daten werden beim Löschen eines Datasets entfernt?"
+  },
+  {
+    "id": "deletion-en-2",
+    "topic": "deletion",
+    "language": "en",
+    "query": "How are owned Qdrant points deleted without affecting other datasets?"
+  },
+  {
+    "id": "deletion-de-2",
+    "topic": "deletion",
+    "language": "de",
+    "query": "Wie werden Qdrant-Punkte gelöscht, ohne andere Datasets zu verändern?"
+  },
+  {
+    "id": "deletion-en-3",
+    "topic": "deletion",
+    "language": "en",
+    "query": "What happens to shared graph contributions during deletion?"
+  },
+  {
+    "id": "qdrant-en-1",
+    "topic": "qdrant",
+    "language": "en",
+    "query": "How does the query embedding select relevant chunks?"
+  },
+  {
+    "id": "qdrant-de-1",
+    "topic": "qdrant",
+    "language": "de",
+    "query": "Wie werden passende Chunks mit einem Query-Embedding gefunden?"
+  },
+  {
+    "id": "qdrant-en-2",
+    "topic": "qdrant",
+    "language": "en",
+    "query": "How are lexical and vector search results combined?"
+  },
+  {
+    "id": "qdrant-de-2",
+    "topic": "qdrant",
+    "language": "de",
+    "query": "Wie werden lexikalische Treffer und Vektorsuche kombiniert?"
+  },
+  {
+    "id": "qdrant-en-3",
+    "topic": "qdrant",
+    "language": "en",
+    "query": "What happens if the authorized collection is missing?"
+  },
+  {
+    "id": "graph-en-1",
+    "topic": "graph",
+    "language": "en",
+    "query": "How do Neo4j relationships contribute to retrieval scores?"
+  },
+  {
+    "id": "graph-de-1",
+    "topic": "graph",
+    "language": "de",
+    "query": "Wie beeinflussen Neo4j-Beziehungen die Retrieval-Scores?"
+  },
+  {
+    "id": "graph-en-2",
+    "topic": "graph",
+    "language": "en",
+    "query": "When is graph retrieval disabled in fast mode?"
+  },
+  {
+    "id": "graph-de-2",
+    "topic": "graph",
+    "language": "de",
+    "query": "Wann wird die Graphsuche im schnellen Modus deaktiviert?"
+  },
+  {
+    "id": "graph-en-3",
+    "topic": "graph",
+    "language": "en",
+    "query": "How is graph traversal restricted to the dataset namespace?"
+  },
+  {
+    "id": "authorization-en-1",
+    "topic": "authorization",
+    "language": "en",
+    "query": "How does an authenticated user receive dataset query access?"
+  },
+  {
+    "id": "authorization-de-1",
+    "topic": "authorization",
+    "language": "de",
+    "query": "Wie erhält ein angemeldeter Benutzer Zugriff auf ein Dataset?"
+  },
+  {
+    "id": "authorization-en-2",
+    "topic": "authorization",
+    "language": "en",
+    "query": "How are dataset filters protected from caller overrides?"
+  },
+  {
+    "id": "authorization-de-2",
+    "topic": "authorization",
+    "language": "de",
+    "query": "Wie wird verhindert, dass Nutzer die Dataset-Filter überschreiben?"
+  },
+  {
+    "id": "authorization-en-3",
+    "topic": "authorization",
+    "language": "en",
+    "query": "What happens when a user lacks a dataset grant?"
+  },
+  {
+    "id": "temporal-en-1",
+    "topic": "temporal",
+    "language": "en",
+    "query": "Which Temporal activities are retried after a transient failure?"
+  },
+  {
+    "id": "temporal-de-1",
+    "topic": "temporal",
+    "language": "de",
+    "query": "Welche Temporal-Aktivitäten werden bei vorübergehenden Fehlern wiederholt?"
+  },
+  {
+    "id": "temporal-en-2",
+    "topic": "temporal",
+    "language": "en",
+    "query": "How does ingestion resume without duplicating completed work?"
+  },
+  {
+    "id": "temporal-de-2",
+    "topic": "temporal",
+    "language": "de",
+    "query": "Wie wird ein Ingestion-Workflow ohne doppelte Verarbeitung fortgesetzt?"
+  },
+  {
+    "id": "temporal-en-3",
+    "topic": "temporal",
+    "language": "en",
+    "query": "How are retry exhaustion and workflow failures surfaced?"
+  },
+  {
+    "id": "updates-en-1",
+    "topic": "updates",
+    "language": "en",
+    "query": "How are changed source documents detected and reindexed?"
+  },
+  {
+    "id": "updates-de-1",
+    "topic": "updates",
+    "language": "de",
+    "query": "Wie werden geänderte Quelldokumente erkannt und neu indexiert?"
+  },
+  {
+    "id": "updates-en-2",
+    "topic": "updates",
+    "language": "en",
+    "query": "What happens to old chunks when a source is updated?"
+  },
+  {
+    "id": "updates-de-2",
+    "topic": "updates",
+    "language": "de",
+    "query": "Was geschieht bei einem Quellenupdate mit den alten Chunks?"
+  },
+  {
+    "id": "updates-en-3",
+    "topic": "updates",
+    "language": "en",
+    "query": "How are deleted pages handled during a recrawl?"
+  },
+  {
+    "id": "metadata-en-1",
+    "topic": "metadata",
+    "language": "en",
+    "query": "Which source metadata is retained on a retrieved chunk?"
+  },
+  {
+    "id": "metadata-de-1",
+    "topic": "metadata",
+    "language": "de",
+    "query": "Welche Quellenmetadaten bleiben an einem abgerufenen Chunk erhalten?"
+  },
+  {
+    "id": "metadata-en-2",
+    "topic": "metadata",
+    "language": "en",
+    "query": "How are German and English source excerpts used in answers?"
+  },
+  {
+    "id": "metadata-de-2",
+    "topic": "metadata",
+    "language": "de",
+    "query": "Wie werden deutsche und englische Quellenauszüge für Antworten verwendet?"
+  },
+  {
+    "id": "metadata-en-3",
+    "topic": "metadata",
+    "language": "en",
+    "query": "How do timestamps, titles, and source URLs support citations?"
+  }
+]
