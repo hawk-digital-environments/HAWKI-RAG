@@ -1,0 +1,38 @@
+[
+  {
+    "name": "cohere",
+    "provider": "cohere",
+    "model": "cohere/rerank-v3.5",
+    "key_env": "COHERE_API_KEY",
+    "api_base": "https://api.cohere.com",
+    "source": "https://docs.cohere.com/v2/docs/rerank"
+  },
+  {
+    "name": "voyage",
+    "provider": "voyage",
+    "model": "voyage/rerank-2.5",
+    "key_env": "VOYAGE_API_KEY",
+    "api_base": "https://api.voyageai.com/v1",
+    "source": "https://docs.voyageai.com/docs/reranker"
+  },
+  {
+    "name": "local",
+    "provider": "local",
+    "model": "mixedbread-ai/mxbai-rerank-base-v1",
+    "source": "Existing HAWKI-RAG LocalReranker smoke test"
+  },
+  {
+    "name": "bge",
+    "provider": "local",
+    "model": "BAAI/bge-reranker-v2-m3",
+    "source": "Local Sentence Transformers CrossEncoder"
+  },
+  {
+    "name": "jina",
+    "provider": "litellm_proxy",
+    "model": "litellm_proxy/jinaai/jina-reranker-v3.5",
+    "key_env": "LITELLM_PROXY_API_KEY",
+    "api_base_env": "LITELLM_PROXY_API_BASE",
+    "source": "IxDLab /v1/models alias checked before inference"
+  }
+]
