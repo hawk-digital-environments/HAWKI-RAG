@@ -41,10 +41,10 @@ class LocalReranker:
         documents: list[str],
         top_n: int | None = None,
     ) -> RerankResponse:
-        """Rank all documents, then limit results; zero skips model loading."""
-        if top_n is not None and top_n < 0:
-            raise ValueError("top_n must be non-negative when supplied")
-        if not documents or top_n == 0:
+        """Rank all documents, then limit results; empty input skips model loading."""
+        if top_n is not None and top_n <= 0:
+            raise ValueError("top_n must be positive when supplied")
+        if not documents:
             return RerankResponse(results=[])
 
         pairs = [(query, document) for document in documents]
