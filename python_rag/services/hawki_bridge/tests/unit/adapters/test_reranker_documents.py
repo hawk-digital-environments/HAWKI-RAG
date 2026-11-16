@@ -6,7 +6,7 @@ from typing import Any
 from hawki_bridge.adapters.reranker_documents import extract_rerank_documents
 
 
-def test_extract_rerank_documents_preserves_order_and_bounds_text() -> None:
+def test_extract_rerank_documents_preserves_order_without_truncation() -> None:
     candidates: list[dict[str, Any]] = [
         {
             "payload": {
@@ -36,7 +36,7 @@ def test_extract_rerank_documents_preserves_order_and_bounds_text() -> None:
         "",
         "",
         "",
-        "x" * 2000,
-        "y" * 1999,
+        "x" * 2001,
+        "y" * 2000,
     ]
     assert candidates == original

@@ -37,7 +37,7 @@ def test_cached_cross_encoder_reranks_on_cpu_and_reuses_model(
     from litellm.types.rerank import RerankResponse
     from sentence_transformers import CrossEncoder
 
-    from hawki_bridge.adapters.local_reranker import LocalReranker
+    from hawki_reranking.local_reranker import LocalReranker
 
     models: list[CrossEncoder] = []
 

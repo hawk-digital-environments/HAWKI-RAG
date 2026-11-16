@@ -30,7 +30,7 @@
   {
     "name": "jina",
     "provider": "litellm_proxy",
-    "model": "litellm_proxy/jinaai/jina-reranker-v3.5",
+    "model": "litellm_proxy/jina-rerank",
     "key_env": "LITELLM_PROXY_API_KEY",
     "api_base_env": "LITELLM_PROXY_API_BASE",
     "source": "IxDLab /v1/models alias checked before inference"

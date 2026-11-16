@@ -1,11 +1,49 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
-from typing import Any, Optional, Protocol, cast
+from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 
 import requests as requests_module
 from hawki_rag_text.safety import strip_control_characters
+
+from hawki_bridge.adapters.reranker_documents import extract_rerank_documents
+
+if TYPE_CHECKING:
+    from litellm.types.rerank import RerankResponse
+
+
+class _DocumentReranker(Protocol):
+    def rerank(
+        self, query: str, documents: list[str], top_n: int | None = None
+    ) -> RerankResponse: ...
+
+
+def _response_scores(response: object, count: int) -> list[float]:
+    """Validate the entire response before mapping scores into input order."""
+    from litellm.types.rerank import RerankResponse
+
+    if not isinstance(response, RerankResponse) or response.results is None:
+        raise ValueError("Expected a complete rerank response")
+    scores: dict[int, float] = {}
+    for result in response.results:
+        index = result["index"]
+        score = result["relevance_score"]
+        if (
+            type(index) is not int
+            or not 0 <= index < count
+            or index in scores
+            or isinstance(score, bool)
+            or not isinstance(score, (int, float))
+            or not math.isfinite(score)
+        ):
+            raise ValueError("Invalid rerank index or score")
+        scores[index] = float(score)
+    if len(scores) != count:
+        raise ValueError("Rerank response omitted candidates")
+    return [scores[index] for index in range(count)]
+
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +142,7 @@ def rerank_hits(
     mix_mode: bool,
     mix_weight: float,
     http_client: _RerankerHTTPClient | None = None,
+    reranker: _DocumentReranker | None = None,
 ) -> list[dict[str, Any]]:
     """Rerank bounded leading hits while retaining the untouched result tail.
 
@@ -127,6 +166,20 @@ def rerank_hits(
         len(candidates),
         len(hits),
     )
+
+    if mode == "external" and reranker is not None:
+        try:
+            response = reranker.rerank(
+                user_query, extract_rerank_documents(candidates), top_n=len(candidates)
+            )
+            scores = _response_scores(response, len(candidates))
+            return _rank_candidates(
+                candidates, scores, hits, mix_mode, mix_weight, orig_scores
+            )
+        except Exception:
+            # SDK errors can contain credentials and submitted document contents.
+            logger.warning("Reranker failed; continuing with original order")
+            return hits
 
     try:
         if mode == "cosine":

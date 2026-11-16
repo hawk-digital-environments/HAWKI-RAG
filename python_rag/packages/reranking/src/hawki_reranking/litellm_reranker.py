@@ -1,7 +1,6 @@
 """Remote reranking through the LiteLLM Python SDK."""
 
 from collections.abc import Callable
-from typing import Any
 
 import litellm
 from litellm.types.rerank import RerankResponse
@@ -19,10 +18,18 @@ class LiteLLMReranker:
         model: str,
         *,
         rerank_fn: Callable[..., RerankResponse] | None = None,
+        fallback_model: str | None = None,
     ) -> None:
         if not model.strip():
             raise ValueError("model must be non-empty")
+        if fallback_model is not None and (
+            not fallback_model.strip() or fallback_model == model
+        ):
+            raise ValueError(
+                "fallback_model must be non-empty and different from primary"
+            )
         self.model = model
+        self.fallback_model = fallback_model
         # Allow injecting a fake SDK call in unit tests.
         self._rerank_fn = rerank_fn if rerank_fn is not None else litellm.rerank
 
@@ -42,13 +49,24 @@ class LiteLLMReranker:
         if not documents:
             return RerankResponse(results=[])
 
-        response: RerankResponse = self._rerank_fn(
-            model=self.model,
-            query=query,
-            documents=documents,
-            top_n=top_n,
-            return_documents=False,
+        arguments = dict(
+            query=query, documents=documents, top_n=top_n, return_documents=False
         )
+        try:
+            response = self._rerank_fn(model=self.model, **arguments)
+        except (
+            litellm.APIConnectionError,
+            litellm.Timeout,
+            litellm.RateLimitError,
+            litellm.InternalServerError,
+            litellm.ServiceUnavailableError,
+        ):
+            if self.fallback_model is None:
+                raise
+            # One direct attempt outside the primary try: never recurse or chain.
+            # The injected transport retains gateway, key, timeout and retry options.
+            # SDK exceptions may contain secrets, so do not log their contents.
+            response = self._rerank_fn(model=self.fallback_model, **arguments)
         if not isinstance(response, RerankResponse):
             raise TypeError("LiteLLM rerank must return RerankResponse")
         return response

@@ -40,7 +40,9 @@ def build_app(
     rejects forbidden document or graph mutation routes.
     """
     active_settings = settings or load_settings()
-    active_dependencies = query_dependencies or build_query_dependencies()
+    active_dependencies = query_dependencies or build_query_dependencies(
+        active_settings
+    )
     active_graph_service = GraphReadService(
         graph_reader or active_dependencies.graph_search
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections import Counter
 from http.client import HTTPSConnection
 from importlib.metadata import version
 import json
@@ -14,6 +15,11 @@ from statistics import mean
 from time import perf_counter
 from typing import Any
 
+
+try:
+    from .results import EvaluationMetrics, RankedResult
+except ImportError:
+    from results import EvaluationMetrics, RankedResult
 
 ROOT = Path(__file__).resolve().parent
 BASES = {
@@ -57,19 +63,37 @@ def skip_reason(spec: dict, execute: bool, allow_remote: bool, env: dict) -> str
     return None
 
 
-def metrics(ranked_ids: list[str], relevance: dict[str, int], k: int = 10) -> dict:
-    grades = [relevance.get(doc_id, 0) for doc_id in ranked_ids[:k]]
-    dcg = sum((2**grade - 1) / math.log2(rank + 2) for rank, grade in enumerate(grades))
-    ideal = sorted(relevance.values(), reverse=True)[:k]
-    idcg = sum((2**grade - 1) / math.log2(rank + 2) for rank, grade in enumerate(ideal))
-    total = sum(grade > 0 for grade in relevance.values())
-    return {
-        "ndcg@10": dcg / idcg if idcg else 0.0,
-        "mrr@10": next(
-            (1 / rank for rank, grade in enumerate(grades, 1) if grade > 0), 0.0
-        ),
-        "recall@10": sum(grade > 0 for grade in grades) / total if total else 0.0,
-    }
+def metrics(
+    ranked_ids: list[str], relevance: dict[str, int], k: int = 10
+) -> EvaluationMetrics:
+    """Evaluate an ordered run against candidate-pool qrels using ir_measures.
+
+    Rank-derived scores preserve stable provider ordering, including ties.
+    Gains are transformed only for nDCG to retain the historic 2**grade-1 definition.
+    """
+    import ir_measures as ir
+
+    if k <= 0:
+        raise ValueError("cutoff must be positive")
+    if len(set(ranked_ids)) != len(ranked_ids):
+        raise ValueError("run document IDs must be unique")
+    # Rank-derived scores encode the already-established stable total order.
+    run = {}
+    for rank, doc_id in enumerate(ranked_ids):
+        run.setdefault(doc_id, float(len(ranked_ids) - rank))
+    if not relevance or not any(relevance.values()) or not run:
+        return EvaluationMetrics(ndcg=0, reciprocal_rank=0, recall=0)
+    qrels = {"query": relevance}
+    runs = {"query": run}
+    gains = {"query": {doc: 2**grade - 1 for doc, grade in relevance.items()}}
+    ndcg = ir.nDCG @ k
+    rr, recall = ir.RR @ k, ir.R @ k
+    quality = ir.calc_aggregate([rr, recall], qrels, runs)
+    return EvaluationMetrics(
+        ndcg=ir.calc_aggregate([ndcg], gains, runs)[ndcg],
+        reciprocal_rank=quality[rr],
+        recall=quality[recall],
+    )
 
 
 def percentile(values: list[float], fraction: float) -> float | None:
@@ -81,7 +105,7 @@ def percentile(values: list[float], fraction: float) -> float | None:
     return ordered[lo] + (ordered[hi] - ordered[lo]) * (position - lo)
 
 
-def map_results(response: Any, candidates: list[dict]) -> list[dict]:
+def map_results(response: Any, candidates: list[dict]) -> list[RankedResult]:
     from litellm.types.rerank import RerankResponse
 
     if not isinstance(response, RerankResponse) or response.results is None:
@@ -103,7 +127,7 @@ def map_results(response: Any, candidates: list[dict]) -> list[dict]:
     # Evaluate every provider's results in descending score order.
     results = sorted(results, key=lambda item: item["relevance_score"], reverse=True)
     return [
-        dict(
+        RankedResult(
             index=item["index"],
             id=candidates[item["index"]]["id"],
             score=item["relevance_score"],
@@ -148,7 +172,7 @@ def make_reranker(spec: dict, allow_download: bool):
         raise RuntimeError("benchmark requires LiteLLM 1.106.4")
     if spec["provider"] == "local":
         from sentence_transformers import CrossEncoder
-        from hawki_bridge.adapters.local_reranker import LocalReranker
+        from hawki_reranking.local_reranker import LocalReranker
 
         started = perf_counter()
         model = CrossEncoder(
@@ -160,7 +184,7 @@ def make_reranker(spec: dict, allow_download: bool):
         ), initialization
 
     import litellm
-    from hawki_bridge.adapters.litellm_reranker import LiteLLMReranker
+    from hawki_reranking.litellm_reranker import LiteLLMReranker
 
     provider = spec["provider"]
     if provider == "litellm_proxy":
@@ -208,6 +232,13 @@ def benchmark(
     ids = [item["id"] for item in candidates]
     if not candidates or len(set(ids)) != len(ids) or not data["queries"]:
         raise ValueError("dataset needs unique candidate IDs and queries")
+    query_counts = Counter(query["id"] for query in data["queries"])
+    duplicate_ids = [query_id for query_id, count in query_counts.items() if count > 1]
+    if duplicate_ids:
+        duplicates = ", ".join(repr(query_id) for query_id in duplicate_ids)
+        raise ValueError(
+            f"Duplicate query IDs: {duplicates}. Give each query a unique ID."
+        )
     for query in data["queries"]:
         if set(query["relevance"]) - set(ids) or any(
             type(g) is not int or g < 0 for g in query["relevance"].values()
@@ -224,6 +255,7 @@ def benchmark(
         if m["provider"] != "local" and m.get("model") and not m.get("skip")
     ]
     report = {
+        "qrels": {q["id"]: q["relevance"] for q in data["queries"]},
         "planned_remote_calls": len(remote) * len(data["queries"]) * repetitions,
         "remote_calls_attempted": 0,
         "calls": [],
@@ -245,7 +277,7 @@ def benchmark(
             )
             continue
         try:
-            adapter, initialization = factory(spec, allow_download)
+            client, initialization = factory(spec, allow_download)
         except Exception as exc:
             # Exception strings may contain credentials or request headers.
             report["errors"].append(
@@ -272,7 +304,7 @@ def benchmark(
                     report["remote_calls_attempted"] += 1
                 started = clock()
                 try:
-                    response = adapter.rerank(
+                    response = client.rerank(
                         query["query"], list(documents), top_n=len(documents)
                     )
                     elapsed = clock() - started
@@ -284,7 +316,7 @@ def benchmark(
                         "query": query["id"],
                         "repetition": repetition,
                         "latency_seconds": elapsed,
-                        "rankings": rankings,
+                        "rankings": [r.model_dump(mode="json") for r in rankings],
                         "usage": {
                             k: meta[k] for k in ("tokens", "billed_units") if k in meta
                         }
@@ -294,7 +326,9 @@ def benchmark(
                             "response_cost"
                         ),
                         "sdk_provider_cost_usd": response._hidden_params.get("cost"),
-                        **metrics([r["id"] for r in rankings], query["relevance"]),
+                        **metrics(
+                            [r.id for r in rankings], query["relevance"]
+                        ).model_dump(by_alias=True),
                     }
                     calls.append(row)
                     report["calls"].append(row)
@@ -329,6 +363,22 @@ def write_results(report: dict, output: Path) -> None:
     (output / "results.json").write_text(
         json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
+    if "qrels" in report:
+        (output / "qrels.json").write_text(
+            json.dumps(report["qrels"], indent=2) + "\n", encoding="utf-8"
+        )
+        runs = {}
+        for call in report["calls"]:
+            run = runs.setdefault(
+                f"{call['model']}:repetition:{call['repetition']}", {}
+            )
+            ranking = call["rankings"]
+            run[call["query"]] = {
+                r["id"]: len(ranking) - rank for rank, r in enumerate(ranking)
+            }
+        (output / "runs.json").write_text(
+            json.dumps(runs, indent=2) + "\n", encoding="utf-8"
+        )
     for section in ("summary", "calls", "errors", "skips"):
         rows = report[section]
         fields = list(dict.fromkeys(key for row in rows for key in row)) or ["model"]

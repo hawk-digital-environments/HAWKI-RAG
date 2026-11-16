@@ -13,6 +13,7 @@ override-dependencies = [
     "mineru[pipeline]==3.4.4",
 ]
 conflicts = [
+    [{ package = "hawki-reranking", extra = "local" }, { package = "hawki-reranker" }],
     [
         { package = "hawki-bridge", extra = "local-reranker" },
         { package = "hawki-reranker" },
@@ -24,6 +25,7 @@ conflicts = [
 ]
 
 [dependency-groups]
+benchmark = ["ir-measures==0.4.3"]
 lint = [
     "ruff==0.15.22",
 ]

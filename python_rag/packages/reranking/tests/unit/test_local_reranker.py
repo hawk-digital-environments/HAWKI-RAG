@@ -6,10 +6,10 @@ from threading import Barrier, Event, Lock
 import pytest
 from litellm.types.rerank import RerankResponse
 
-from hawki_bridge.adapters.local_reranker import LocalReranker
+from hawki_reranking.local_reranker import LocalReranker
 
 
-class FakeModel:
+class MockCrossEncoder:
     def __init__(self, scores: list[float]) -> None:
         self.scores = scores
         self.calls: list[list[tuple[str, str]]] = []
@@ -20,11 +20,11 @@ class FakeModel:
 
 
 def test_ranking_preserves_indices_pairs_inputs_and_sdk_structure() -> None:
-    model = FakeModel([0.2, 0.9, 0.4])
-    adapter = LocalReranker(model_factory=lambda _name: model)
+    model = MockCrossEncoder([0.2, 0.9, 0.4])
+    client = LocalReranker(model_factory=lambda _name: model)
     documents = ["first", "best", "middle"]
 
-    response = adapter.rerank("query", documents)
+    response = client.rerank("query", documents)
 
     assert isinstance(response, RerankResponse)
     assert response.model_dump(exclude_none=True) == {
@@ -41,9 +41,11 @@ def test_ranking_preserves_indices_pairs_inputs_and_sdk_structure() -> None:
 
 
 def test_equal_scores_preserve_input_order() -> None:
-    adapter = LocalReranker(model_factory=lambda _name: FakeModel([0.5, 0.9, 0.5]))
+    client = LocalReranker(
+        model_factory=lambda _name: MockCrossEncoder([0.5, 0.9, 0.5])
+    )
 
-    response = adapter.rerank("query", ["duplicate", "best", "duplicate"])
+    response = client.rerank("query", ["duplicate", "best", "duplicate"])
 
     assert response.results is not None
     assert [result["index"] for result in response.results] == [1, 0, 2]
@@ -55,10 +57,10 @@ def test_equal_scores_preserve_input_order() -> None:
 def test_top_n_limits_results_after_scoring_all_documents(
     top_n: int | None, expected: list[int]
 ) -> None:
-    model = FakeModel([0.2, 0.9, 0.4])
-    adapter = LocalReranker(model_factory=lambda _name: model)
+    model = MockCrossEncoder([0.2, 0.9, 0.4])
+    client = LocalReranker(model_factory=lambda _name: model)
 
-    response = adapter.rerank("query", ["first", "best", "middle"], top_n)
+    response = client.rerank("query", ["first", "best", "middle"], top_n)
 
     assert response.results is not None
     assert [result["index"] for result in response.results] == expected
@@ -70,17 +72,17 @@ def test_top_n_limits_results_after_scoring_all_documents(
 def test_empty_results_do_not_load_model(
     documents: list[str], top_n: int | None
 ) -> None:
-    def unexpected_factory(_name: str) -> FakeModel:
+    def unexpected_factory(_name: str) -> MockCrossEncoder:
         pytest.fail("empty results must not load a model")
 
-    adapter = LocalReranker(model_factory=unexpected_factory)
+    client = LocalReranker(model_factory=unexpected_factory)
 
-    assert adapter.rerank("query", documents, top_n).results == []
+    assert client.rerank("query", documents, top_n).results == []
 
 
 @pytest.mark.parametrize("documents", [[], ["text"]])
 def test_negative_top_n_is_rejected_before_loading(documents: list[str]) -> None:
-    def unexpected_factory(_name: str) -> FakeModel:
+    def unexpected_factory(_name: str) -> MockCrossEncoder:
         pytest.fail("invalid top_n must not load a model")
 
     with pytest.raises(ValueError, match="top_n"):
@@ -90,21 +92,21 @@ def test_negative_top_n_is_rejected_before_loading(documents: list[str]) -> None
 @pytest.mark.parametrize("model_name", [None, "custom/model"])
 def test_model_is_loaded_lazily_and_reused(model_name: str | None) -> None:
     names: list[str] = []
-    model = FakeModel([0.5])
+    model = MockCrossEncoder([0.5])
 
-    def factory(name: str) -> FakeModel:
+    def factory(name: str) -> MockCrossEncoder:
         names.append(name)
         return model
 
-    adapter = (
+    client = (
         LocalReranker(model_factory=factory)
         if model_name is None
         else LocalReranker(model_name, model_factory=factory)
     )
     assert names == []
 
-    adapter.rerank("first query", ["text"])
-    adapter.rerank("second query", ["text"])
+    client.rerank("first query", ["text"])
+    client.rerank("second query", ["text"])
 
     assert names == [model_name or "mixedbread-ai/mxbai-rerank-base-v1"]
     assert len(model.calls) == 2
@@ -112,10 +114,10 @@ def test_model_is_loaded_lazily_and_reused(model_name: str | None) -> None:
 
 @pytest.mark.parametrize("scores", [[], [0.1, 0.2], [float("nan")], [float("inf")]])
 def test_invalid_model_scores_are_rejected(scores: list[float]) -> None:
-    adapter = LocalReranker(model_factory=lambda _name: FakeModel(scores))
+    client = LocalReranker(model_factory=lambda _name: MockCrossEncoder(scores))
 
     with pytest.raises(ValueError, match="one finite score per document"):
-        adapter.rerank("query", ["text"])
+        client.rerank("query", ["text"])
 
 
 def test_concurrent_calls_share_one_model_and_serialize_predictions() -> None:
@@ -151,11 +153,11 @@ def test_concurrent_calls_share_one_model_and_serialize_predictions() -> None:
             names.append(name)
         return model
 
-    adapter = LocalReranker(model_factory=factory)
+    client = LocalReranker(model_factory=factory)
 
     def rerank() -> RerankResponse:
         start.wait(timeout=5)
-        return adapter.rerank("query", ["text"])
+        return client.rerank("query", ["text"])
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(rerank) for _ in range(workers)]

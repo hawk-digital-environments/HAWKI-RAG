@@ -6,7 +6,7 @@ from hawki_rag_text.safety import strip_control_characters
 
 
 def extract_rerank_documents(candidates: list[dict[str, Any]]) -> list[str]:
-    """Extract one bounded document per candidate in input order."""
+    """Extract one complete document per candidate in input order."""
     documents: list[str] = []
     for hit in candidates:
         payload = hit.get("payload") or {}
@@ -16,5 +16,5 @@ def extract_rerank_documents(candidates: list[dict[str, Any]]) -> list[str]:
             or payload.get("title")
             or ""
         )
-        documents.append(strip_control_characters(text[:2000]))
+        documents.append(strip_control_characters(text))
     return documents

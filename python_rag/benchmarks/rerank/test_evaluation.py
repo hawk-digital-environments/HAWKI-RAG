@@ -28,7 +28,7 @@ def snapshot(complete=False):
     }
 
 
-class Fake:
+class MockReranker:
     def __init__(self):
         self.calls = []
 
@@ -40,6 +40,19 @@ class Fake:
                 {"index": 0, "relevance_score": 0.1},
             ]
         )
+
+
+@pytest.fixture
+def mock_reranker_factory():
+    def _create(*, initialization=0, client_type=MockReranker):
+        client = client_type()
+
+        def factory(*_):
+            return client, initialization
+
+        return client, factory
+
+    return _create
 
 
 LOCAL = {"name": "local", "provider": "local", "model": "fixture"}
@@ -130,13 +143,13 @@ def test_collector_reuses_pipeline_and_retains_scope(monkeypatch):
 
 
 @pytest.mark.parametrize("complete", [False, True])
-def test_fixed_pool_warmup_and_label_gate(complete):
-    adapter = Fake()
+def test_fixed_pool_warmup_and_label_gate(complete, mock_reranker_factory):
+    client, factory = mock_reranker_factory(initialization=0.2)
     data = snapshot(complete)
     original = deepcopy(data)
-    report = evaluate([LOCAL], data, execute=True, factory=lambda *_: (adapter, 0.2))
-    assert len(adapter.calls) == 6  # one excluded warmup plus five measurements
-    assert all(call == ("question", ["one", "two"], 2) for call in adapter.calls)
+    report = evaluate([LOCAL], data, execute=True, factory=factory)
+    assert len(client.calls) == 6  # one excluded warmup plus five measurements
+    assert all(call == ("question", ["one", "two"], 2) for call in client.calls)
     assert len(report["warmups"]) == 1
     assert len(report["calls"]) == 5
     summary = report["summary"][0]
@@ -148,10 +161,11 @@ def test_fixed_pool_warmup_and_label_gate(complete):
     assert data == original
 
 
-def test_incomplete_judgments_never_become_ground_truth():
+def test_incomplete_judgments_never_become_ground_truth(mock_reranker_factory):
     data = snapshot()
     data["queries"][0]["candidates"][0]["relevance"] = 3
-    report = evaluate([LOCAL], data, execute=True, factory=lambda *_: (Fake(), 0))
+    _, factory = mock_reranker_factory()
+    report = evaluate([LOCAL], data, execute=True, factory=factory)
     assert all(row["ndcg@10"] is None for row in report["calls"])
     data["queries"][0]["judgment_status"] = "complete"
     with pytest.raises(ValueError):
@@ -178,25 +192,27 @@ def test_private_pool_never_goes_to_other_providers_and_dry_run_is_offline():
     assert len(report["skips"]) == 2
 
 
-def test_gateway_cap_includes_warmup_and_failures(monkeypatch):
+def test_gateway_cap_includes_warmup_and_failures(monkeypatch, mock_reranker_factory):
     monkeypatch.setenv("LITELLM_PROXY_API_KEY", "fixture-key")
     monkeypatch.setenv("LITELLM_PROXY_API_BASE", "https://ai.ixdlab.hawk.de")
 
-    class FailsOnce(Fake):
+    class MockRerankerFailingOnce(MockReranker):
         def rerank(self, *args, **kwargs):
             result = super().rerank(*args, **kwargs)
             if len(self.calls) == 2:
                 raise RuntimeError("private error message must not be exported")
             return result
 
-    adapter = FailsOnce()
+    client, factory = mock_reranker_factory(
+        initialization=None, client_type=MockRerankerFailingOnce
+    )
     report = evaluate(
         [GATEWAY],
         snapshot(True),
         execute=True,
         allow_gateway=True,
         max_remote_calls=3,
-        factory=lambda *_: (adapter, None),
+        factory=factory,
     )
     assert report["remote_calls_attempted"] == 3
     assert len(report["warmups"]) == 1

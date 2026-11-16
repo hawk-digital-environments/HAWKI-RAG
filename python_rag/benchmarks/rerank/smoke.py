@@ -1,4 +1,4 @@
-"""One-query smoke checks using the benchmark adapters and model configuration."""
+"""One-query smoke checks using the benchmark clients and model configuration."""
 
 import argparse
 import json
@@ -54,13 +54,13 @@ def main() -> None:
     stage = "initialization"
     started = perf_counter()
     try:
-        adapter, initialization = make_reranker(spec, args.allow_download)
+        client, initialization = make_reranker(spec, args.allow_download)
         stage = "inference"
         started = perf_counter()
-        response = adapter.rerank("How does HAWKI-RAG delete datasets?", documents, 3)
+        response = client.rerank("How does HAWKI-RAG delete datasets?", documents, 3)
         elapsed = perf_counter() - started
         ranking = map_results(response, candidates)
-        assert ranking[0]["index"] != 1, "weather document ranked first"
+        assert ranking[0].index != 1, "weather document ranked first"
         assert documents == original
         print(
             json.dumps(
@@ -69,7 +69,7 @@ def main() -> None:
                     "status": "passed",
                     "initialization_seconds": initialization,
                     "inference_seconds": elapsed,
-                    "ranking": ranking,
+                    "ranking": [r.model_dump(mode="json") for r in ranking],
                 }
             )
         )

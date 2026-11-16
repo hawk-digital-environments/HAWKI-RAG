@@ -164,3 +164,22 @@ def test_torch_environments_and_indexer_system_dependencies_stay_separate() -> N
     assert "git ca-certificates" in indexer_builder
     assert "ffmpeg libgl1 libglib2.0-0" in indexer_runtime
     assert "ca-certificates libgomp1" in reranker_runtime
+
+
+def test_bridge_local_reranker_dependencies_are_opt_in() -> None:
+    source = _source()
+    builder = _stage(source, "bridge-builder")
+    runtime = _stage(source, "bridge-runtime")
+    assert "ARG BRIDGE_LOCAL_RERANKER=false" in builder
+    assert 'if [ "$BRIDGE_LOCAL_RERANKER" = "true" ]' in builder
+    assert 'extra="--extra local-reranker"; else extra=""' in builder
+    assert "--package hawki-bridge $extra" in builder
+    assert "ARG BRIDGE_LOCAL_RERANKER=false" in runtime
+    assert 'if [ "$BRIDGE_LOCAL_RERANKER" = "true" ]' in runtime
+    assert "libgomp1" in runtime
+
+
+def test_bridge_copies_shared_reranking_package():
+    builder = _stage(_source(), "bridge-builder")
+    assert "COPY python_rag/packages/reranking/pyproject.toml" in builder
+    assert "COPY python_rag/packages/reranking/src" in builder

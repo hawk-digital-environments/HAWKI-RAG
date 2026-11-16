@@ -90,6 +90,11 @@ def evaluate(
         ):
             raise ValueError("gateway route must use LITELLM_PROXY_API_BASE")
     report = {
+        "qrels": {
+            q["id"]: {c["id"]: c["relevance"] for c in q["candidates"]}
+            for q in data["queries"]
+            if q["judgment_status"] == "complete"
+        },
         "calls": [],
         "errors": [],
         "skips": [],
@@ -118,7 +123,7 @@ def evaluate(
             )
             continue
         try:
-            adapter, initialization = factory(spec, False)
+            client, initialization = factory(spec, False)
         except Exception as exc:
             report["errors"].append(
                 {
@@ -135,7 +140,7 @@ def evaluate(
                     return None
                 report["remote_calls_attempted"] += 1
             pool = query["candidates"]
-            response = adapter.rerank(
+            response = client.rerank(
                 query.get("rerank_query", query["query"]),
                 [c["text"] for c in pool],
                 top_n=len(pool),
@@ -185,7 +190,7 @@ def evaluate(
                         "latency_seconds": elapsed,
                         "candidate_count": len(pool),
                         "document_characters": [len(c["text"]) for c in pool],
-                        "rankings": ranking,
+                        "rankings": [r.model_dump(mode="json") for r in ranking],
                         "ndcg@5": None,
                         "ndcg@10": None,
                         "mrr@10": None,
@@ -193,9 +198,11 @@ def evaluate(
                     }
                     if query["judgment_status"] == "complete":
                         labels = {c["id"]: c["relevance"] for c in pool}
-                        ranked_ids = [r["id"] for r in ranking]
-                        row.update(metrics(ranked_ids, labels))
-                        row["ndcg@5"] = metrics(ranked_ids, labels, 5)["ndcg@10"]
+                        ranked_ids = [r.id for r in ranking]
+                        row.update(
+                            metrics(ranked_ids, labels).model_dump(by_alias=True)
+                        )
+                        row["ndcg@5"] = metrics(ranked_ids, labels, 5).ndcg
                         judged_covered.add(query["id"])
                     successes.append(row)
                     covered.add(query["id"])

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Mapping
 
@@ -40,6 +40,12 @@ class BridgeSettings:
     workflow_run_timeout_seconds: int
     workflow_task_timeout_seconds: int
     control_plane_secret: str = ""
+    reranker_provider: str = "cohere"
+    local_reranker_model: str = "mixedbread-ai/mxbai-rerank-base-v1"
+    sdk_reranker_model: str = ""
+    reranker_fallback_model: str | None = None
+    reranker_gateway_base: str = ""
+    reranker_gateway_key: str = field(default="", repr=False)
 
     @property
     def workflow_execution_timeout(self) -> timedelta:
@@ -71,6 +77,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> BridgeSettings:
         reranker_mode=_value(source, "RERANKER_MODE", "none"),
         reranker_mix_mode=_boolean(source, "RERANKER_MIX_MODE", True),
         reranker_mix_weight=float(_value(source, "RERANKER_MIX_WEIGHT", "0.5")),
+        reranker_provider=_value(source, "RERANKER_PROVIDER", "cohere").lower(),
+        local_reranker_model=_value(
+            source, "HAWKI_RERANKER_MODEL", "mixedbread-ai/mxbai-rerank-base-v1"
+        ),
+        sdk_reranker_model=source.get("RERANKER_MODEL", "").strip(),
+        reranker_fallback_model=(
+            source["RERANKER_FALLBACK_MODEL"].strip()
+            if "RERANKER_FALLBACK_MODEL" in source
+            else None
+        ),
+        reranker_gateway_base=source.get("LITELLM_PROXY_API_BASE", "").strip(),
+        reranker_gateway_key=source.get("LITELLM_PROXY_API_KEY", "").strip(),
         log_level=_value(source, "LOG_LEVEL", "INFO").upper(),
         startup_checks_enabled=_boolean(source, "STARTUP_CHECKS_ENABLED", False),
         startup_check_attempts=max(
