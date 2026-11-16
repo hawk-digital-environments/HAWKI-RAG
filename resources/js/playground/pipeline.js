@@ -1,4 +1,5 @@
 import { apiUrl } from './urls.js';
+import { createPipelineStarter } from './pipeline-start.js';
 
 const unavailableTasksMessage = 'Please build the HAWKI-Scraper for getting available tasks.';
 
@@ -1005,24 +1006,11 @@ function canStartAsPipelineTask(task) {
     return task?.source === 'scraper-task-ui' && Boolean(task.primaryUrl || task.sitemapUrl);
 }
 
-async function startPipelineTaskFromCatalog(task) {
-    const response = await fetch(apiUrl('pipeline/tasks/start'), {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-        },
-        body: JSON.stringify(pipelineTaskPayload(task)),
-    });
-    const data = await parseResponseJson(response);
-    if (!response.ok || !data.success || !data.task_id) {
-        throw new Error(data.message || `Pipeline task start failed (${response.status})`);
-    }
-
-    return data;
-}
+const startPipelineTaskFromCatalog = createPipelineStarter({
+    url: apiUrl('pipeline/tasks/start'),
+    payload: pipelineTaskPayload,
+    csrfToken,
+});
 
 async function startCrawlerTaskFallback(taskId) {
     const response = await fetch(apiUrl('scraper/tasks/start'), {

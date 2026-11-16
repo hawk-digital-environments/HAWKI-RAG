@@ -130,6 +130,7 @@ class UrlRepository:
         expected_generations: dict[str, int] | None = None,
         scheduled: bool = False,
         internal: bool = False,
+        task_command_id: str | None = None,
     ) -> tuple[dict, list[dict]]:
         with self.engine.begin() as connection:
             # The dataset row is the admission fence for URL authority too.
@@ -180,8 +181,30 @@ class UrlRepository:
                 # and cleanup, so a delayed dispatcher cannot cross a fence.
                 lock(connection, "url-source:" + source_id)
                 source = one(connection, sources, sources.c.source_id == source_id)
+                # Task intent reserves its sources before any fencing/remote I/O.
+                # All admissions hold the dataset lock, so a recrawl cannot slip
+                # between intent acceptance and the first per-source claim.
+                commands = connection.execute(
+                    sa.select(requests.c.request_id, requests.c.task_command).where(
+                        requests.c.tenant_id == principal.tenant_id,
+                        requests.c.dataset_id == values["dataset_id"],
+                        requests.c.task_command["state"].as_string() == "pending",
+                    )
+                ).mappings()
+                for command in commands:
+                    intent = command["task_command"]
+                    if (
+                        not internal
+                        and command["request_id"] != task_command_id
+                        and intent["state"] == "pending"
+                        and any(
+                            target["source_id"] == source_id
+                            for target in intent["targets"]
+                        )
+                    ):
+                        raise UrlIngestionError(409, "A task command owns this source.")
                 if source is None:
-                    if values["purpose"] == "delete":
+                    if values["purpose"] in {"delete", "cancel"}:
                         raise UrlIngestionError(404, "URL source was not found.")
                     source = dict(
                         source_id=source_id,
@@ -228,9 +251,14 @@ class UrlRepository:
                         generations.c.url_ingestion_operation_id
                         == source["pending_operation_id"],
                     )
+                    # Only stop commands may supersede completed retirement
+                    # history; ordinary starts retain single-successor admission.
                     if (
-                        active["purpose"] == "delete"
-                        or active["cleanup_operations"]
+                        active["purpose"] in {"delete", "cancel"}
+                        or (
+                            values["purpose"] == "start"
+                            and active["cleanup_operations"]
+                        )
                         or active["stage"] not in {"prepared", "dispatched"}
                     ):
                         raise UrlIngestionError(
@@ -283,9 +311,9 @@ class UrlRepository:
                         ),
                         generation=operation["generation"],
                         pending_operation_id=operation["url_ingestion_operation_id"],
-                        status="deleting"
-                        if values["purpose"] == "delete"
-                        else "pending",
+                        status={"delete": "deleting", "cancel": "cancelling"}.get(
+                            values["purpose"], "pending"
+                        ),
                         updated_at=sa.func.now(),
                     )
                 )
@@ -357,6 +385,44 @@ class UrlRepository:
                 owners.append(row)
             return owners
 
+    def close_unsubmitted(self, operation: dict) -> bool:
+        """Called under the source execution lock: no ledger means no dispatch.
+
+        The same lock excludes delayed dispatchers. Prepared generations whose
+        start was never admitted have neither a remote crawler nor sink writers.
+        """
+        with self.engine.begin() as connection:
+            row = one(
+                connection,
+                generations,
+                generations.c.url_ingestion_operation_id
+                == operation["url_ingestion_operation_id"],
+            )
+            ledger = connection.execute(
+                sa.select(operations.c.operation_id).where(
+                    operations.c.workflow_id == row["workflow_id"]
+                )
+            ).first()
+            state = copy.deepcopy(row["writer_state"])
+            if (
+                row["stage"] != "prepared"
+                or row["run_id"]
+                or ledger
+                or state.get("managed_writer_gate") != "closed"
+                or state.get("managed_writers") != {}
+            ):
+                return False
+            state["managed_no_writers_closed"] = True
+            connection.execute(
+                generations.update()
+                .where(
+                    generations.c.url_ingestion_operation_id
+                    == row["url_ingestion_operation_id"]
+                )
+                .values(writer_state=state)
+            )
+            return True
+
     def closed_empty(self, operation_id: str, run_id: str) -> None:
         with self.engine.begin() as connection:
             row = one(
@@ -397,7 +463,7 @@ class UrlRepository:
                 )
                 .values(stage=stage, updated_at=sa.func.now())
             )
-            if stage in {"prepared", "completed"}:
+            if stage in {"prepared", "completed"} and operation["purpose"] != "cancel":
                 connection.execute(
                     generations.update()
                     .where(
@@ -407,6 +473,36 @@ class UrlRepository:
                     )
                     .values(retired=True)
                 )
+            if stage == "completed" and operation["purpose"] == "cancel":
+                connection.execute(
+                    sources.update()
+                    .where(sources.c.source_id == operation["source_id"])
+                    .values(
+                        status="cancelled",
+                        pending_operation_id=None,
+                        refresh_cadence=None,
+                        next_refresh_at=None,
+                        updated_at=sa.func.now(),
+                    )
+                )
+                # Closed gates fence stale callbacks; keeping old generations
+                # unretired preserves their owned sinks/artifacts for deletion.
+                for old_id in operation["cleanup_operations"]:
+                    old = one(
+                        connection,
+                        generations,
+                        generations.c.url_ingestion_operation_id == old_id,
+                    )
+                    if old["stage"] != "completed":
+                        connection.execute(
+                            generations.update()
+                            .where(generations.c.url_ingestion_operation_id == old_id)
+                            .values(
+                                stage="completed",
+                                completion={"status": "cancelled"},
+                                updated_at=sa.func.now(),
+                            )
+                        )
             if stage == "completed" and operation["purpose"] == "delete":
                 connection.execute(
                     sources.update()

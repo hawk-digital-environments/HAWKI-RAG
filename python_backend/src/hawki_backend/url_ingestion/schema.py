@@ -34,13 +34,14 @@ requests = sa.Table(
     sa.Column("task_id", sa.String(191), nullable=False, unique=True),
     sa.Column("purpose", sa.String(16), nullable=False),
     sa.Column("body", sa.JSON, nullable=False),
+    sa.Column("task_command", sa.JSON),
     *timestamps(),
     sa.UniqueConstraint("tenant_id", "principal_id", "idempotency_key"),
     sa.UniqueConstraint("request_id", "tenant_id", "dataset_id"),
     sa.ForeignKeyConstraint(
         ["tenant_id", "dataset_id"], ["datasets.tenant_id", "datasets.dataset_id"]
     ),
-    sa.CheckConstraint("purpose IN ('start','delete')"),
+    sa.CheckConstraint("purpose IN ('start','delete','cancel')"),
 )
 
 sources = sa.Table(
@@ -67,7 +68,7 @@ sources = sa.Table(
     ),
     sa.CheckConstraint("generation >= 0"),
     sa.CheckConstraint(
-        "status IN ('pending','running','ready','failed','deleting','deleted')"
+        "status IN ('pending','running','ready','failed','cancelling','cancelled','deleting','deleted')"
     ),
 )
 
@@ -126,7 +127,7 @@ generations = sa.Table(
         ],
     ),
     sa.CheckConstraint("generation = expected_generation + 1"),
-    sa.CheckConstraint("purpose IN ('start','delete')"),
+    sa.CheckConstraint("purpose IN ('start','delete','cancel')"),
     sa.CheckConstraint(
         "stage IN ('fenced','drained','cleaned','prepared','dispatched','completed')"
     ),

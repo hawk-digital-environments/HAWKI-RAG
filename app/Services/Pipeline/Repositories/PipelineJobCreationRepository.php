@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Repositories;
 
+use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 #[Singleton]
 readonly class PipelineJobCreationRepository
@@ -190,13 +193,36 @@ readonly class PipelineJobCreationRepository
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function upsertForTask(string $jobId, PipelineTask $task, array $attributes): PipelineJob
+    public function upsertForTask(string $jobId, PipelineTask $task, array $attributes, bool $existingOnly = false): PipelineJob
     {
-        return PipelineJob::query()->updateOrCreate(
-            ['job_id' => $jobId],
-            array_merge($attributes, [
-                'task_id' => $task->task_id,
-            ]),
-        );
+        return DB::transaction(function () use ($jobId, $task, $attributes, $existingOnly): PipelineJob {
+            $job = PipelineJob::query()->where('job_id', $jobId)->lockForUpdate()->first();
+            if ($job && $job->task_id !== $task->task_id) {
+                throw new ConflictHttpException('A job cannot be moved to another task.');
+            }
+            if ($existingOnly) {
+                $source = $job ? IngestionSource::query()->where('source_id', $job->source_id)->lockForUpdate()->first() : null;
+                $currentTask = PipelineTask::query()->where('task_id', $task->task_id)->lockForUpdate()->first();
+                if (! $job || ! $source || ! $currentTask || $source->dataset_id !== $currentTask->dataset_id
+                    || isset($job->metadata['url_ingestion_operation_id'])
+                    || isset($source->metadata['url_ingestion_operation_id'])
+                    || ($source->metadata['owner'] ?? null) === 'url'
+                    || ($attributes['metadata'] ?? []) !== ($job->metadata ?? [])) {
+                    throw new ConflictHttpException('Existing legacy job ownership is required.');
+                }
+                $job->fill($attributes)->save();
+
+                return $job;
+            }
+
+            $job ??= PipelineJob::query()->firstOrCreate(['job_id' => $jobId], array_merge($attributes, ['task_id' => $task->task_id]));
+            // A concurrent insertion may have won after the initial lookup.
+            if ($job->task_id !== $task->task_id) {
+                throw new ConflictHttpException('A job cannot be moved to another task.');
+            }
+            $job->fill($attributes)->save();
+
+            return $job;
+        });
     }
 }

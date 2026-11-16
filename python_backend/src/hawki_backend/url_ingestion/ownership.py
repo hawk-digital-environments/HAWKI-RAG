@@ -61,7 +61,7 @@ def classify(repository, body: dict) -> str:
             owners.add("text")
         for row in rows:
             wire = row["workflow_input"]
-            if row["purpose"] == "delete":
+            if row["purpose"] in {"delete", "cancel"}:
                 owners.add("url")
                 continue
             if (

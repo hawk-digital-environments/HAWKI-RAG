@@ -12,6 +12,8 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class PipelineOwnershipRepository
 {
+    public function __construct(private PipelineSchemaInspector $schema) {}
+
     /** Durable legacy task/job/source agreement. No identity-prefix inference. */
     public function owns(string $field, string $identity): bool
     {
@@ -34,6 +36,12 @@ readonly class PipelineOwnershipRepository
         return true;
     }
 
+    public function belongsToTask(string $jobId, string $taskId): bool
+    {
+        return PipelineJob::query()->where('job_id', $jobId)->where('task_id', $taskId)->exists()
+            && $this->owns('job_id', $jobId);
+    }
+
     public function exists(string $field, string $identity): bool
     {
         if ($field === 'task_id' && PipelineTask::query()->where('task_id', $identity)->exists()) {
@@ -41,6 +49,19 @@ readonly class PipelineOwnershipRepository
         }
 
         return PipelineJob::query()->where($field === 'workflow_id' ? 'temporal_workflow_id' : $field, $identity)->exists();
+    }
+
+    public function drainCounts(): array
+    {
+        if (! $this->schema->hasTables(['pipeline_tasks', 'pipeline_jobs'])) {
+            return ['active_legacy_task_count' => null, 'active_legacy_job_count' => null,
+                'legacy_drain_complete' => false];
+        }
+        $tasks = PipelineTask::query()->whereIn('status', ['pending', 'queued', 'running', 'processing', 'paused', 'cancel_requested'])->count();
+        $jobs = PipelineJob::query()->whereIn('status', ['pending', 'queued', 'running', 'processing', 'received', 'paused', 'cancel_requested'])->count();
+
+        return ['active_legacy_task_count' => $tasks, 'active_legacy_job_count' => $jobs,
+            'legacy_drain_complete' => $tasks === 0 && $jobs === 0];
     }
 
     /** All candidates are authorized and ordered before the global limit. */

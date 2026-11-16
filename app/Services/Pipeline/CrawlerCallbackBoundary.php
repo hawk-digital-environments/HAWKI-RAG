@@ -42,7 +42,8 @@ readonly class CrawlerCallbackBoundary
 
         $body = json_decode($raw, true);
         $owner = $ownership['payload']['owner'] ?? null;
-        if ((isset($body['url_ingestion_operation_id']) || ($body['owner'] ?? null) === 'url') && $owner !== 'url'
+        if (isset($body['owner']) && $body['owner'] !== $owner
+            || (isset($body['url_ingestion_operation_id']) || ($body['owner'] ?? null) === 'url') && $owner !== 'url'
             || isset($body['managed_document_id']) && $owner !== 'managed') {
             return ['status' => 409, 'payload' => ['success' => false, 'message' => 'Callback owner conflicts with durable ownership.']];
         }

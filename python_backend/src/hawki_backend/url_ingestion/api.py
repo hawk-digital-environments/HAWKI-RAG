@@ -81,6 +81,44 @@ async def read(request, principal, method, *args, **kwargs):
         return failure(UrlIngestionError(503, "URL authorization is unavailable."))
 
 
+@router.get("/pipeline/start-request", include_in_schema=False)
+def start_request(request: Request, principal: Principal, key: str):
+    """Resolve a lost start response before a selector rollback admits new work."""
+    import sqlalchemy as sa
+    from .identity import digest
+    from .schema import requests
+
+    if principal.client_id != "hawki-bff":
+        return failure(UrlIngestionError(403, "Forbidden."))
+    try:
+        instance = service(request)
+        with instance.repository.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    sa.select(requests).where(
+                        requests.c.request_id
+                        == digest(
+                            [principal.tenant_id, principal.principal_id, key.strip()]
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return {"success": True, "owner": "absent"}
+        instance.authorize(principal, row["dataset_id"])
+        if row["purpose"] != "start":
+            raise UrlIngestionError(
+                409, "The idempotency key belongs to another operation."
+            )
+        return {"success": True, "owner": "url", "task_id": row["task_id"]}
+    except UrlIngestionError as error:
+        return failure(error)
+    except AuthorizationUnavailableError:
+        return failure(UrlIngestionError(503, "URL authorization is unavailable."))
+
+
 @router.get("/pipeline/tasks", include_in_schema=False)
 async def task_list(
     request: Request, principal: Principal, limit: int = Query(30, ge=1, le=250)
@@ -162,6 +200,16 @@ async def legacy_access(request: Request, principal: Principal, body: dict):
 @router.get("/pipeline/tasks/{task_id}")
 async def task(task_id: str, request: Request, principal: Principal) -> JSONResponse:
     return await read(request, principal, "task", task_id)
+
+
+@router.post("/pipeline/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str, request: Request, principal: Principal):
+    return await execute(request, principal, "cancel_task", task_id)
+
+
+@router.delete("/pipeline/tasks/{task_id}")
+async def delete_task(task_id: str, request: Request, principal: Principal):
+    return await execute(request, principal, "delete_task", task_id)
 
 
 @router.delete("/pipeline/sources/{source_id}")

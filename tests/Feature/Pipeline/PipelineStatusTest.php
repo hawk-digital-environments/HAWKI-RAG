@@ -6,6 +6,11 @@ namespace Tests\Feature\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
+use App\Models\PipelineTask;
+use App\Services\Pipeline\State\PipelineStateService;
+use App\Services\Pipeline\Status\PipelineScrapeStageSynchronizer;
+use App\Services\Pipeline\Status\PipelineStageStatusMerger;
+use App\Services\Pipeline\Tasks\PipelineTaskStatusRefresher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -122,6 +127,41 @@ final class PipelineStatusTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => str_ends_with($request->url(), '/internal/workflow-control/execution/status'));
         $this->assertSame('ingest', $job->refresh()->current_stage);
+    }
+
+    public function test_legacy_scraper_paused_and_cancelled_statuses_survive_stage_and_job_rollups(): void
+    {
+        foreach (['paused', 'cancelled'] as $status) {
+            $job = $this->createJob('legacy-'.$status);
+            app(PipelineScrapeStageSynchronizer::class)->sync($job->job_id, ['status' => $status]);
+            app(PipelineStateService::class)->updateStage($job->job_id, 'convert', ['status' => 'pending']);
+            $this->assertSame($status === 'paused' ? 'running' : 'failed', $job->refresh()->status);
+            $this->assertDatabaseHas('pipeline_stage_states', ['job_id' => $job->job_id, 'stage' => 'scrape', 'status' => $status]);
+            $this->assertSame($status, app(PipelineStageStatusMerger::class)->overallStatus(['status' => $status], ['status' => 'pending'], ['status' => 'not_tracked']));
+        }
+    }
+
+    public function test_legacy_remote_states_keep_task_counters_and_recovery_coherent(): void
+    {
+        foreach (['paused', 'cancelled'] as $remote) {
+            foreach ([false, true] as $mixed) {
+                $id = $remote.($mixed ? '-mixed' : '-single');
+                $task = PipelineTask::query()->create(['task_id' => $id, 'status' => 'running']);
+                $job = $this->createJob('job-'.$id);
+                $job->update(['task_id' => $id]);
+                app(PipelineScrapeStageSynchronizer::class)->sync($job->job_id, ['status' => $remote]);
+                if ($mixed) {
+                    $done = $this->createJob('done-'.$id);
+                    $done->update(['task_id' => $id, 'status' => 'completed']);
+                }
+                $refreshed = app(PipelineTaskStatusRefresher::class)->recalculate($task);
+                $this->assertSame($remote === 'paused' ? 'running' : 'failed', $refreshed->status);
+                $this->assertSame($remote === 'paused' ? 1 : 0, $refreshed->counters['jobs_active']);
+                $this->assertSame($remote === 'cancelled' ? 1 : 0, $refreshed->counters['jobs_failed']);
+                $this->assertSame($mixed ? 1 : 0, $refreshed->counters['jobs_completed']);
+                $this->assertSame($remote === 'cancelled', $job->refresh()->status === PipelineJob::STATUS_FAILED);
+            }
+        }
     }
 
     private function createJob(string $jobId, ?string $datasetPath = null): PipelineJob

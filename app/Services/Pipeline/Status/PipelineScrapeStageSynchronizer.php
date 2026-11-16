@@ -10,12 +10,10 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class PipelineScrapeStageSynchronizer
 {
-    public function __construct(private PipelineStateService $pipelineState)
-    {
-    }
+    public function __construct(private PipelineStateService $pipelineState) {}
 
     /**
-     * @param array<string, mixed> $stage
+     * @param  array<string, mixed>  $stage
      */
     public function sync(string $jobId, array $stage): void
     {
@@ -49,7 +47,10 @@ readonly class PipelineScrapeStageSynchronizer
 
         if (! in_array($status, ['unknown', 'pending'], true)) {
             $this->pipelineState->updateStage($jobId, PipelineStateService::STAGE_SCRAPE, array_merge($payload, [
-                'status' => in_array($status, ['running', 'processing', 'received'], true) ? $status : 'running',
+                'job_status' => match ($status) {
+                    'paused' => 'running', 'cancelled' => 'failed', default => null
+                },
+                'status' => in_array($status, ['running', 'processing', 'received', 'paused', 'cancelled'], true) ? $status : 'running',
             ]));
         }
     }

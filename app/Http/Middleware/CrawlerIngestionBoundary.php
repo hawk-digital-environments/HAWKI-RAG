@@ -9,6 +9,7 @@ use App\Http\Requests\Pipeline\ListPipelineTasksRequest;
 use App\Services\Authorization\ManagedMutationPrincipalService;
 use App\Services\Pipeline\Clients\PythonUrlIngestionClient;
 use App\Services\Pipeline\PipelineCompatibilityBoundary;
+use App\Services\Pipeline\PipelineExecutionBackend;
 use App\Services\Pipeline\PipelineOwnership;
 use App\Services\Pipeline\Repositories\PipelineOwnershipRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -20,6 +21,7 @@ final readonly class CrawlerIngestionBoundary
 {
     public function __construct(
         private ConfigRepository $config,
+        private PipelineExecutionBackend $execution,
         private ManagedMutationPrincipalService $principals,
         private PythonUrlIngestionClient $python,
         private PipelineOwnership $ownership,
@@ -31,8 +33,12 @@ final readonly class CrawlerIngestionBoundary
     public function handle(Request $request, \Closure $next): Response
     {
         $backend = $this->config->get('config.crawler_ingestion_backend', 'laravel');
-        if (! in_array($backend, ['laravel', 'python'], true)) {
-            return response()->json(['success' => false, 'message' => 'Crawler ingestion backend configuration is invalid.'], 503);
+        if (! $this->execution->valid() || ! in_array($backend, ['laravel', 'python'], true)) {
+            return response()->json(['success' => false, 'message' => 'Pipeline or crawler execution backend configuration is invalid.'], 503);
+        }
+        $path = substr($request->path(), strlen('api/'));
+        if ($path === 'scraper/tasks' && $request->isMethod('GET')) {
+            return $next($request);
         }
         if ($backend === 'laravel' && $request->isMethod('GET')) {
             return $next($request);
@@ -47,7 +53,46 @@ final readonly class CrawlerIngestionBoundary
         if ($backend === 'laravel') {
             return $next($request);
         }
-        $path = substr($request->path(), strlen('api/'));
+        $startOwner = null;
+        if ($path === 'pipeline/tasks/start' && $backend === 'python') {
+            // A lost BFF response may leave only the caller's idempotency key.
+            // Resolve that durable request before treating a rollback replay as new.
+            if ($this->execution->value() === 'laravel' && $request->header('Idempotency-Key') !== null) {
+                $previous = $this->python->forward($user, 'GET', 'pipeline/start-request', ['key' => $request->header('Idempotency-Key')], null);
+                if ($previous['status'] !== 200 || ! in_array($previous['payload']['owner'] ?? null, ['url', 'absent'], true)) {
+                    return response()->json($previous['status'] !== 200 ? $previous['payload'] : ['success' => false, 'message' => 'Invalid URL start ownership.'], $previous['status'] !== 200 ? $previous['status'] : 502);
+                }
+                if ($previous['payload']['owner'] === 'url') {
+                    $previousId = $previous['payload']['task_id'] ?? null;
+                    if (! is_string($previousId)) {
+                        return response()->json(['success' => false, 'message' => 'Invalid URL start identity.'], 502);
+                    }
+                    $owner = $this->ownership->classify('task_id', $previousId);
+                    if ($owner['status'] !== 200 || $owner['payload']['owner'] !== 'url') {
+                        return response()->json($owner['payload'], $owner['status'] !== 200 ? $owner['status'] : 409);
+                    }
+                    $startOwner = 'url';
+                }
+            }
+            $identity = $request->input('task_id', $request->input('taskId'));
+            if (is_string($identity) && trim($identity) !== '') {
+                $classification = $this->ownership->classify('task_id', trim($identity), allowAbsent: true);
+                if ($classification['status'] !== 200) {
+                    return response()->json($classification['payload'], $classification['status']);
+                }
+                $submittedOwner = $classification['payload']['owner'];
+                $startOwner = $startOwner === 'url' ? 'url' : $submittedOwner;
+                if (! in_array($submittedOwner, ['url', 'absent'], true)) {
+                    return response()->json(['success' => false, 'message' => 'Task identity already belongs to existing work; use its recovery API.'], 409);
+                }
+            }
+        }
+        if ($path === 'pipeline/tasks/start' && $this->execution->value() === 'laravel' && $startOwner !== 'url') {
+            return $next($request);
+        }
+        if ($path === 'pipeline/tasks/start' && ($this->python->readiness()['ready'] ?? false) !== true) {
+            return response()->json(['success' => false, 'message' => 'Python pipeline execution is not ready.'], 503);
+        }
         if (str_starts_with($path, 'scraper/')) {
             return response()->json(['success' => false, 'message' => 'Use Python-owned pipeline URL operations.'], 409);
         }
@@ -79,9 +124,22 @@ final readonly class CrawlerIngestionBoundary
                     return response()->json($access['status'] !== 200 ? $access['payload'] : ['success' => false, 'message' => 'Pipeline operation was not found.'], $access['status'] !== 200 ? $access['status'] : 404);
                 }
 
+                if ($request->isMethod('POST') && $path === 'pipeline/tasks/'.$identity.'/jobs') {
+                    $jobId = $request->input('job_id', $request->input('jobId'));
+                    if (! is_string($jobId) || ! $this->legacy->belongsToTask($jobId, $identity)) {
+                        return response()->json(['success' => false, 'message' => 'Legacy job ownership is not proven.'], 409);
+                    }
+                    $jobOwner = $this->ownership->classify('job_id', $jobId);
+                    if ($jobOwner['status'] !== 200 || ($jobOwner['payload']['owner'] ?? null) !== 'laravel') {
+                        return response()->json(['success' => false, 'message' => 'Legacy job ownership is unavailable or conflicting.'], 409);
+                    }
+                }
+
                 return $next($request);
             }
-            if (! in_array($owner, ['url', 'managed', 'text'], true) || ! $request->isMethod('GET')) {
+            $urlCommand = $owner === 'url' && ($request->isMethod('DELETE') && $path === 'pipeline/tasks/'.$identity
+                || $request->isMethod('POST') && $path === 'pipeline/tasks/'.$identity.'/cancel');
+            if (! in_array($owner, ['url', 'managed', 'text'], true) || (! $request->isMethod('GET') && ! $urlCommand)) {
                 return response()->json(['success' => false, 'message' => 'Use the owning source, document, or text API for this operation.'], 409);
             }
         }

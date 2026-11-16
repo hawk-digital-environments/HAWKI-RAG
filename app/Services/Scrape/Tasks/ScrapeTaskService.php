@@ -26,23 +26,7 @@ class ScrapeTaskService
             return $taskUiResult;
         }
 
-        $result = $this->crawler->request('GET', (string) $this->config->get('scraper.tasks_path', '/tasks'));
-        if (! ($result['success'] ?? false)) {
-            return $this->tasksUnavailable(($taskUiResult['data'] ?? null) !== null ? $taskUiResult : $result);
-        }
-
-        $tasks = $this->normalizer->normalizeCrawlerTasks($result['data'] ?? []);
-        if ($tasks === []) {
-            return $this->tasksUnavailable($result, 200);
-        }
-
-        return [
-            'success' => true,
-            'status' => 200,
-            'message' => 'Scraper tasks loaded.',
-            'tasks' => $tasks,
-            'data' => $result['data'] ?? [],
-        ];
+        return $this->tasksUnavailable($taskUiResult, ($taskUiResult['success'] ?? false) ? 200 : null);
     }
 
     public function start(string $taskId, array $options = []): array
@@ -62,7 +46,7 @@ class ScrapeTaskService
             return $taskUiStart;
         }
 
-        return $this->starter->startCrawlerFallbackTask($taskId, $options, $taskUiStart);
+        return $taskUiStart;
     }
 
     private function listTaskUiTasks(): array

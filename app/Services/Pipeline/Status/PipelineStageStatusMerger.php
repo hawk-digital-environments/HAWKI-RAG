@@ -39,6 +39,11 @@ readonly class PipelineStageStatusMerger
     public function overallStatus(array $scrape, array $convert, array $ingest): string
     {
         $statuses = [$scrape['status'], $convert['status'], $ingest['status']];
+        foreach (['cancelled', 'paused'] as $status) {
+            if (in_array($status, $statuses, true)) {
+                return $status;
+            }
+        }
         if (in_array('failed', $statuses, true)) {
             return 'failed';
         }

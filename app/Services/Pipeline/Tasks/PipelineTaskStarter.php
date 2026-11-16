@@ -9,6 +9,7 @@ use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Exceptions\CrawlerAuthorityException;
+use App\Services\Pipeline\PipelineOwnership;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -38,6 +39,7 @@ readonly class PipelineTaskStarter
         private PipelineTaskStatusRefresher $refresher,
         private PythonTemporalBridgeClient $temporalBridge,
         private ConfigRepository $config,
+        private PipelineOwnership $ownership,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -46,8 +48,15 @@ readonly class PipelineTaskStarter
      */
     public function start(array $input): PipelineTask
     {
-        if ($this->config->get('config.crawler_ingestion_backend', 'laravel') !== 'laravel') {
+        if ($this->config->get('config.pipeline_execution_backend', 'laravel') !== 'laravel') {
             throw CrawlerAuthorityException::pythonOwned();
+        }
+        $taskId = $this->input->nullableString($input['task_id'] ?? $input['taskId'] ?? null);
+        if ($taskId !== null && $this->config->get('config.crawler_ingestion_backend', 'laravel') === 'python') {
+            $owner = $this->ownership->classify('task_id', $taskId, allowAbsent: true);
+            if ($owner['status'] !== 200 || ($owner['payload']['owner'] ?? null) !== 'absent') {
+                throw CrawlerAuthorityException::pythonOwned();
+            }
         }
         [$task, $prepared] = $this->transactions->run(function () use ($input): array {
             $dataset = $this->datasets->ensure($input);

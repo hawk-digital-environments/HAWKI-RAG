@@ -14,7 +14,7 @@ readonly class PipelineOwnership
     public function __construct(private PythonUrlIngestionClient $python, private PipelineOwnershipRepository $legacy) {}
 
     /** A remote absence requires positive local evidence before legacy dispatch. */
-    public function classify(string $field, string $identity): array
+    public function classify(string $field, string $identity, bool $allowAbsent = false): array
     {
         $remote = $this->python->relay(json_encode([$field => $identity], JSON_THROW_ON_ERROR), 'ownership');
         if ($remote['status'] !== 200) {
@@ -30,6 +30,10 @@ readonly class PipelineOwnership
         }
         if (in_array($owner, ['absent', 'laravel'], true) && $this->legacy->owns($field, $identity)) {
             return ['status' => 200, 'payload' => ['owner' => 'laravel']];
+        }
+
+        if ($allowAbsent && $owner === 'absent' && ! $this->legacy->exists($field, $identity)) {
+            return $remote;
         }
 
         return $this->failure('Pipeline ownership is unknown or conflicting.');

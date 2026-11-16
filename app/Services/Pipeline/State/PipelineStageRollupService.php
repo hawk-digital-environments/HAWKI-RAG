@@ -50,6 +50,11 @@ readonly class PipelineStageRollupService
         if ($statuses === []) {
             return PipelineJob::STATUS_PENDING;
         }
+        foreach (['cancelled', 'paused'] as $status) {
+            if (in_array($status, $statuses, true)) {
+                return $status === 'paused' ? PipelineJob::STATUS_RUNNING : PipelineJob::STATUS_FAILED;
+            }
+        }
         if (array_intersect($statuses, [
             PipelineJob::STATUS_PENDING,
             PipelineJob::STATUS_RUNNING,

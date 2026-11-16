@@ -91,6 +91,7 @@ def test_openapi_exposes_health_and_query_only() -> None:
         "/v1/documents/{document_id}",
         "/v1/pipeline/tasks/start",
         "/v1/pipeline/tasks/{task_id}",
+        "/v1/pipeline/tasks/{task_id}/cancel",
         "/v1/pipeline/sources/{source_id}",
         "/v1/pipeline/sources/{source_id}/recrawl",
         "/v1/pipeline/recovery/{path}",

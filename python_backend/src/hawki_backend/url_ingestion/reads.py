@@ -25,13 +25,18 @@ def tasks(service, principal, *, limit=30):
         rows = list(
             connection.execute(
                 sa.select(requests)
-                .where(requests.c.tenant_id == principal.tenant_id)
+                .where(
+                    requests.c.tenant_id == principal.tenant_id,
+                    requests.c.purpose == "start",
+                )
                 .order_by(requests.c.created_at.desc(), requests.c.task_id)
             ).mappings()
         )
     result = []
     for row in rows:
         if allowed(service, principal, row["dataset_id"]):
+            if (row.get("task_command") or {}).get("state") == "deleted":
+                continue
             classify(service.repository, {"task_id": row["task_id"]})
             result.append(service.task_payload(principal, row["task_id"])["task"])
             if len(result) == limit:
@@ -317,6 +322,10 @@ def other_tasks(service, principal):
 def task(service, principal, task_id):
     owner = classify(service.repository, {"task_id": task_id})
     if owner == "url":
+        row, _ = service.repository.task(principal.tenant_id, task_id)
+        service.authorize(principal, row["dataset_id"])
+        if (row.get("task_command") or {}).get("state") == "deleted":
+            raise UrlIngestionError(404, "URL task was deleted.")
         return service.task_payload(principal, task_id)
     candidates = [
         item for item in other_tasks(service, principal) if item["task_id"] == task_id

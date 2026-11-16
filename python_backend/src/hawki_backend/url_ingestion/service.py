@@ -239,7 +239,7 @@ class UrlIngestionService:
             content_identity={"version": 1, "status": "unknown"},
             retired=False,
         )
-        if request["purpose"] == "delete":
+        if request["purpose"] in {"delete", "cancel"}:
             return row
         scope = (
             self.query_settings.resolve_scope(
@@ -310,7 +310,7 @@ class UrlIngestionService:
         # manifest/artifact path stays unchanged across recrawl generations.
         return row
 
-    async def resume(self, operation: dict) -> None:
+    async def resume(self, operation: dict, *, retirement_only: bool = False) -> None:
         if operation["stage"] == "completed":
             return
         if self.control is None:
@@ -322,7 +322,11 @@ class UrlIngestionService:
                 )
                 if operation["stage"] in {"fenced", "drained"}:
                     owners = self.repository.snapshot(operation, drained=False)
+                    submitted = []
                     for old in owners:
+                        if self.repository.close_unsubmitted(old):
+                            continue
+                        submitted.append(old)
                         run_id = old["run_id"]
                         if run_id is None:
                             # A delayed uncertain start remains the same durable
@@ -341,10 +345,20 @@ class UrlIngestionService:
                     # Workflow closure cannot prove that a remote writer stopped.
                     # No sink cleanup, schedule mutation, or artifact unlink is
                     # permitted until every old remote job is proven quiescent.
-                    for old in owners:
+                    for old in submitted:
                         self.quiescence.ensure(old)
                     self.repository.snapshot(operation, drained=True)
                     operation = self.repository.advance(operation, "drained")
+                    if operation["purpose"] == "cancel":
+                        # Same fencing/Temporal/quiescence protocol as deletion,
+                        # but cancellation never invokes sink or artifact cleanup.
+                        for old in owners:
+                            if old["schedule_id"]:
+                                await self.control.port.delete_schedule(
+                                    schedule_id=old["schedule_id"]
+                                )
+                        self.repository.advance(operation, "completed")
+                        return
                     for old in owners:
                         self.cleanup.delete(
                             old, operation["url_ingestion_operation_id"]
@@ -360,6 +374,8 @@ class UrlIngestionService:
                         operation,
                         "completed" if operation["purpose"] == "delete" else "prepared",
                     )
+                if retirement_only:
+                    return
                 if operation["stage"] in {"prepared", "dispatched"}:
                     operation = self.repository.dispatch_owner(operation)
                     if (
@@ -461,7 +477,9 @@ class UrlIngestionService:
                 generation=row["generation"],
                 temporal_workflow_id=row.get("workflow_id"),
                 status=(
-                    "failed"
+                    "cancelled"
+                    if (row.get("completion") or {}).get("status") == "cancelled"
+                    else "failed"
                     if (row.get("completion") or {}).get("status")
                     in {"failed", "skipped"}
                     else "completed"
@@ -501,7 +519,15 @@ class UrlIngestionService:
                 jobs=jobs,
                 total_jobs=len(jobs),
                 status=(
-                    "running"
+                    (
+                        "cancelling"
+                        if task["task_command"]["state"] == "pending"
+                        else "cancelled"
+                    )
+                    if (task.get("task_command") or {}).get("action") == "cancel"
+                    else "deleting"
+                    if (task.get("task_command") or {}).get("action") == "delete"
+                    else "running"
                     if any(job["status"] == "running" for job in jobs)
                     else "failed"
                     if any(job["status"] == "failed" for job in jobs)
@@ -559,8 +585,28 @@ class UrlIngestionService:
         if expected.exists():
             raise UrlIngestionError(503, "Artifact deletion was not verified.")
 
+    async def cancel_task(
+        self, principal: AuthenticatedPrincipal, task_id: str, key: str | None = None
+    ) -> tuple[int, dict]:
+        from .task_commands import execute
+
+        return await execute(self, principal, task_id, "cancel")
+
+    async def delete_task(
+        self, principal: AuthenticatedPrincipal, task_id: str, key: str | None = None
+    ) -> tuple[int, dict]:
+        from .task_commands import execute
+
+        return await execute(self, principal, task_id, "delete")
+
     async def delete(
-        self, principal: AuthenticatedPrincipal, source_id: str, key: str | None
+        self,
+        principal: AuthenticatedPrincipal,
+        source_id: str,
+        key: str | None,
+        *,
+        task_command_id: str | None = None,
+        expected_generation: int | None = None,
     ) -> tuple[int, dict]:
         source = self.repository.source(principal.tenant_id, source_id)
         self.authorize(principal, source["dataset_id"])
@@ -581,7 +627,12 @@ class UrlIngestionService:
                 values,
                 [(source["original_url"], source["normalized_url"])],
                 lambda row, request: self._candidate(row, request, {}),
-                expected_generations={source_id: source["generation"]},
+                expected_generations={
+                    source_id: source["generation"]
+                    if expected_generation is None
+                    else expected_generation
+                },
+                task_command_id=task_command_id,
             )
         except (StoreNotFoundError, StoreInactiveError):
             raise UrlIngestionError(
@@ -605,6 +656,13 @@ class UrlIngestionService:
         """Claim and resume one deterministic delete without user authorization."""
 
         source = self.repository.source(tenant_id, source_id)
+        if source["status"] in {"deleting", "cancelling"}:
+            # Dataset archive cleanup composes an accepted user command before
+            # claiming its own deletion; it cannot allocate a competing fence.
+            await self.resume(
+                self.repository.generation(source["pending_operation_id"])
+            )
+            source = self.repository.source(tenant_id, source_id)
         if source["status"] == "deleted":
             return
         delete_generation = source["generation"]

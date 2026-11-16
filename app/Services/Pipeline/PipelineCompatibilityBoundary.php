@@ -39,7 +39,25 @@ readonly class PipelineCompatibilityBoundary
             return $this->failure(502, 'Invalid pipeline projection.');
         }
         $field = $kind === 'tasks' ? 'task_id' : 'job_id';
+        $unique = [];
+        foreach ($remote['payload'][$kind] as $row) {
+            $identity = $row[$field] ?? null;
+            if (! is_string($identity) || $identity === '') {
+                return $this->failure(502, 'Invalid pipeline identity.');
+            }
+            if (isset($unique[$identity]) && $unique[$identity] !== $row) {
+                return $this->failure(409, 'Conflicting pipeline projections.');
+            }
+            $unique[$identity] = $row;
+        }
+        $remote['payload'][$kind] = array_values($unique);
         $candidates = $kind === 'tasks' ? $this->legacy->tasks() : $this->legacy->jobs($filters['task_id'] ?? $filters['taskId'] ?? null, $filters['dataset_id'] ?? $filters['datasetId'] ?? null, recoverableOnly: true);
+        foreach ($candidates as $candidate) {
+            $classification = $this->ownership->classify($field, $candidate[$field]);
+            if ($classification['status'] !== 200) {
+                return $classification;
+            }
+        }
         $access = $this->access($user, $candidates, $field);
         if ($access['status'] !== 200) {
             return $access;
@@ -62,9 +80,15 @@ readonly class PipelineCompatibilityBoundary
                 $seen[$identity] = true;
             }
         }
-        // Both backends use timestamp DESC, then durable public identity ASC.
+        $pythonIds = array_fill_keys(array_column($remote['payload'][$kind], $field), true);
+        // Python rows precede legacy rows; each partition has stable ordering.
+        // The global limit is applied only after authorization and merging.
         $time = $kind === 'tasks' ? 'started_at' : 'timestamp';
-        usort($rows, static function (array $a, array $b) use ($field, $time): int {
+        usort($rows, static function (array $a, array $b) use ($field, $time, $pythonIds): int {
+            $partition = (int) isset($pythonIds[$b[$field]]) <=> (int) isset($pythonIds[$a[$field]]);
+            if ($partition !== 0) {
+                return $partition;
+            }
             $left = empty($a[$time]) ? -INF : (float) (new \DateTimeImmutable($a[$time]))->format('U.u');
             $right = empty($b[$time]) ? -INF : (float) (new \DateTimeImmutable($b[$time]))->format('U.u');
 
@@ -78,6 +102,18 @@ readonly class PipelineCompatibilityBoundary
     public function recover(User $user, Request $request): array
     {
         $path = substr($request->path(), strlen('api/'));
+        if (is_string($request->route('taskId'))) {
+            $owner = $this->ownership->classify('task_id', $request->route('taskId'));
+            if ($owner['status'] !== 200) {
+                return $owner;
+            }
+            if ($owner['payload']['owner'] === 'url') {
+                return $this->python->forward($user, 'POST', $path, $request->all(), $request->header('Idempotency-Key'));
+            }
+            if ($owner['payload']['owner'] !== 'laravel') {
+                return $this->failure(409, 'Use the owning document or text recovery API.');
+            }
+        }
         $selected = str_ends_with($path, '/jobs/retry-selected');
         $single = is_string($request->route('jobId'));
         if ($selected) {

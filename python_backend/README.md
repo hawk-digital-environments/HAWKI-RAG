@@ -927,3 +927,21 @@ HAWKI_BACKEND_DB_DSN='<disposable PostgreSQL DSN ending in _test>' \
 
 See the [Epoch 12 runbook](../_documentation/Operations/python_dataset_authority.md)
 for the coordinated migration, verification and rollback procedure.
+
+## Epoch 13 pipeline execution (opt-in)
+
+`PIPELINE_EXECUTION_BACKEND=laravel` remains the default. Selecting `python`
+requires the existing Python crawler and workflow-control configuration plus URL
+readiness. The BFF forwards new URL starts without Laravel execution rows.
+Existing task commands always use durable ownership during the crawler boundary's
+legacy drain, including after rolling back only the pipeline execution selector.
+
+Migration `0008` adds task command intent to URL requests and explicit cancelled
+source/generation semantics. Task cancel reuses fencing and quiescence while
+retaining indexed data; task delete composes the existing per-source deletion
+protocol. The URL scheduler resumes interrupted commands. No Python pipeline
+model, Laravel mirrors or second task recovery protocol is introduced.
+
+See the [execution and rollback runbook](../_documentation/Operations/python_pipeline_execution.md)
+for activation requirements, ownership rules, cancellation/deletion invariants,
+legacy admin availability, catalog behavior and health/drain fields.

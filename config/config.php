@@ -18,6 +18,7 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
+    'pipeline_execution_backend' => env('PIPELINE_EXECUTION_BACKEND', 'laravel'),
     'crawler_ingestion_backend' => env('CRAWLER_INGESTION_BACKEND', 'laravel'),
     'python_url_ingestion_url' => env('HAWKI_PYTHON_URL_INGESTION_URL', 'http://hawki_backend'),
     'managed_document_backend' => env('MANAGED_DOCUMENT_BACKEND', 'laravel'),

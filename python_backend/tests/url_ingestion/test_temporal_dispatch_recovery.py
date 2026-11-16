@@ -406,3 +406,77 @@ def test_real_temporal_concurrent_first_and_recovery_rpc_share_one_run(live, rac
             await terminate(client, row["workflow_id"])
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("action", ["cancel", "delete"])
+@pytest.mark.parametrize("receipt_lost", [False, True])
+@pytest.mark.parametrize("recrawl", [False, True])
+def test_real_temporal_task_command_drains_exact_run_and_replays_after_lost_cancel_receipt(
+    live, action, receipt_lost, recrawl
+):
+    env, row, settings = live
+
+    async def scenario():
+        client = await connect(settings)
+        try:
+            async with Worker(
+                client,
+                task_queue=settings.workflow_task_queue,
+                workflows=[DispatchProbe],
+                workflow_runner=UnsandboxedWorkflowRunner(),
+            ):
+                await env.service.resume(row)
+                selected = row
+                if recrawl:
+                    from hawki_backend.url_ingestion.validation import UrlStartInput
+
+                    original = env.repository.task("default", selected["task_id"])[0]
+                    original_body = dict(original["body"], task_id=None)
+                    _, payload = await env.service.start(
+                        env.principal,
+                        UrlStartInput.model_validate(original_body),
+                        "real-recrawl",
+                    )
+                    selected = env.repository.task("default", payload["task_id"])[1][0]
+                before = env.repository.generation(
+                    selected["url_ingestion_operation_id"]
+                )
+                invoke = getattr(env.service, action + "_task")
+                if receipt_lost:
+                    cancel = env.port.cancel_workflow_and_wait
+
+                    async def lost(**kwargs):
+                        await cancel(**kwargs)
+                        raise ProcessStopped()
+
+                    with patch.object(
+                        env.port, "cancel_workflow_and_wait", side_effect=lost
+                    ):
+                        with pytest.raises(ProcessStopped):
+                            await invoke(env.principal, selected["task_id"])
+                    assert (
+                        env.repository.task("default", selected["task_id"])[0][
+                            "task_command"
+                        ]["state"]
+                        == "pending"
+                    )
+                assert (await invoke(env.principal, selected["task_id"]))[0] == 200
+                assert (await invoke(env.principal, selected["task_id"]))[0] == 200
+                description = await client.get_workflow_handle(
+                    selected["workflow_id"]
+                ).describe()
+                assert description.run_id == before["run_id"]
+                assert description.status.name == "CANCELED"
+                assert env.repository.source("default", row["source_id"])["status"] == (
+                    "cancelled" if action == "cancel" else "deleted"
+                )
+                assert env.port.start_ingest_workflow.await_count == (
+                    2 if recrawl else 1
+                )
+                assert env.service.cleanup.delete.call_count == int(recrawl) + int(
+                    action == "delete"
+                )
+        finally:
+            await terminate(client, row["workflow_id"])
+
+    asyncio.run(scenario())

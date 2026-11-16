@@ -58,7 +58,9 @@ async def tick(service, *, limit: int = 100) -> list[dict]:
                 ).limit(limit)
             ).mappings()
         )
-    results = []
+    from .task_commands import reconcile
+
+    results = await reconcile(service)
     for operation in pending:
         try:
             await service.resume(dict(operation))

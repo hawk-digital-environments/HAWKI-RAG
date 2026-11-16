@@ -581,3 +581,96 @@ def test_dispatch_recovery_holds_source_lock_until_receipt_is_persisted(
     assert pg.port.start_ingest_workflow.await_count == (
         1 if mutation == "delete" else 2
     )
+
+
+def test_concurrent_task_cancel_resumes_same_intent_and_fence(pg):
+    task = create(pg)
+    selected = Barrier(2)
+
+    def cancel(_):
+        selected.wait(timeout=10)
+        try:
+            return asyncio.run(pg.service.cancel_task(pg.principal, task["task_id"]))[0]
+        except UrlIngestionError as error:
+            return error.status
+
+    with ThreadPoolExecutor(2) as pool:
+        statuses = list(pool.map(cancel, range(2)))
+    assert 200 in statuses
+    assert set(statuses) <= {200, 202}
+    asyncio.run(pg.service.cancel_task(pg.principal, task["task_id"]))
+    row, children = pg.repository.task("default", task["task_id"])
+    assert row["task_command"]["state"] == "cancelled"
+    assert pg.repository.source("default", children[0]["source_id"])["generation"] == 2
+    with pg.engine.connect() as connection:
+        assert (
+            connection.scalar(sa.select(sa.func.count()).select_from(generations)) == 2
+        )
+    pg.port.start_ingest_workflow.assert_awaited_once()
+
+
+def test_task_cancel_delete_race_accepts_only_one_pending_intent(pg):
+    from hawki_backend.url_ingestion.task_commands import accept
+
+    task = create(pg)
+    selected = Barrier(2)
+
+    def claim(action):
+        selected.wait(timeout=10)
+        try:
+            return accept(pg.service, pg.principal, task["task_id"], action)[
+                "task_command"
+            ]["action"]
+        except UrlIngestionError as error:
+            return error.status
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(claim, ["cancel", "delete"]))
+    assert results.count(409) == 1
+    winner = next(result for result in results if isinstance(result, str))
+    asyncio.run(getattr(pg.service, winner + "_task")(pg.principal, task["task_id"]))
+    assert pg.repository.task("default", task["task_id"])[0]["task_command"][
+        "state"
+    ] == ("deleted" if winner == "delete" else "cancelled")
+
+
+def test_task_delete_intent_reserves_source_before_fencing_against_recrawl(pg):
+    from hawki_backend.url_ingestion.task_commands import accept
+
+    task = create(pg)
+    accept(pg.service, pg.principal, task["task_id"], "delete")
+    with ThreadPoolExecutor(1) as pool:
+        with pytest.raises(UrlIngestionError) as caught:
+            pool.submit(create, pg, "recrawl-race").result(timeout=10)
+    assert caught.value.status == 409
+    asyncio.run(pg.service.delete_task(pg.principal, task["task_id"]))
+    old = generation(pg, task)
+    assert pg.repository.source("default", old["source_id"])["status"] == "deleted"
+
+
+def test_schema_downgrade_refuses_to_discard_task_intent_before_first_fence(pg):
+    from hawki_backend.url_ingestion.task_commands import accept
+
+    task = create(pg)
+    accept(pg.service, pg.principal, task["task_id"], "cancel")
+    with pytest.raises(
+        sa.exc.DBAPIError, match="task command authority must be retained"
+    ):
+        command.downgrade(
+            Config(str(Path(__file__).resolve().parents[2] / "alembic.ini")), "0007"
+        )
+    row, _ = pg.repository.task("default", task["task_id"])
+    assert row["task_command"]["state"] == "pending"
+    assert asyncio.run(pg.service.cancel_task(pg.principal, task["task_id"]))[0] == 200
+
+
+@pytest.mark.parametrize("action", ["cancel", "delete"])
+@pytest.mark.parametrize("unfinished", [False, True])
+def test_postgres_recrawl_task_command_recovers_retirement(pg, action, unfinished):
+    from .test_task_commands import (
+        test_recrawl_task_commands_finish_retirement_and_resume_on_scheduler,
+    )
+
+    test_recrawl_task_commands_finish_retirement_and_resume_on_scheduler(
+        pg, action, unfinished
+    )

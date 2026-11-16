@@ -9,9 +9,11 @@ use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 #[Singleton]
 readonly class PipelineTaskJobUpdater
@@ -22,15 +24,21 @@ readonly class PipelineTaskJobUpdater
         private ActivePipelineJobsQuery $jobs,
         private PipelineJobCreationRepository $jobCreation,
         private PipelineTaskStatusRefresher $refresher,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private Repository $config,
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      */
     public function upsertJob(string $taskId, array $input): PipelineJob
     {
+        // The drain endpoint has no editable metadata keys. Ownership and
+        // recovery evidence are retained exactly as stored by legacy authority.
+        if ($this->config->get('config.pipeline_execution_backend', 'laravel') === 'python'
+            && ! empty($input['metadata'])) {
+            throw new ConflictHttpException('Legacy drain updates cannot modify job metadata.');
+        }
         $task = $this->taskRepository->findByTaskIdOrFail($taskId);
         $jobId = $this->input->jobId($input);
         $status = $this->input->jobStatus($input['status'] ?? null);
@@ -57,6 +65,7 @@ readonly class PipelineTaskJobUpdater
                 'finished_at' => $this->input->isTerminalStatus($status) ? $this->now() : null,
                 'metadata' => $metadata,
             ],
+            existingOnly: $this->config->get('config.pipeline_execution_backend', 'laravel') === 'python',
         );
 
         $this->refresher->recalculate($task);
