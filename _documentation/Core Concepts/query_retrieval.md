@@ -200,10 +200,12 @@ and failure fallback. The standalone `hawki_reranker` HTTP service remains the
 legacy backend; the external IxDLab gateway owns hosted routing.
 
 Request mode overrides the server default; `RERANKER_MODE=none` is not a global
-kill switch because internal search explicitly requests `external`. For IxDLab
-`litellm_proxy/jina-rerank`, retryable SDK failures get one attempt at
-`litellm_proxy/jlu/jina-rerank` on the same gateway/key. Authentication and
-configuration errors do not trigger another inference. Both failures retain the
+kill switch because internal search explicitly requests `external`. The fallback
+is explicit configuration: `RERANKER_FALLBACK_MODEL` names another
+`litellm_proxy/` alias on the same gateway/key (IxDLab example:
+`litellm_proxy/jlu/jina-rerank`); unset, empty, or `none` disables it. Retryable
+SDK failures get one attempt at that alias. Authentication and configuration
+errors do not trigger another inference. Both failures retain the
 original reranking input for downstream selection. Gateway failover has not been
 independently verified; application fallback cannot cover gateway-wide outages.
 See [configuration](../Operations/5_environment_db_queue.md#reranker-and-retrieval-controls)

@@ -247,9 +247,9 @@ without booting anything: `make gateway-render`, or
 | `RERANKER_PROVIDER` | `cohere` | External backend: legacy HTTP (`cohere`), in-process CrossEncoder (`local`), or LiteLLM SDK (`litellm`) |
 | `HAWKI_RERANKER_MODEL` | Code fallback `mixedbread-ai/mxbai-rerank-base-v1` | Model for bridge-local and the standalone HTTP service |
 | `HAWKI_RERANKER_PRELOAD` | Code fallback `true` | Standalone service startup preload; bridge-local stays lazy |
-| `RERANKER_MODEL` | Empty | SDK model, e.g. `litellm_proxy/jina-rerank` |
+| `RERANKER_MODEL` | Empty | SDK model, e.g. `litellm_proxy/jina-rerank`; must carry a rerank-capable provider prefix, rejected at startup otherwise |
 | `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` | Empty | SDK gateway endpoint and virtual key; IxDLab base is `https://ai.ixdlab.hawk.de`; a trailing `/v1` is stripped automatically |
-| `RERANKER_FALLBACK_MODEL` | Unset | For the IxDLab Jina primary only: default JLU; `none` or empty disables application fallback; another `litellm_proxy/` alias overrides it |
+| `RERANKER_FALLBACK_MODEL` | Unset | Explicit retryable-failure fallback; requires a `litellm_proxy/` primary and another `litellm_proxy/` alias on the same gateway; unset/empty/`none` disables. IxDLab example: `litellm_proxy/jlu/jina-rerank` |
 | `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty key; model override commented | Legacy direct-Jina mode; runtime model default `jina-reranker-v2-base-multilingual` |
 
 `cohere` describes the legacy HTTP compatibility path, not hosted Cohere inference.
@@ -265,13 +265,15 @@ service remains supported; changing the shared model variable in production
 changes both services if both consume it. Root Compose needs a service override
 to pass a custom standalone model; production already uses `env_file`.
 
-For IxDLab primary `litellm_proxy/jina-rerank`, the bridge defaults to one
-retryable-error attempt at `litellm_proxy/jlu/jina-rerank`, using the same gateway
-and key. Authentication/configuration failures do not trigger that attempt. If
-both fail, original retrieval hits continue through existing filtering. Gateway
-failover is operator-reported, not independently verified; set
-`RERANKER_FALLBACK_MODEL=none` when relying on confirmed gateway failover to avoid
-repeated attempts. This does not protect against gateway-wide outages. See the
+The fallback is explicit configuration, not derived from the gateway address:
+set `RERANKER_FALLBACK_MODEL` to another `litellm_proxy/` alias on the same
+gateway and key (IxDLab example: `litellm_proxy/jlu/jina-rerank`) for one
+retryable-error attempt after a primary failure; leave it unset, empty, or
+`none` to disable it. Authentication/configuration failures never trigger that
+attempt. If both fail, original retrieval hits continue through existing
+filtering. Gateway failover is operator-reported, not independently verified;
+unset the fallback when relying on confirmed gateway failover to avoid repeated
+attempts. This does not protect against gateway-wide outages. See the
 [bridge configuration and examples](../../python_rag/services/hawki_bridge/README.md#production-reranking-backends)
 for eligible errors, per-attempt timeouts, and local build commands.
 

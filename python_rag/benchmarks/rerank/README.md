@@ -113,11 +113,12 @@ on 2026-11-16 confirmed `jina-rerank`, `jlu/jina-rerank`, and
 Use the routing group `jina-rerank` for normal runs, not a concrete deployment/model ID.
 The gateway operator describes a 2:1 priority toward the IxDLab model with JLU
 fallback; HAWKI-RAG does not independently verify or configure that gateway policy.
-Production bridge composition separately defaults to one retryable-error JLU attempt
-for this IxDLab primary on the same gateway/key, not for authentication or configuration
-errors; `RERANKER_FALLBACK_MODEL=none` disables it when gateway
-failover is verified. Benchmark clients do not apply that production default, so
-individual model latency/quality measurements remain explicit. See the bridge
+Production bridge composition applies one retryable-error fallback attempt only
+when `RERANKER_FALLBACK_MODEL` explicitly names another `litellm_proxy/` alias on
+the same gateway/key — not for authentication or configuration errors. Unsetting
+it (or `none`) disables the attempt. Benchmark clients do not apply any
+production fallback, so individual model latency/quality measurements remain
+explicit. See the bridge
 README for the production fallback policy and override setting. Neither attempt
 protects against gateway-wide outages. Successful synthetic calls to the primary
 and explicit JLU aliases on 2026-11-16 verified access, not gateway failover.

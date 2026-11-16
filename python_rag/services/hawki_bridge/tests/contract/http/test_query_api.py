@@ -536,9 +536,10 @@ def test_production_backend_failures_continue_query(
 
 
 @pytest.mark.parametrize(
-    "outcome", ["primary_success", "jlu_success", "both_fail", "auth_error", "disabled"]
+    "outcome",
+    ["primary_success", "fallback_success", "both_fail", "auth_error", "disabled"],
 )
-def test_production_ixdlab_fallback_preserves_query_policy(
+def test_production_gateway_fallback_preserves_query_policy(
     production_query_client, outcome, caplog
 ):
     import litellm
@@ -559,15 +560,15 @@ def test_production_ixdlab_fallback_preserves_query_policy(
         gateway_base="https://ai.ixdlab.hawk.de",
         primary_error=error,
         fallback_error=timeout if outcome == "both_fail" else None,
-        fallback_override="none" if outcome == "disabled" else None,
+        fallback_override="none" if outcome == "disabled" else fallback,
     )
     response = client.post("/query", json=body)
     assert response.status_code == 200
-    retried = outcome in {"jlu_success", "both_fail"}
+    retried = outcome in {"fallback_success", "both_fail"}
     assert [call["model"] for call in calls] == (
         [primary, fallback] * 2 if retried else [primary] * 2
     )
-    success = outcome in {"primary_success", "jlu_success"}
+    success = outcome in {"primary_success", "fallback_success"}
     assert [h["id"] for h in response.json()["hits"]] == (
         ["second", "first"] if success else ["first", "second"]
     )

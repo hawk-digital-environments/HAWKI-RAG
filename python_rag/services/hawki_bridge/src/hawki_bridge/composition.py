@@ -42,6 +42,18 @@ def _gateway_base(url: str) -> str:
     return base[: -len("/v1")] if base.endswith("/v1") else base
 
 
+def _resolve_fallback_model(settings: BridgeSettings) -> str | None:
+    """Resolve the explicit fallback alias; unset, blank or none disables it."""
+    configured = settings.reranker_fallback_model
+    if configured is None or not configured.strip() or configured.lower() == "none":
+        return None
+    if not settings.sdk_reranker_model.startswith("litellm_proxy/"):
+        raise ValueError("RERANKER_FALLBACK_MODEL requires a litellm_proxy/ primary")
+    if not configured.startswith("litellm_proxy/") or configured == "litellm_proxy/":
+        raise ValueError("Fallback must use the same LiteLLM gateway")
+    return configured
+
+
 def build_query_dependencies(
     settings: BridgeSettings | None = None,
 ) -> QueryDependencies:
@@ -75,26 +87,9 @@ def build_query_dependencies(
                 api_base=_gateway_base(active.reranker_gateway_base),
                 api_key=active.reranker_gateway_key,
             )
-        fallback_model = None
-        if (
-            active.sdk_reranker_model == "litellm_proxy/jina-rerank"
-            and active.reranker_gateway_base.rstrip("/")
-            in {"https://ai.ixdlab.hawk.de", "https://ai.ixdlab.hawk.de/v1"}
-        ):
-            configured = active.reranker_fallback_model
-            fallback_model = (
-                "litellm_proxy/jlu/jina-rerank" if configured is None else configured
-            )
-            if not fallback_model or fallback_model.lower() == "none":
-                fallback_model = None
-            elif (
-                not fallback_model.startswith("litellm_proxy/")
-                or fallback_model == "litellm_proxy/"
-            ):
-                raise ValueError("Fallback must use the same LiteLLM gateway")
         client = LiteLLMReranker(
-            active.sdk_reranker_model,
-            fallback_model=fallback_model,
+            model,
+            fallback_model=_resolve_fallback_model(active),
             rerank_fn=partial(litellm.rerank, **options),
         )
         rank = partial(rerank_hits, reranker=client)
