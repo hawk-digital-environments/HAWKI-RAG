@@ -77,6 +77,28 @@ def test_gateway_key_is_not_in_settings_repr():
 
 
 @pytest.mark.parametrize(
+    "base",
+    [
+        "https://gateway.invalid",
+        "https://gateway.invalid/",
+        "https://gateway.invalid/v1",
+        "https://gateway.invalid/v1/",
+    ],
+)
+def test_gateway_base_is_normalized_for_the_sdk_transport(base):
+    env = {
+        "RERANKER_PROVIDER": "litellm",
+        "RERANKER_MODEL": "litellm_proxy/jina-rerank",
+        "LITELLM_PROXY_API_BASE": base,
+        "LITELLM_PROXY_API_KEY": "test-placeholder",
+    }
+    deps = composition.build_query_dependencies(load_settings(env))
+    client = deps.rerank_hits.keywords["reranker"]
+    # LiteLLM appends /v1/rerank itself; a preconfigured /v1 must not double.
+    assert client._rerank_fn.keywords["api_base"] == "https://gateway.invalid"
+
+
+@pytest.mark.parametrize(
     "model,base,override,expected",
     [
         (

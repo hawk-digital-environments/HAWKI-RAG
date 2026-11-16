@@ -248,7 +248,7 @@ without booting anything: `make gateway-render`, or
 | `HAWKI_RERANKER_MODEL` | Code fallback `mixedbread-ai/mxbai-rerank-base-v1` | Model for bridge-local and the standalone HTTP service |
 | `HAWKI_RERANKER_PRELOAD` | Code fallback `true` | Standalone service startup preload; bridge-local stays lazy |
 | `RERANKER_MODEL` | Empty | SDK model, e.g. `litellm_proxy/jina-rerank` |
-| `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` | Empty | SDK gateway endpoint and virtual key; IxDLab base is `https://ai.ixdlab.hawk.de` |
+| `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` | Empty | SDK gateway endpoint and virtual key; IxDLab base is `https://ai.ixdlab.hawk.de`; a trailing `/v1` is stripped automatically |
 | `RERANKER_FALLBACK_MODEL` | Unset | For the IxDLab Jina primary only: default JLU; `none` or empty disables application fallback; another `litellm_proxy/` alias overrides it |
 | `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty key; model override commented | Legacy direct-Jina mode; runtime model default `jina-reranker-v2-base-multilingual` |
 

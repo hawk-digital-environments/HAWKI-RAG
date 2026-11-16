@@ -491,6 +491,21 @@ def test_production_backends_rank_expand_and_generate(
                 assert "api_base" not in call and "api_key" not in call
 
 
+@pytest.mark.parametrize(
+    "gateway_base", ["https://gateway.invalid/v1", "https://gateway.invalid/v1/"]
+)
+def test_gateway_base_v1_suffix_is_normalized_before_sdk_dispatch(
+    production_query_client, gateway_base
+):
+    client, body, calls, *_ = production_query_client(
+        "litellm", "litellm_proxy/jina-rerank", gateway_base=gateway_base
+    )
+    response = client.post("/query", json=body)
+    assert response.status_code == 200, response.text
+    assert calls
+    assert all(call["api_base"] == "https://gateway.invalid" for call in calls)
+
+
 @pytest.mark.parametrize("backend", ["local", "litellm"])
 def test_production_disabled_override_skips_inference(production_query_client, backend):
     client, body, calls, names, *_ = production_query_client(

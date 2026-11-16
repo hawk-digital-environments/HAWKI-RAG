@@ -11,6 +11,12 @@ from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.settings import BridgeSettings, load_settings
 
 
+def _gateway_base(url: str) -> str:
+    """Normalize a gateway base; LiteLLM appends /v1/rerank itself."""
+    base = url.rstrip("/")
+    return base[: -len("/v1")] if base.endswith("/v1") else base
+
+
 def build_query_dependencies(
     settings: BridgeSettings | None = None,
 ) -> QueryDependencies:
@@ -34,7 +40,7 @@ def build_query_dependencies(
                     "SDK gateway reranking requires a configured base and key"
                 )
             options.update(
-                api_base=active.reranker_gateway_base.rstrip("/"),
+                api_base=_gateway_base(active.reranker_gateway_base),
                 api_key=active.reranker_gateway_key,
             )
         fallback_model = None
