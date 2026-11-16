@@ -92,7 +92,7 @@ check service availability and snapshot coverage before treating graph examples 
 
 Each candidate preserves its original point ID, stable identity, metadata (including
 document/chunk IDs), fused retrieval score, zero-based order, and the exact sanitized
-text sent to rerankers. Text uses the existing 2,000-character extraction limit;
+text sent to rerankers. Text is sanitized without an arbitrary character cutoff;
 sanitization is not anonymization. Never commit private snapshots or reports.
 `collected/` and `evaluation-results/` are ignored; capture refuses to overwrite a file.
 
@@ -155,3 +155,14 @@ LITELLM_LOCAL_MODEL_COST_MAP=True PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   .venv/bin/python -B -m pytest -q -p no:cacheprovider \
   benchmarks/rerank/test_evaluation.py benchmarks/rerank/test_benchmark.py
 ```
+
+The metric engine, Pydantic result boundaries, standard qrels/run exports, and
+library selection are described in [Evaluation method](README.md#evaluation-method-and-typed-boundaries).
+`qrels.json` includes only completely judged queries; `runs.json` retains measured
+runs separately per model/repetition. Candidate IDs and original labels are unchanged.
+
+Production bridge fallback is separate from this single-model evaluator: primary
+`litellm_proxy/jina-rerank` may get one application retry at
+`litellm_proxy/jlu/jina-rerank` on eligible errors. `RERANKER_FALLBACK_MODEL` is
+read by bridge composition, not this CLI. Gateway-managed failover remains
+unverified; successful synthetic access tests do not establish that policy.

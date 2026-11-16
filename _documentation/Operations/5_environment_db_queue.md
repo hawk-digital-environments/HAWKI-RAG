@@ -79,8 +79,9 @@ requirements and the variable tables below for specific settings.
 [.env.example](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.env.example) is the installation template.
 [Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml) injects the selected environment file into
 Laravel, bridge, workers, and several infrastructure containers. Their code
-reads the subset it uses. Reranker and Qdrant do not inherit that shared env
-block; Neo4j uses [a filtered adapter](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/env/neo4j.env).
+reads the subset it uses. In root development Compose, the standalone reranker
+and Qdrant do not inherit that shared env block. Production Compose instead
+passes its `.env` to both bridge and standalone reranker; Neo4j uses [a filtered adapter](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/env/neo4j.env).
 
 The template values below are not necessarily code fallbacks. Persisted
 Settings selections can override model defaults for new work; a dataset retains
@@ -205,8 +206,14 @@ is a dataset invariant; a new default does not migrate a populated collection.
 
 ### Optional LiteLLM
 
-Activate with `CORE_PROFILES_BASE=litellm make up-core`, then select its aliases
-through Settings. No upstream cloud key is needed for direct Ollama.
+The optional local LiteLLM Proxy service is currently commented out in root
+Compose and absent from production Compose. A profile flag alone cannot start it.
+If enabled in a local deployment definition, `make up-gateway` targets its
+`litellm` service. Alternatively configure an external chat/embedding gateway
+through `LITELLM_API_URL` and `LITELLM_API_KEY`. No upstream cloud key is needed
+for direct Ollama. The LiteLLM Python SDK is a client library, not this container;
+IxDLab reranking uses the separate `LITELLM_PROXY_*` variables and does not require
+that local service.
 
 | Variable | Template default | Purpose |
 |---|---|---|
@@ -237,13 +244,41 @@ without booting anything: `make gateway-render`, or
 | `RERANKER_MIX_MODE` | `true` | Blend reranker and retrieval scores |
 | `RERANKER_MIX_WEIGHT` | Code fallback `0.5` | ADVANCED retrieval share in blend |
 | `RERANKER_API_KEY` | Code fallback empty | ADVANCED bearer credential for external endpoint |
-| `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty; `mixedbread-ai/mxbai-rerank-base-v1` | Jina mode uses these directly; the template model is also the local model name, so verify a valid Jina model before using that route |
-| `RERANKER_PROVIDER`, `QUERY_MODE` | `cohere`, `mix` | COMPATIBILITY values with no current Python routing consumer |
+| `RERANKER_PROVIDER` | `cohere` | External backend: legacy HTTP (`cohere`), in-process CrossEncoder (`local`), or LiteLLM SDK (`litellm`) |
+| `HAWKI_RERANKER_MODEL` | Code fallback `mixedbread-ai/mxbai-rerank-base-v1` | Model for bridge-local and the standalone HTTP service |
+| `HAWKI_RERANKER_PRELOAD` | Code fallback `true` | Standalone service startup preload; bridge-local stays lazy |
+| `RERANKER_MODEL` | Empty | SDK model, e.g. `litellm_proxy/jina-rerank` |
+| `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` | Empty | SDK gateway endpoint and virtual key; IxDLab base is `https://ai.ixdlab.hawk.de` |
+| `RERANKER_FALLBACK_MODEL` | Unset | For the IxDLab Jina primary only: default JLU; `none` or empty disables application fallback; another `litellm_proxy/` alias overrides it |
+| `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty key; model override commented | Legacy direct-Jina mode; runtime model default `jina-reranker-v2-base-multilingual` |
 
-The local reranker defaults to `mixedbread-ai/mxbai-rerank-base-v1`.
-Its `HAWKI_RERANKER_MODEL` control is not wired through the shared dotenv in
-base Compose; a service override is needed to pass it. Cohere-compatible means
-API shape, not a default call to Cohere's cloud service.
+`cohere` describes the legacy HTTP compatibility path, not hosted Cohere inference.
+Local and SDK backends require `RERANKER_MODE=external` as their server mode default.
+Explicit request mode/blending values override server defaults. Internal
+`RagSearcher` requests `external`, so `RERANKER_MODE=none` is not a global kill
+switch. Composition still validates the selected backend at startup when mode is
+`none`; SDK model/gateway settings must be complete.
+
+Local inference requires the optional bridge build and provisioned weights/cache.
+The default published bridge image lacks local dependencies. The standalone HTTP
+service remains supported; changing the shared model variable in production
+changes both services if both consume it. Root Compose needs a service override
+to pass a custom standalone model; production already uses `env_file`.
+
+For IxDLab primary `litellm_proxy/jina-rerank`, the bridge defaults to one
+retryable-error attempt at `litellm_proxy/jlu/jina-rerank`, using the same gateway
+and key. Authentication/configuration failures do not trigger that attempt. If
+both fail, original retrieval hits continue through existing filtering. Gateway
+failover is operator-reported, not independently verified; set
+`RERANKER_FALLBACK_MODEL=none` when relying on confirmed gateway failover to avoid
+repeated attempts. This does not protect against gateway-wide outages. See the
+[bridge configuration and examples](../../python_rag/services/hawki_bridge/README.md#production-reranking-backends)
+for eligible errors, per-attempt timeouts, and local build commands.
+
+`QUERY_MODE`, `LITELLM_CHAT_TIMEOUT`, and `LITELLM_EMBED_TIMEOUT` are retained as
+commented historical examples, without current application consumers. Current
+chat/embedding timeout helpers read `OLLAMA_CHAT_TIMEOUT` and
+`OLLAMA_EMBED_TIMEOUT`; these do not set reranking timeouts.
 
 <details>
 <summary>Advanced query tuning: code defaults</summary>

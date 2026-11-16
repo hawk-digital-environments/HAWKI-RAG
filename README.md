@@ -31,6 +31,10 @@ explicitly when ingesting content that should populate Neo4j. Direct text
 integration always skips graph ingestion-in this release-. Enabling graph ingestion does not
 change the default retrieval mode.
 
+Production reranking supports legacy HTTP, optional in-process CrossEncoder, and
+LiteLLM SDK clients. See [backend configuration and JLU fallback](python_rag/services/hawki_bridge/README.md#production-reranking-backends)
+and [benchmark/evaluation methodology](python_rag/benchmarks/rerank/README.md).
+
 ## Documentation
 
 | Task | Guide |

@@ -188,13 +188,26 @@ There is no fallback to a different Neo4j database.
 
 | Mode | Behavior |
 |---|---|
-| `external` | Sends the leading candidates to the configured API; the supplied stack uses its local Cohere-compatible reranker |
+| `external` | Uses `RERANKER_PROVIDER`: legacy HTTP (`cohere`, stack default), local CrossEncoder (`local`), or LiteLLM SDK (`litellm`) |
 | `cosine` | Re-embeds bounded candidate text and computes cosine similarity |
 | `jina` | Calls Jina when its API key is present |
 | `none` | Preserves retrieval order |
 
-Reranking changes candidate order before evidence selection. External failures
-generally preserve retrieval ordering.
+Production composition binds reusable `hawki_reranking` clients through the
+existing bridge `RerankHitsPort`. The shared package owns local inference and SDK
+calls; the bridge owns hit extraction, index validation, normalization/blending,
+and failure fallback. The standalone `hawki_reranker` HTTP service remains the
+legacy backend; the external IxDLab gateway owns hosted routing.
+
+Request mode overrides the server default; `RERANKER_MODE=none` is not a global
+kill switch because internal search explicitly requests `external`. For IxDLab
+`litellm_proxy/jina-rerank`, retryable SDK failures get one attempt at
+`litellm_proxy/jlu/jina-rerank` on the same gateway/key. Authentication and
+configuration errors do not trigger another inference. Both failures retain the
+original reranking input for downstream selection. Gateway failover has not been
+independently verified; application fallback cannot cover gateway-wide outages.
+See [configuration](../Operations/5_environment_db_queue.md#reranker-and-retrieval-controls)
+for opt-out, model choices, and local image requirements.
 
 <details>
 <summary>Reranker limits, normalization, and blending</summary>

@@ -15,13 +15,14 @@ ranking quality, latency, and available API usage.
 | Local Mixedbread | `mixedbread-ai/mxbai-rerank-base-v1` | None |
 | Cohere | `cohere/rerank-v3.5` | `COHERE_API_KEY` |
 | Local BGE | `BAAI/bge-reranker-v2-m3` | None |
-| IxDLab Jina | `litellm_proxy/jinaai/jina-reranker-v3.5` | `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` |
+| IxDLab Jina | `litellm_proxy/jina-rerank` | `LITELLM_PROXY_API_BASE`, `LITELLM_PROXY_API_KEY` |
 | Voyage AI | `voyage/rerank-2.5` | `VOYAGE_API_KEY` |
 
 ## Running the benchmark
 
 Run these commands from `python_rag` using `.venv` with LiteLLM `1.106.4`.
-Local runs also need the bridge's `local-reranker` dependencies.
+Install the benchmark dependency group described below before executing metrics.
+Local runs also need the bridge's `local-reranker` extra (shared client dependencies).
 
 Dry run: show the plan without running inference.
 
@@ -105,8 +106,22 @@ inference can still include warmup. Use more repetitions for useful latency perc
 Export `LITELLM_PROXY_API_BASE=https://ai.ixdlab.hawk.de` and your virtual key as
 `LITELLM_PROXY_API_KEY`. Neither value is read from other variable names. The key
 is never included in reports. The gateway must advertise the exact
-`jinaai/jina-reranker-v3.5` alias in its authenticated `/v1/models` response;
-otherwise Jina initialization fails before inference. The alias and virtual-key authentication were verified by a real SDK smoke test on 2026-11-13.
+`jina-rerank` routing alias in its authenticated `/v1/models` response;
+otherwise Jina initialization fails before inference. Authenticated model discovery
+on 2026-11-16 confirmed `jina-rerank`, `jlu/jina-rerank`, and
+`jinaai/jina-reranker-v3.5` are visible. This discovery did not run inference.
+Use the routing group `jina-rerank` for normal runs, not a concrete deployment/model ID.
+The gateway operator describes a 2:1 priority toward the IxDLab model with JLU
+fallback; HAWKI-RAG does not independently verify or configure that gateway policy.
+Production bridge composition separately defaults to one retryable-error JLU attempt
+for this IxDLab primary on the same gateway/key, not for authentication or configuration
+errors; `RERANKER_FALLBACK_MODEL=none` disables it when gateway
+failover is verified. Benchmark clients do not apply that production default, so
+individual model latency/quality measurements remain explicit. See the bridge
+README for the production fallback policy and override setting. Neither attempt
+protects against gateway-wide outages. Successful synthetic calls to the primary
+and explicit JLU aliases on 2026-11-16 verified access, not gateway failover.
+The Spark endpoint is an underlying deployment and is not called directly.
 
 ```bash
 # Plan the three-model comparison (no inference).
@@ -134,3 +149,50 @@ Gateway discovery reports `PermissionError` for denied credentials, `LookupError
 for an absent alias, and `ConnectionError` for other non-200 discovery responses.
 Rerank failures report the SDK exception class and HTTP status without raw messages.
 Historical files under `results/` are preserved unless you run with that output path.
+
+## Evaluation method and typed boundaries
+
+Install benchmark tooling with `uv sync --frozen --package hawki-bridge --group benchmark`
+(add `--extra local-reranker` only for local model inference). This adds
+`ir-measures==0.4.3` only to development/benchmark dependencies, never production.
+The reusable clients live in `packages/reranking` (`hawki_reranking`); bridge hit
+extraction and production score adaptation remain in `hawki_bridge`.
+
+The pipeline is query IDs → fixed candidate IDs/text → qrels → model runs →
+`ir_measures` → comparative JSON/CSV reports. Existing dataset schemas are retained:
+synthetic queries' `relevance` dictionaries become qrels; complete private pools'
+`id`/`relevance` pairs become qrels. Pending judgments never become zero labels.
+`qrels.json` exports original grades. `runs.json` exports one conventional
+query/document/score mapping per model and repetition. Rank-derived descending
+scores encode the already established stable provider ordering, avoiding changes
+from a library's score-tie policy. Candidate identities and raw model scores remain
+in existing `rankings` report fields. Incomplete model/query coverage must be checked
+before comparison; compare identical fully covered query sets, pools, and qrels.
+
+Standard metric formulas now use [ir_measures](https://ir-measur.es/en/latest/):
+`nDCG@10`, `RR@10`, and `R@10`. Original exponential gains (`2**grade-1`) are
+passed as transformed qrels **only for nDCG**; binary relevance remains grade > 0.
+The private evaluator also reports nDCG@5. Empty runs/no relevant judgments yield
+zero. Duplicate query IDs and run document IDs are rejected before export. Recall is recall **within the judged
+candidate pool**, not corpus recall. Existing JSON/CSV metric names stay unchanged.
+
+`EvaluationMetrics` is a validated Pydantic model with named attributes and legacy
+serialization aliases. `RankedResult` validates candidate index, identity, and finite
+score after consuming the native LiteLLM `RerankResponse`; it does not replace that
+transport model. Report serialization explicitly uses `model_dump()`.
+
+We selected ir_measures' conventional qrels/run API over direct pytrec_eval
+(source-build-oriented upstream distribution) and ranx (Numba/vectorization and
+comparison/fusion features beyond this runner's needs). The selected pinned
+ir_measures/pytrec-eval-terrier backend is tested on repository Python 3.13.14.
+See [metric definitions](https://ir-measur.es/en/latest/measures.html),
+[pytrec_eval](https://pypi.org/project/pytrec-eval/), and
+[ranx](https://pypi.org/project/ranx/). No custom DCG/MRR/recall formulas remain.
+
+Latency remains separate from relevance evaluation. Synthetic runs have **no excluded
+warmup** and include every requested repetition, so their first inference may be cold.
+Private evaluation requires at least one excluded warmup and 5–10 measured
+repetitions. Initialization is separate; P50/P95 use successful measured calls with
+linear interpolation. Warmups/failures consume the explicit remote budget.
+The synthetic fixture is for development; private candidate-pool evaluation requires
+independent manual judgments and never implies corpus-wide retrieval quality.

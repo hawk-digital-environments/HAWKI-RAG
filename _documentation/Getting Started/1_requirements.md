@@ -58,6 +58,11 @@ Only published ports must be available on the host.
 | `127.0.0.1:4000` | Optional LiteLLM profile; configurable port |
 | Reverse proxy's HTTP/HTTPS ports | Server deployment; the core server profile publishes no Laravel host port |
 
+The optional local LiteLLM Proxy service is currently commented out in root
+Compose, so its profile/port is available only after enabling that service in a
+local deployment definition. It is not required for the LiteLLM Python SDK or
+external IxDLab reranking gateway; production Compose does not define it.
+
 The external-tool Make targets report crawler UI port **8041** and converter
 health port **8004**. Their actual bindings belong to the sibling projects'
 Compose files; verify those projects before reserving host ports.
