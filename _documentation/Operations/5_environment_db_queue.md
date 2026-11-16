@@ -206,24 +206,26 @@ is a dataset invariant; a new default does not migrate a populated collection.
 
 ### Optional LiteLLM
 
-The optional local LiteLLM Proxy service is currently commented out in root
-Compose and absent from production Compose. A profile flag alone cannot start it.
-If enabled in a local deployment definition, `make up-gateway` targets its
-`litellm` service. Alternatively configure an external chat/embedding gateway
-through `LITELLM_API_URL` and `LITELLM_API_KEY`. No upstream cloud key is needed
-for direct Ollama. The LiteLLM Python SDK is a client library, not this container;
-IxDLab reranking uses the separate `LITELLM_PROXY_*` variables and does not require
-that local service.
+The base composition assumes an **external** chat/embedding gateway configured
+through `LITELLM_API_URL` and `LITELLM_API_KEY` (the example default points at
+the IxDLab gateway). A self-hosted proxy is the additive `compose/with_litellm.yml`
+addon: `make up-gateway` starts it, and `LITELLM_API_URL` then points at
+`http://litellm:4000/v1`. Production Compose ships no proxy service. No upstream
+cloud key is needed for direct Ollama. The LiteLLM Python SDK is a client
+library, not this container; IxDLab reranking uses the separate
+`LITELLM_PROXY_*` variables and does not require any local gateway container.
 
 | Variable | Template default | Purpose |
 |---|---|---|
-| `LITELLM_API_URL` | `http://litellm:4000/v1` | Gateway endpoint |
+| `RAG_PROVIDER` | `litellm` | Runtime provider: gateway (`litellm`) or the local Ollama addon (`ollama`) |
+| `LITELLM_API_URL` | `https://ai.ixdlab.hawk.de/v1` | External gateway endpoint; `http://litellm:4000/v1` for the with_litellm addon |
 | `LITELLM_API_KEY` | Empty | Client bearer credential if gateway requires it |
-| `EMBED_MODEL`, `CHAT_MODEL`, `VISION_MODEL` | Bare gateway aliases when the gateway runs | Model aliases (provider-prefixed keys stay valid) |
-| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | Lists in the template | Settings allowlists; they also render the gateway's route menu |
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Empty | Upstream gateway credentials |
+| `EMBED_MODEL` | `BAAI/bge-m3` | Bare gateway alias; ollama-prefixed keys route to the Ollama addon |
+| `CHAT_MODEL`, `VISION_MODEL` | Commented choices | Gateway aliases, or `ollama_chat/…` with the Ollama addon |
+| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | Lists in the template | Settings allowlists; they also render the addon gateway's route menu |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Empty | Upstream credentials for the with_litellm addon's routes |
 | `OPENAI_API_BASE`, `ANTHROPIC_API_BASE` | Empty | Optional standard endpoints for corporate proxies |
-| `LITELLM_PORT` | `4000` | Loopback host port |
+| `LITELLM_IMAGE`, `LITELLM_PORT` | `main-stable` / `4000` | with_litellm addon image and loopback host port |
 
 The gateway renders its proxy config at container startup from the canonical
 model keys: every allowlisted model becomes one passthrough route named by
