@@ -95,20 +95,10 @@ services:
       - default
       - hawki-network
 
-  # temporal-ui:
-  #   <<: *service_env
-  #   profiles: ["temporal-ui"]
-  #   image: temporalio/ui:2.34.0
-  #   container_name: temporal_ui
-  #   restart: unless-stopped
-  #   ports:
-  #     - "${TEMPORAL_UI_HOST_BIND}:${TEMPORAL_UI_HOST_PORT}:8080"
-  #   depends_on:
-  #     temporal:
-  #       condition: service_started
-  #   networks:
-  #     - default
-  #     - hawki-network
+  # -------------------------------------------------
+  # Optional Temporal Web UI: additive addon file
+  # compose/with_temporal_ui.yml (see compose/README.md)
+  # -------------------------------------------------
 
   # -------------------------------------------------
   # Qdrant Vector DB
@@ -330,39 +320,11 @@ services:
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
 
   # -------------------------------------------------
-  # Optional OpenAI-compatible LiteLLM gateway
+  # Optional local LiteLLM gateway: additive addon file
+  # compose/with_litellm.yml (see compose/README.md).
+  # The base composition assumes an external gateway via .env
+  # (RAG_PROVIDER=litellm + LITELLM_API_URL).
   # -------------------------------------------------
-  # litellm:
-  #   <<: *service_env
-  #   profiles: ["litellm"]
-  #   image: ${LITELLM_IMAGE}
-  #   container_name: hawki_litellm
-  #   # The proxy config renders at container startup from the canonical model
-  #   # keys (EMBED/CHAT/VISION_MODEL plus the plural allowlists) and the
-  #   # standard provider credentials. The renderer is the
-  #   # hawki-model-providers package, mounted read-only from the checkout;
-  #   # its import closure is pinned image-safe by contract tests.
-  #   entrypoint: ["/bin/sh", "-c"]
-  #   command:
-  #     - |
-  #       PYTHONPATH=/opt/hawki python3 -m hawki_model_providers.gateway_config --output /tmp/config.yaml
-  #       exec litellm --config /tmp/config.yaml --port 4000
-  #   volumes:
-  #     - ./python_rag/packages/model_providers/src/hawki_model_providers:/opt/hawki/hawki_model_providers:ro
-  #   ports:
-  #     - "127.0.0.1:${LITELLM_PORT}:4000"
-  #   networks:
-  #     - default
-  #     - hawki-network
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test:
-  #       - CMD-SHELL
-  #       - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
-  #     interval: 15s
-  #     timeout: 5s
-  #     retries: 10
-  #     start_period: 30s
 
 volumes:
   shared_storage:

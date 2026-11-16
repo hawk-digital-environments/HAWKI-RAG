@@ -28,6 +28,8 @@ BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
+WITH_LITELLM_COMPOSE ?= compose/with_litellm.yml
+WITH_TEMPORAL_UI_COMPOSE ?= compose/with_temporal_ui.yml
 COMPOSE_FILE_SEP ?= :
 PYTHON_UV_CACHE ?= /tmp/rawki-uv-cache
 PYTHON_RERANKER_ENV ?= .venv-reranker
@@ -296,13 +298,17 @@ up-core-server: _up-core ## Start without a host UI port, using ENV_FILE.
 
 ##@ Optional gateway
 
-up-gateway: ## Start the LiteLLM gateway profile (routes render from ENV_FILE).
-	@$(COMPOSE_CMD) --profile litellm up -d litellm
+up-gateway: ## Start the local LiteLLM gateway addon (routes render from ENV_FILE).
+	@$(COMPOSE_ENV_PREFIX) HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
+		$(COMPOSE_BIN) --env-file $(ENV_FILE) \
+		-f $(BASE_COMPOSE_FILE) -f $(WITH_LITELLM_COMPOSE) up -d litellm
 	@echo "LiteLLM gateway listening on 127.0.0.1:\$$(grep -E '^LITELLM_PORT=' $(ENV_FILE) | cut -d= -f2 || echo 4000)."
-	@echo "Switch the stack with the deltas in .env.example.litellm, then recreate the Python services."
+	@echo "Point LITELLM_API_URL at http://litellm:4000/v1 (see compose/README.md), then recreate the Python services."
 
-down-gateway: ## Stop the LiteLLM gateway profile.
-	@$(COMPOSE_CMD) --profile litellm stop litellm
+down-gateway: ## Stop the local LiteLLM gateway addon.
+	@$(COMPOSE_ENV_PREFIX) HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
+		$(COMPOSE_BIN) --env-file $(ENV_FILE) \
+		-f $(BASE_COMPOSE_FILE) -f $(WITH_LITELLM_COMPOSE) rm --stop --force litellm
 
 gateway-smoke: ## Live-check embed+chat through the running gateway.
 	cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync \
@@ -530,18 +536,20 @@ down-file-converter-tool: ## Stop the sibling file-converter container.
 	@cd "$(FILE_CONVERTER_DIR)" && \
 		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
 
-up-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
-up-monitor-workflows-tool: network ## Start the Temporal workflow UI (compose profile temporal-ui).
-	@echo "Starting the Temporal workflow UI (profile temporal-ui)..."
-	@$(COMPOSE_CMD) up -d temporal-ui
+up-monitor-workflows-tool: network ## Start the Temporal workflow UI addon (compose/with_temporal_ui.yml).
+	@echo "Starting the Temporal workflow UI addon..."
+	@$(COMPOSE_ENV_PREFIX) HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
+		$(COMPOSE_BIN) --env-file $(ENV_FILE) \
+		-f $(BASE_COMPOSE_FILE) -f $(WITH_TEMPORAL_UI_COMPOSE) up -d temporal-ui
 	@set -e; \
 	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
 	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
 	echo "Temporal workflow UI: http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
 
-down-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
-down-monitor-workflows-tool: ## Stop the Temporal workflow UI without touching the core stack.
-	@$(COMPOSE_CMD) rm --stop --force temporal-ui
+down-monitor-workflows-tool: ## Stop the Temporal workflow UI addon without touching the core stack.
+	@$(COMPOSE_ENV_PREFIX) HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
+		$(COMPOSE_BIN) --env-file $(ENV_FILE) \
+		-f $(BASE_COMPOSE_FILE) -f $(WITH_TEMPORAL_UI_COMPOSE) rm --stop --force temporal-ui
 
 up-tools: up-crawler-tool up-file-converter-tool up-monitor-workflows-tool ## Start all external tools.
 	@set -e; \
