@@ -1,0 +1,20 @@
+# ============================================================================
+# ADDON: NVIDIA GPU reservation for the local Ollama server
+# ============================================================================
+# Complements docker-compose-gpu-override.yml (which accelerates the reranker
+# and indexer builds). Include compose/with_ollama.yml first, then this file:
+#
+#   docker compose -f docker-compose.yml -f compose/with_ollama.yml \
+#     -f docker-compose-gpu-override.yml -f compose/with_ollama_gpu.yml up -d
+#
+# The make up-core targets append this automatically on GPU hosts
+# (USE_OLLAMA_GPU=1 with WITH_OLLAMA=1). See compose/README.md.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]

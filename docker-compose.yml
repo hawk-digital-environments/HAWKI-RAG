@@ -2,27 +2,6 @@ x-service-env: &service_env
   env_file:
     - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
 
-x-ollama-base: &ollama_base
-  <<: *service_env
-  volumes:
-    - ollama:/root/.ollama
-    - ./docker/ollama/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
-  entrypoint: ["/usr/local/bin/gpu_guard.sh", "ollama"]
-  command: ["serve"]
-  networks:
-    default: {}
-    hawki-network:
-      aliases:
-        - ollama
-        - hawki_ollama
-  restart: unless-stopped
-  healthcheck:
-    test: ["CMD", "ollama", "list"]
-    interval: 20s
-    timeout: 5s
-    retries: 10
-    start_period: 20s
-
 services:
   # -------------------------------------------------
   # Laravel Application
@@ -193,8 +172,7 @@ services:
         condition: service_healthy
       temporal:
         condition: service_started
-      ollama:
-        condition: service_healthy
+      # Ollama startup gate: restored by compose/with_ollama.yml.
     restart: unless-stopped
     stop_grace_period: 40s
     healthcheck:
@@ -297,8 +275,7 @@ services:
         condition: service_started
       hawki_rag_neo4j:
         condition: service_started
-      ollama:
-        condition: service_healthy
+      # Ollama startup gate: restored by compose/with_ollama.yml.
     restart: unless-stopped
     stop_grace_period: 15s
     networks:
@@ -306,24 +283,16 @@ services:
       - hawki-network
 
   # -------------------------------------------------
-  # Ollama
+  # Optional local Ollama server: additive addon file
+  # compose/with_ollama.yml (see compose/README.md).
+  # The base composition assumes an external gateway via .env
+  # (RAG_PROVIDER=litellm + LITELLM_API_URL); this file also
+  # restores the bridge/indexer depends_on health gates.
   # -------------------------------------------------
-  ollama:
-    <<: *ollama_base
-    image: ollama/ollama:0.40.13
-    pull_policy: always
-    container_name: hawki_ollama
-    environment:
-      # Keep loaded models resident; the warmup workflow re-pins them daily.
-      # Normal requests without keep_alive would otherwise reset this to the
-      # 5-minute default.
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
 
   # -------------------------------------------------
   # Optional local LiteLLM gateway: additive addon file
   # compose/with_litellm.yml (see compose/README.md).
-  # The base composition assumes an external gateway via .env
-  # (RAG_PROVIDER=litellm + LITELLM_API_URL).
   # -------------------------------------------------
 
 volumes:
@@ -332,7 +301,6 @@ volumes:
   qdrant_data:
   neo4j_data:
   hawki_postgres_data:
-  ollama:
   hf_models:
     name: hawki_rag_hf_models
 

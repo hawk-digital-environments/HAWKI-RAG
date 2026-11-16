@@ -1,0 +1,65 @@
+# ============================================================================
+# ADDON: local Ollama inference server
+# ============================================================================
+# The base composition assumes an EXTERNAL LiteLLM gateway configured through
+# .env (RAG_PROVIDER=litellm + LITELLM_API_URL). Add this file to run models
+# locally instead - or alongside gateway models by giving chat/vision models
+# an ollama_chat/... prefix (the SDK routes per model-string prefix):
+#
+#   docker compose -f docker-compose.yml -f compose/with_ollama.yml up -d
+#
+# The up-core targets include this file by default (WITH_OLLAMA=1); start a
+# gateway-only stack with: make up-core WITH_OLLAMA=0
+# When combining with docker-compose-gpu-override.yml, include this file
+# before it. See compose/README.md for the full composition guide.
+x-service-env: &service_env
+  env_file:
+    - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
+
+x-ollama-base: &ollama_base
+  <<: *service_env
+  volumes:
+    - ollama:/root/.ollama
+    - ./docker/ollama/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
+  entrypoint: ["/usr/local/bin/gpu_guard.sh", "ollama"]
+  command: ["serve"]
+  networks:
+    default: {}
+    hawki-network:
+      aliases:
+        - ollama
+        - hawki_ollama
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "ollama", "list"]
+    interval: 20s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+
+services:
+  ollama:
+    <<: *ollama_base
+    image: ollama/ollama:0.40.13
+    pull_policy: always
+    container_name: hawki_ollama
+    environment:
+      # Keep loaded models resident; the warmup workflow re-pins them daily.
+      # Normal requests without keep_alive would otherwise reset this to the
+      # 5-minute default.
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
+
+  # Restore the base services' startup ordering gates on Ollama health
+  # (merged into the base definitions by compose).
+  hawki_rag_bridge:
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  hawki-rag-indexer-worker:
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama:

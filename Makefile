@@ -63,11 +63,27 @@ FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
 FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
 
 # Derived Compose suffixes and profiles.
+# The local Ollama addon is included by default (WITH_OLLAMA=1); set
+# WITH_OLLAMA=0 for a gateway-only stack (base assumes an external
+# LiteLLM gateway).
+WITH_OLLAMA ?= 1
+WITH_OLLAMA_COMPOSE ?= compose/with_ollama.yml
+WITH_OLLAMA_GPU_COMPOSE ?= compose/with_ollama_gpu.yml
+OLLAMA_COMPOSE_SUFFIX :=
 CORE_GPU_COMPOSE_SUFFIX :=
 CORE_PROFILES := $(CORE_PROFILES_BASE)
 
+ifeq ($(WITH_OLLAMA),1)
+	OLLAMA_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(WITH_OLLAMA_COMPOSE)
+endif
+
 ifeq ($(USE_OLLAMA_GPU),1)
 	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
+	ifeq ($(WITH_OLLAMA),1)
+		# The Ollama GPU reservation is its own addon so that GPU-accelerated
+		# reranker/indexer builds work on gateway-only stacks (WITH_OLLAMA=0).
+		CORE_GPU_COMPOSE_SUFFIX := $(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(WITH_OLLAMA_GPU_COMPOSE)
+	endif
 	PYTHON_TORCH_EXTRA := gpu
 	GPU_MESSAGE := Ollama and reranker GPU acceleration enabled.
 else
@@ -75,8 +91,8 @@ else
 	GPU_MESSAGE := CPU mode; NVIDIA Python packages are excluded.
 endif
 
-CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)
-CORE_UI_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(UI_OVERRIDE_COMPOSE)
+CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(OLLAMA_COMPOSE_SUFFIX)$(CORE_GPU_COMPOSE_SUFFIX)
+CORE_UI_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(OLLAMA_COMPOSE_SUFFIX)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(UI_OVERRIDE_COMPOSE)
 CORE_LOCAL_COMPOSE_FILE_LIST := $(CORE_UI_COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
 COMPOSE_FILE_LIST ?= $(CORE_UI_COMPOSE_FILE_LIST)
 COMPOSE_PROFILES ?= $(CORE_PROFILES)
@@ -186,7 +202,7 @@ network: ## Create the external Docker networks when they do not exist.
 	done
 
 pull-core: ## Pull third-party runtime images used directly by the core stack.
-	@$(COMPOSE_CMD) pull postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull postgres temporal qdrant hawki_rag_neo4j $(if $(filter 1 true yes on,$(WITH_OLLAMA)),$(OLLAMA_SERVICE))
 
 build-app: ## Build the Laravel HAWKI RAG application image.
 	@$(COMPOSE_CMD) build hawki_rag_app
@@ -257,11 +273,15 @@ _up-core: network
 	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 	@echo "Launching the migrated stack..."
 	@$(COMPOSE_CMD) up -d --remove-orphans
-	@echo "Ensuring Ollama models are pulled..."
-	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
-		echo "Pulling $$model..."; \
-		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
-	done
+	@if docker container inspect $(OLLAMA_CONTAINER) >/dev/null 2>&1; then \
+		echo "Ensuring Ollama models are pulled..."; \
+		for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
+			echo "Pulling $$model..."; \
+			docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
+		done; \
+	else \
+		echo "Ollama addon not active (WITH_OLLAMA=0); skipping model pulls."; \
+	fi
 	@for container in "$(CRAWLER_CONTAINER)" "$(FILE_CONVERTER_CONTAINER)"; do \
 		if docker container inspect "$$container" >/dev/null 2>&1; then \
 			docker network connect hawki-network "$$container" >/dev/null 2>&1 || true; \
@@ -378,7 +398,7 @@ health: ## Check required and optional containers plus service endpoints.
 	check_running hawki_rag_app 1; \
 	check_running hawki_qdrant 1; \
 	check_running hawki_rag_neo4j 1; \
-	check_running $(OLLAMA_CONTAINER) 1; \
+	check_running $(OLLAMA_CONTAINER) 0; \
 	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
 	check_running hawki_rag_temporal_workflow_worker 0; \
@@ -391,7 +411,7 @@ health: ## Check required and optional containers plus service endpoints.
 	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
 	check_exec "Qdrant readyz" hawki_qdrant "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.0\r\n\r\n\" >&3 && grep -q \" 200 \" <&3'" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
-	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
+	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 0; \
 	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \
 	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
 	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
@@ -429,7 +449,11 @@ migration-test: ## Run isolated PostgreSQL migration-upgrade scenarios in the ac
 
 ##@ Models
 
-pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
+pull-models: ## Pull all local embedding, chat, and vision models into the Ollama addon.
+	@if ! docker container inspect $(OLLAMA_CONTAINER) >/dev/null 2>&1; then \
+		echo "Ollama addon not active; start it with: make up-core (WITH_OLLAMA=1)"; \
+		exit 1; \
+	fi
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
@@ -442,7 +466,7 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 ##@ Logs
 
 logs-core: ## Follow logs for the complete core stack.
-	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(if $(filter 1 true yes on,$(WITH_OLLAMA)),$(OLLAMA_SERVICE)) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
 
 # ==============================================================================
 # Stack shutdown and restart
@@ -483,6 +507,8 @@ teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
 		echo "Kept volume hawki-rag_ollama (KEEP_OLLAMA_MODELS=1)."; \
 	else \
 		$(COMPOSE_CMD) down --volumes --remove-orphans; \
+		docker volume rm hawki-rag_ollama >/dev/null 2>&1 \
+			|| echo "Ollama addon volume hawki-rag_ollama already absent or in use."; \
 		echo "Removed all project volumes including hawki-rag_ollama."; \
 	fi; \
 	echo "Teardown complete. Recreate everything with: make up-core"
