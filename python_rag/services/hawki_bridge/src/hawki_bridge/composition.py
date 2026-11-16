@@ -94,7 +94,9 @@ def build_query_dependencies(
         )
         rank = partial(rerank_hits, reranker=client)
     elif active.reranker_provider != "cohere":
-        raise ValueError("Unsupported RERANKER_PROVIDER; use cohere, local, or litellm")
+        raise ValueError(
+            "Unsupported RERANKER_PROVIDER; use cohere/legacy_http, local, or litellm"
+        )
 
     return QueryDependencies(
         vector_search_factory=QdrantReader,

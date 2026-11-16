@@ -167,6 +167,12 @@ def verify_gateway_model(spec: dict) -> None:
         connection.close()
 
 
+def sdk_cost(response: Any, key: str) -> float | None:
+    # Private LiteLLM response surface; the version pin asserted in
+    # make_reranker guards this access.
+    return response._hidden_params.get(key)
+
+
 def make_reranker(spec: dict, allow_download: bool):
     if version("litellm") != "1.106.4":
         raise RuntimeError("benchmark requires LiteLLM 1.106.4")
@@ -322,10 +328,8 @@ def benchmark(
                         }
                         or None,
                         "actual_cost_usd": None,
-                        "sdk_estimated_cost_usd": response._hidden_params.get(
-                            "response_cost"
-                        ),
-                        "sdk_provider_cost_usd": response._hidden_params.get("cost"),
+                        "sdk_estimated_cost_usd": sdk_cost(response, "response_cost"),
+                        "sdk_provider_cost_usd": sdk_cost(response, "cost"),
                         **metrics(
                             [r.id for r in rankings], query["relevance"]
                         ).model_dump(by_alias=True),

@@ -52,7 +52,15 @@ class BridgeCompositionCharacterizationTests(unittest.TestCase):
         self.assertEqual(reranker.call_args.kwargs["top_n"], 1)
 
 
-@pytest.mark.parametrize("env", [{}, {"RERANKER_PROVIDER": "cohere"}])
+@pytest.mark.parametrize(
+    "env",
+    [
+        {},
+        {"RERANKER_PROVIDER": "cohere"},
+        {"RERANKER_PROVIDER": "legacy_http"},
+        {"RERANKER_PROVIDER": "LEGACY_HTTP"},
+    ],
+)
 def test_default_provider_keeps_legacy_function(env):
     dependencies = composition.build_query_dependencies(load_settings(env))
     assert dependencies.rerank_hits is composition.rerank_hits

@@ -244,7 +244,7 @@ without booting anything: `make gateway-render`, or
 | `RERANKER_MIX_MODE` | `true` | Blend reranker and retrieval scores |
 | `RERANKER_MIX_WEIGHT` | Code fallback `0.5` | ADVANCED retrieval share in blend |
 | `RERANKER_API_KEY` | Code fallback empty | ADVANCED bearer credential for external endpoint |
-| `RERANKER_PROVIDER` | `cohere` | External backend: legacy HTTP (`cohere`), in-process CrossEncoder (`local`), or LiteLLM SDK (`litellm`) |
+| `RERANKER_PROVIDER` | `cohere` | External backend: legacy HTTP (`cohere`, alias `legacy_http`), in-process CrossEncoder (`local`), or LiteLLM SDK (`litellm`) |
 | `HAWKI_RERANKER_MODEL` | Code fallback `mixedbread-ai/mxbai-rerank-base-v1` | Model for bridge-local and the standalone HTTP service |
 | `HAWKI_RERANKER_PRELOAD` | Code fallback `true` | Standalone service startup preload; bridge-local stays lazy |
 | `RERANKER_MODEL` | Empty | SDK model, e.g. `litellm_proxy/jina-rerank`; must carry a rerank-capable provider prefix, rejected at startup otherwise |
@@ -252,7 +252,8 @@ without booting anything: `make gateway-render`, or
 | `RERANKER_FALLBACK_MODEL` | Unset | Explicit retryable-failure fallback; requires a `litellm_proxy/` primary and another `litellm_proxy/` alias on the same gateway; unset/empty/`none` disables. IxDLab example: `litellm_proxy/jlu/jina-rerank` |
 | `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty key; model override commented | Legacy direct-Jina mode; runtime model default `jina-reranker-v2-base-multilingual` |
 
-`cohere` describes the legacy HTTP compatibility path, not hosted Cohere inference.
+`cohere` (alias `legacy_http`) describes the legacy HTTP compatibility path, not
+hosted Cohere inference.
 Local and SDK backends require `RERANKER_MODE=external` as their server mode default.
 Explicit request mode/blending values override server defaults. Internal
 `RagSearcher` requests `external`, so `RERANKER_MODE=none` is not a global kill
