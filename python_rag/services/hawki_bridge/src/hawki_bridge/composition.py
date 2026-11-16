@@ -10,6 +10,31 @@ from hawki_bridge.adapters.reranker_client import rerank_hits
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.settings import BridgeSettings, load_settings
 
+# Provider prefixes with a rerank config in the pinned LiteLLM SDK. LiteLLM
+# has no in-process reranking; anything else fails at composition time
+# instead of failing per query and silently degrading to original order.
+RERANK_SDK_PROVIDER_PREFIXES = frozenset(
+    {
+        "azure_ai",
+        "bedrock",
+        "cohere",
+        "dashscope",
+        "deepinfra",
+        "fireworks_ai",
+        "hosted_vllm",
+        "huggingface",
+        "infinity",
+        "jina_ai",
+        "litellm_proxy",
+        "nvidia_nim",
+        "scaleway",
+        "together_ai",
+        "vertex_ai",
+        "voyage",
+        "watsonx",
+    }
+)
+
 
 def _gateway_base(url: str) -> str:
     """Normalize a gateway base; LiteLLM appends /v1/rerank itself."""
@@ -33,8 +58,15 @@ def build_query_dependencies(
         import litellm
         from hawki_reranking.litellm_reranker import LiteLLMReranker
 
+        model = active.sdk_reranker_model
+        prefix, separator, _ = model.partition("/")
+        if not separator or prefix not in RERANK_SDK_PROVIDER_PREFIXES:
+            raise ValueError(
+                "RERANKER_MODEL needs a rerank-capable provider prefix "
+                "(for example litellm_proxy/jina-rerank or cohere/rerank-v3.5)"
+            )
         options: dict[str, object] = {"timeout": 30, "num_retries": 0, "max_retries": 0}
-        if active.sdk_reranker_model.startswith("litellm_proxy/"):
+        if prefix == "litellm_proxy":
             if not active.reranker_gateway_base or not active.reranker_gateway_key:
                 raise ValueError(
                     "SDK gateway reranking requires a configured base and key"

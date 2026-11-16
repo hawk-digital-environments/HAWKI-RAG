@@ -309,12 +309,16 @@ def test_malformed_responses_fall_back_atomically(candidate_hits, results):
 
 
 @pytest.mark.parametrize(
-    "response", [object(), RuntimeError("private text and credentials")]
+    ("response", "error_type"),
+    [(object(), "ValueError"), (RuntimeError("private text and credentials"), "RuntimeError")],
 )
-def test_client_failure_does_not_log_exception(candidate_hits, response, caplog):
+def test_client_failure_logs_type_but_not_details(
+    candidate_hits, response, error_type, caplog
+):
     assert rank_with_client(candidate_hits, MockReranker(response)) is candidate_hits
     assert "private text" not in caplog.text
     assert "credentials" not in caplog.text
+    assert f"Reranker failed ({error_type})" in caplog.text
     assert "continuing with original order" in caplog.text
 
 

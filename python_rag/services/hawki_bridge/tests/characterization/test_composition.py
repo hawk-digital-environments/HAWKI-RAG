@@ -64,11 +64,25 @@ def test_default_provider_keeps_legacy_function(env):
         {"RERANKER_PROVIDER": "unsupported"},
         {"RERANKER_PROVIDER": "litellm"},
         {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "litellm_proxy/model"},
+        {
+            "RERANKER_PROVIDER": "litellm",
+            "RERANKER_MODEL": "local/mixedbread-ai/mxbai-rerank-base-v1",
+        },
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "jina-rerank"},
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "ollama/mxbai-rerank"},
     ],
 )
 def test_incomplete_backend_configuration_fails_at_composition(env):
     with pytest.raises(ValueError):
         composition.build_query_dependencies(load_settings(env))
+
+
+def test_hosted_sdk_model_without_gateway_composes():
+    env = {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "voyage/rerank-2.5"}
+    deps = composition.build_query_dependencies(load_settings(env))
+    client = deps.rerank_hits.keywords["reranker"]
+    assert client.model == "voyage/rerank-2.5"
+    assert client.fallback_model is None
 
 
 def test_gateway_key_is_not_in_settings_repr():

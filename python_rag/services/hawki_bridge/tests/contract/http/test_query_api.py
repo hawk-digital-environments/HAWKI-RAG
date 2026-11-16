@@ -506,21 +506,25 @@ def test_gateway_base_v1_suffix_is_normalized_before_sdk_dispatch(
     assert all(call["api_base"] == "https://gateway.invalid" for call in calls)
 
 
-@pytest.mark.parametrize("backend", ["local", "litellm"])
-def test_production_disabled_override_skips_inference(production_query_client, backend):
-    client, body, calls, names, *_ = production_query_client(
-        backend, "test/model", mode="none"
-    )
+@pytest.mark.parametrize(
+    ("backend", "model"), [("local", "test/model"), ("litellm", "cohere/rerank-v3.5")]
+)
+def test_production_disabled_override_skips_inference(
+    production_query_client, backend, model
+):
+    client, body, calls, names, *_ = production_query_client(backend, model, mode="none")
     assert client.post("/query", json=body).status_code == 200
     assert calls == names == []
 
 
-@pytest.mark.parametrize("backend", ["local", "litellm"])
+@pytest.mark.parametrize(
+    ("backend", "model"), [("local", "test/model"), ("litellm", "cohere/rerank-v3.5")]
+)
 def test_production_backend_failures_continue_query(
-    production_query_client, backend, caplog
+    production_query_client, backend, model, caplog
 ):
     client, body, calls, _, prompts, *_ = production_query_client(
-        backend, "test/model", fail=True
+        backend, model, fail=True
     )
     response = client.post("/query", json=body)
     assert response.status_code == 200
