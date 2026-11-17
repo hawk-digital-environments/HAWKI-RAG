@@ -106,6 +106,11 @@ bridge target with the optional extra and OpenMP runtime:
 ```bash
 docker build -f docker/python_rag.Dockerfile --target bridge-runtime \
   --build-arg BRIDGE_LOCAL_RERANKER=true -t hawki-rag-bridge:local-reranker .
+
+# GPU variant (CUDA torch build):
+docker build -f docker/python_rag.Dockerfile --target bridge-runtime \
+  --build-arg BRIDGE_LOCAL_RERANKER=true --build-arg TORCH_VARIANT=gpu \
+  -t hawki-rag-bridge:local-reranker-gpu .
 ```
 
 Run from the repository root. Configure the existing bridge deployment to use
@@ -115,9 +120,10 @@ unavailable at runtime. Loading remains lazy and inference is serialized per
 instance. CPU/GPU selection follows Sentence Transformers defaults. Deterministic
 query tests inject model/SDK doubles and do not download weights.
 
-GPU: the image already ships a CUDA-capable torch build; include the GPU addon
+GPU: build the `-gpu` tag and include the GPU addon
 (`compose/with_ollama_and_gpu.yml`) so the bridge container gets the NVIDIA
-reservation, and Sentence Transformers picks CUDA automatically.
+reservation; Sentence Transformers picks CUDA automatically. The default build
+installs the slim CPU-only torch wheel.
 
 
 ### Gateway reranker fallback

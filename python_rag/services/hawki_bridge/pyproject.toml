@@ -25,7 +25,10 @@ dependencies = [
 
 [project.optional-dependencies]
 local-reranker = [
-    "hawki-reranking[local]==0.1.0",
+    "hawki-reranking[local-cpu]==0.1.0",
+]
+local-reranker-gpu = [
+    "hawki-reranking[local-gpu]==0.1.0",
 ]
 
 [dependency-groups]

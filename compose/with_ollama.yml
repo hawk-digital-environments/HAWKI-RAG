@@ -43,11 +43,8 @@ services:
     image: ollama/ollama:0.40.13
     pull_policy: always
     container_name: hawki_ollama
-    environment:
-      # Keep loaded models resident; the warmup workflow re-pins them daily.
-      # Normal requests without keep_alive would otherwise reset this to the
-      # 5-minute default.
-      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
+    # OLLAMA_KEEP_ALIVE (and every other setting) flows from the dotenv via
+    # the shared env anchor; no compose-level environment block by contract.
 
   # Restore the base services' startup ordering gates on Ollama health
   # (merged into the base definitions by compose).
