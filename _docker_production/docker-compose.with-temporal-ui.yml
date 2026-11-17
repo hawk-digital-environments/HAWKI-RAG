@@ -1,0 +1,29 @@
+# ============================================================================
+# ADDON: Temporal workflow UI
+# ============================================================================
+# Add the Temporal Web UI at http://127.0.0.1:8081 (bind/port configurable
+# through TEMPORAL_UI_HOST_BIND / TEMPORAL_UI_HOST_PORT in .env). This is
+# the production counterpart of compose/with_temporal_ui.yml:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.with-temporal-ui.yml ./deploy.sh
+services:
+    # The Temporal Web UI. TEMPORAL_ADDRESS from the .env file points it at
+    # the Temporal server of this stack; the loopback host binding keeps it
+    # off the network, so expose it through the reverse proxy (and set
+    # TEMPORAL_UI_CORS_ORIGINS to the origin it is served under) when it
+    # must be reachable from browsers.
+    temporal-ui:
+        container_name: temporal_ui
+        image: temporalio/ui:2.34.0
+        pull_policy: always
+        env_file:
+            - .env
+        ports:
+            - "${TEMPORAL_UI_HOST_BIND:-127.0.0.1}:${TEMPORAL_UI_HOST_PORT:-8081}:8080"
+        depends_on:
+            temporal:
+                condition: service_started
+        networks:
+            - default
+            - hawki-rag-network
+        restart: always

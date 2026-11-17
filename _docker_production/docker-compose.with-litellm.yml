@@ -1,0 +1,52 @@
+# ============================================================================
+# ADDON: local LiteLLM gateway (self-hosted OpenAI-compatible proxy)
+# ============================================================================
+# The base composition assumes model calls go to an EXTERNAL gateway
+# configured through .env (RAG_PROVIDER=litellm + LITELLM_API_URL). Add this
+# file only to self-host the gateway container instead: point
+# LITELLM_API_URL at http://litellm:4000/v1 (the .env.example default) and
+# edit the routes in the litellm-config.yml file next to this file.
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.with-litellm.yml ./deploy.sh
+#
+# LITELLM_API_KEY doubles as the gateway's master key and MUST be set:
+# current LiteLLM images refuse to boot without one, and the application
+# presents the same value as its bearer token - one key for both sides
+# (generate it with generate-env-secrets.sh).
+#
+# This is the production counterpart of compose/with_litellm.yml. Unlike the
+# development addon, which renders its routes at container startup from the
+# canonical model keys through a mounted package, this addon mounts a static
+# config file: the deployment directory is standalone and carries no
+# repository checkout, so there is nothing to mount the renderer from.
+# Provider credentials (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...) flow from
+# the .env file into the container and are referenced by the config file
+# through os.environ/... lookups, keeping secrets out of the file.
+services:
+    # The self-hosted gateway. Serves the OpenAI-compatible API on port 4000
+    # through the stock image entrypoint; the loopback host binding keeps it
+    # off the network - the stack reaches it as "litellm" inside Docker, and
+    # the main HAWKI stack through hawki-rag-network.
+    litellm:
+        container_name: hawki_litellm
+        image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
+        pull_policy: always
+        env_file:
+            - .env
+        command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+        volumes:
+            - ./litellm-config.yml:/etc/litellm/config.yaml:ro
+        ports:
+            - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+        networks:
+            - default
+            - hawki-rag-network
+        restart: always
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+            interval: 15s
+            timeout: 5s
+            retries: 10
+            start_period: 30s

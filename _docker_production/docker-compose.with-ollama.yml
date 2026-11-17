@@ -1,0 +1,69 @@
+# ============================================================================
+# ADDON: local Ollama inference server
+# ============================================================================
+# The base composition assumes model calls leave this stack: with
+# RAG_PROVIDER=litellm they go to LITELLM_API_URL from the .env file, which
+# targets either an external gateway or the local one added by
+# docker-compose.with-litellm.yml. Add this file to run models locally
+# instead - or alongside gateway models by giving chat/vision models an
+# ollama_chat/... prefix (the SDK routes per model-string prefix). This is
+# the production counterpart of compose/with_ollama.yml; apply it through
+# COMPOSE_FILE, either exported or set in the .env file (deploy.sh picks it
+# up from there as well):
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml ./deploy.sh
+#
+# This file also restores the bridge's and the indexer worker's startup
+# gates on Ollama health (merged into the base definitions by compose). GPU
+# acceleration bundles into docker-compose.with-ollama-and-gpu.yml, which
+# requires this file - include this one first.
+services:
+    # Ollama serves the local embedding, chat and vision models. The mounted
+    # entrypoint guards the GPU (degrades to CPU when the free VRAM drops
+    # below GPU_MIN_FREE_MB), pulls the models listed in
+    # HAWKI_RAG_OLLAMA_MODELS once the API answers, and forwards stop signals
+    # to the server process. OLLAMA_KEEP_ALIVE and the other settings flow
+    # from the .env file through the environment anchor of this service.
+    ollama:
+        container_name: hawki_ollama
+        image: ollama/ollama:0.40.13
+        pull_policy: always
+        env_file:
+            - .env
+        volumes:
+            - ollama:/root/.ollama
+            - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+        entrypoint: ["/usr/local/bin/ollama-entrypoint.sh"]
+        command: ["serve"]
+        networks:
+            default: {}
+            hawki-rag-network:
+                aliases:
+                    - ollama
+                    - hawki_ollama
+        restart: always
+        healthcheck:
+            test: ["CMD", "ollama", "list"]
+            interval: 30s
+            timeout: 10s
+            retries: 10
+            start_period: 30s
+
+    # Restore the base services' startup ordering gates on Ollama health
+    # (merged into the base definitions by compose).
+    hawki_rag_bridge:
+        depends_on:
+            ollama:
+                condition: service_healthy
+
+    hawki-rag-indexer-worker:
+        depends_on:
+            ollama:
+                condition: service_healthy
+
+volumes:
+    # Model storage. The declaration matches the one the base stack carried
+    # before Ollama moved into this addon, so existing deployments keep
+    # their pulled models: compose derives the same <project>_ollama name
+    # from whichever file declares the volume.
+    ollama:

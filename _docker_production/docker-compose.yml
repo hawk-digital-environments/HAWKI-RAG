@@ -6,14 +6,22 @@
 # registry is ghcr.io (see the deploy-rag-*.yml workflows); public deployments
 # pull the Docker Hub releases from publish-version.yml.
 #
-# Third-party services (PostgreSQL, Temporal, Qdrant, Neo4j and Ollama) are
-# pulled exactly like in the development stack. Start the stack with deploy.sh,
-# which pulls fresh images and starts everything in dependency order.
+# Third-party infrastructure (PostgreSQL, Temporal, Qdrant and Neo4j) is
+# pulled exactly like in the development stack. Optional services are
+# additive addon files in this directory, mirroring the compose/ addons of
+# the development stack - inclusion is activation, no profiles, no
+# commented-out service blocks here: docker-compose.with-ollama.yml (local
+# model server), docker-compose.with-ollama-and-gpu.yml (GPU acceleration,
+# requires the Ollama addon), docker-compose.with-litellm.yml (self-hosted
+# gateway) and docker-compose.with-temporal-ui.yml, plus the optional
+# website scraper in docker-compose.scraper.yml.
 #
-# NVIDIA GPUs: copy docker-compose.gpu-override.yml over this setup by running
-# deploy.sh with COMPOSE_FILE including the override file, so the reranker and
-# the indexer worker use the published "-gpu" image variants and get access to
-# the NVIDIA devices reserved there.
+# Like the development base, this composition assumes model calls leave the
+# stack through a LiteLLM gateway configured in .env (RAG_PROVIDER=litellm +
+# LITELLM_API_URL, external or the with-litellm addon); deployments that run
+# models locally add docker-compose.with-ollama.yml. Start the stack with
+# deploy.sh, which pulls fresh images and starts everything in dependency
+# order; apply addons by extending COMPOSE_FILE (see deploy.sh).
 services:
     # The migrator is a one-shot instance of the Laravel application image.
     # It runs the database migrations once, with --force so it never prompts,
@@ -145,34 +153,10 @@ services:
             retries: 5
             start_period: 30s
 
-    # Ollama serves the local embedding, chat and vision models. The mounted
-    # entrypoint guards the GPU (degrades to CPU when the free VRAM drops
-    # below GPU_MIN_FREE_MB), pulls the models listed in
-    # HAWKI_RAG_OLLAMA_MODELS once the API answers, and forwards stop signals
-    # to the server process.
-    ollama:
-        container_name: hawki_ollama
-        image: ollama/ollama:0.40.13
-        env_file:
-            - .env
-        volumes:
-            - ollama:/root/.ollama
-            - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
-        entrypoint: ["/usr/local/bin/ollama-entrypoint.sh"]
-        command: ["serve"]
-        networks:
-            default: {}
-            hawki-rag-network:
-                aliases:
-                    - ollama
-                    - hawki_ollama
-        restart: always
-        healthcheck:
-            test: ["CMD", "ollama", "list"]
-            interval: 30s
-            timeout: 10s
-            retries: 10
-            start_period: 30s
+    # The optional local Ollama model server lives in the additive addon
+    # file docker-compose.with-ollama.yml; this base composition assumes an
+    # external gateway through .env (RAG_PROVIDER=litellm + LITELLM_API_URL)
+    # instead, mirroring the development base stack.
 
     # The external file converter: it turns uploaded and crawled files into
     # plain text before embedding, and every ingest path runs through it, so
@@ -212,8 +196,7 @@ services:
                 condition: service_healthy
             temporal:
                 condition: service_started
-            ollama:
-                condition: service_healthy
+            # Ollama startup gate: restored by docker-compose.with-ollama.yml.
         restart: always
         stop_grace_period: 40s
         healthcheck:
@@ -224,8 +207,8 @@ services:
             start_period: 30s
 
     # The Cohere-compatible reranker orders retrieved passages by relevance.
-    # The docker-compose.gpu-override.yml swaps this to the "-gpu" image
-    # variant and reserves an NVIDIA device for it.
+    # The docker-compose.with-ollama-and-gpu.yml swaps this to the "-gpu"
+    # image variant and reserves an NVIDIA device for it.
     hawki_rag_rerank:
         container_name: hawki_rag_rerank
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-${HAWKI_RAG_VERSION:-latest}
@@ -310,8 +293,8 @@ services:
             - hawki-rag-network
 
     # The indexer worker embeds and indexes the converted documents. The
-    # docker-compose.gpu-override.yml swaps this to the "-gpu" image variant
-    # and reserves an NVIDIA device for it.
+    # docker-compose.with-ollama-and-gpu.yml swaps this to the "-gpu" image
+    # variant and reserves an NVIDIA device for it.
     hawki-rag-indexer-worker:
         container_name: hawki_rag_indexer_worker
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-${HAWKI_RAG_VERSION:-latest}
@@ -333,8 +316,7 @@ services:
                 condition: service_started
             hawki_rag_neo4j:
                 condition: service_started
-            ollama:
-                condition: service_healthy
+            # Ollama startup gate: restored by docker-compose.with-ollama.yml.
         restart: always
         stop_grace_period: 15s
         networks:
@@ -349,8 +331,6 @@ volumes:
     qdrant_data:
         driver: local
     neo4j_data:
-        driver: local
-    ollama:
         driver: local
 
 networks:

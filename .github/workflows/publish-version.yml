@@ -43,8 +43,8 @@ jobs:
           # Release images publish BOTH dependency variants for the two torch
           # roles: the default tags carry the CPU wheels, the "-gpu" tags the
           # CUDA wheels (uv.lock covers amd64 and arm64 for both). GPU
-          # deployments pull the -gpu tags via docker-compose.gpu-override.yml
-          # instead of building locally.
+          # deployments pull the -gpu tags via
+          # docker-compose.with-ollama-and-gpu.yml instead of building locally.
           - name: laravel
             dockerfile: docker/laravel.Dockerfile
             target: laravel-app
@@ -93,7 +93,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # Release images publish the CPU dependency variants. GPU deployments
-      # build TORCH_VARIANT=gpu locally through docker-compose-gpu-override.yml.
+      # pull the -gpu tags through docker-compose.with-ollama-and-gpu.yml.
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v7

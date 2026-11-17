@@ -11,9 +11,10 @@
 # This pipeline is decoupled from publish-version.yml, which publishes the
 # public multi-arch release images to Docker Hub. The production machine has
 # a single GPU, so the two torch roles build their CUDA ("gpu") variants here;
-# the production Dokploy compose merges docker-compose.gpu-override.yml, so
-# the reranker and the indexer worker resolve the rerank-gpu-<version> and
-# indexer-worker-gpu-<version> tags.
+# the production Dokploy compose merges docker-compose.with-ollama.yml and
+# docker-compose.with-ollama-and-gpu.yml, so the reranker and the indexer
+# worker resolve the rerank-gpu-<version> and indexer-worker-gpu-<version>
+# tags.
 name: Deploy RAG to Production
 
 on:

@@ -12,12 +12,20 @@ repository; see [Requirements](./1_requirements.md) for the details.
 The [`_docker_production`](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/_docker_production)
 directory of the repository holds a preconfigured production setup: a
 pull-only `docker-compose.yml` that runs the migrator, the Laravel application,
-PostgreSQL, Temporal, Qdrant, Neo4j, Ollama, the FastAPI bridge, the reranker,
-the file converter, and the four Python Temporal workers. The optional website
-scraper joins through its own override file (see
-[Website scraper](#website-scraper)). Every HAWKI RAG image is pulled from the
-registry and pinned through the environment file; nothing is built on the
-server.
+PostgreSQL, Temporal, Qdrant, Neo4j, the FastAPI bridge, the reranker,
+the file converter, and the four Python Temporal workers. Like the
+development stack (see its `compose/README.md`), optional services are
+additive addon files — inclusion is activation: the local Ollama model
+server (`docker-compose.with-ollama.yml`), GPU acceleration
+(`docker-compose.with-ollama-and-gpu.yml`), a self-hosted LiteLLM gateway
+(`docker-compose.with-litellm.yml`), the Temporal UI
+(`docker-compose.with-temporal-ui.yml`), and the website scraper
+(`docker-compose.scraper.yml`; see [Website scraper](#website-scraper)).
+The base stack assumes model calls go to a LiteLLM gateway configured in
+`.env`; deployments that run models locally add the Ollama addon (the
+`.env.example` defaults expect that composition). Every HAWKI RAG image is
+pulled from the registry and pinned through the environment file; nothing
+is built on the server.
 
 **Please consider it a starting point you can/should adapt to your needs.**
 
@@ -42,8 +50,9 @@ A few things to consider:
   each other by service name. Create it once with
   `docker network create hawki-rag-network`, or remove the network block if
   you run HAWKI RAG standalone.
-* Persistent data - PostgreSQL, Qdrant, Neo4j and Ollama store their data in
-  named volumes, and ingestion artifacts flow through the shared
+* Persistent data - PostgreSQL, Qdrant, and Neo4j store their data in
+  named volumes (Ollama's models too, when its addon is applied), and
+  ingestion artifacts flow through the shared
   `rawki_shared_storage` volume. Laravel storage is a bind mount at
   `./storage`, which ships with the directory.
 * Ingestion tools - The file converter runs inside the stack (service
@@ -95,10 +104,6 @@ The `docker-compose.yml` contains a setup of multiple services:
 * `qdrant` - The vector store for chunk text, payloads, and embeddings.
 * `hawki_rag_neo4j` - The knowledge-graph store used when ingestion runs with
   graph extraction enabled.
-* `ollama` - The local model server for embedding, chat, and vision models.
-  Its entrypoint (`ollama-entrypoint.sh`) guards the GPU, pulls the configured
-  models on startup, and forwards stop signals; see
-  [GPU acceleration](#gpu-acceleration).
 * `hawki_rag_bridge` - The read-only FastAPI bridge that fronts query,
   configuration, health, and Temporal control operations for Laravel.
 * `hawki_rag_rerank` - The standalone HTTP reranker used by the default
@@ -112,6 +117,32 @@ The `docker-compose.yml` contains a setup of multiple services:
   `hawki-rag-temporal-converter-worker`, `hawki-rag-indexer-worker` - The
   Python activity workers. Each runs as its own image variant and shares the
   crawled-data root with the application through the shared volume.
+
+### Optional services (compose addons)
+
+Optional services are additive override files in the deployment directory,
+mirroring the `compose/` addons of the development stack — apply them by
+extending `COMPOSE_FILE` for `deploy.sh` (or setting `COMPOSE_FILE` in the
+`.env` file, which `deploy.sh` picks up as well):
+
+| File | Adds |
+|---|---|
+| `docker-compose.with-ollama.yml` | The local Ollama model server. Its entrypoint (`ollama-entrypoint.sh`) guards the GPU, pulls the configured models on startup, and forwards stop signals; also restores the bridge/indexer startup gates on Ollama health |
+| `docker-compose.with-ollama-and-gpu.yml` | GPU acceleration: the published `-gpu` image variants for the reranker and indexer worker plus NVIDIA device reservations; **requires `docker-compose.with-ollama.yml`** — see [GPU acceleration](#gpu-acceleration) |
+| `docker-compose.with-litellm.yml` | A self-hosted LiteLLM gateway on `127.0.0.1:4000`, configured through the `litellm-config.yml` file in the deployment directory |
+| `docker-compose.with-temporal-ui.yml` | The Temporal Web UI at `127.0.0.1:8081` |
+| `docker-compose.scraper.yml` | The website scraper — see [Website scraper](#website-scraper) |
+
+```bash
+# Local models (the .env.example defaults expect this composition):
+COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml ./deploy.sh
+
+# Local models with GPU acceleration:
+COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml ./deploy.sh
+```
+
+Addon files chain in any combination: list the base file first, then the
+addons, with the GPU addon after the Ollama addon it builds on.
 
 ### Deployment
 
@@ -133,12 +164,12 @@ images, applies the database migrations through the one-shot `migrator`, and
 starts every service in dependency order. The application reports healthy only
 after its initialization finished, so give the first start a few minutes.
 
-The Ollama container pulls its models itself: `ollama-entrypoint.sh` starts the
-model server, pulls every model listed in `HAWKI_RAG_OLLAMA_MODELS` (see
-`.env.example`) once the API answers, and keeps the server in the foreground.
-Models live in the `ollama` volume, so re-runs are cheap; pull failures warn
-but never stop the server, and queries against a missing model fail until it
-is pulled.
+With the Ollama addon applied, the Ollama container pulls its models itself:
+`ollama-entrypoint.sh` starts the model server, pulls every model listed in
+`HAWKI_RAG_OLLAMA_MODELS` (see `.env.example`) once the API answers, and
+keeps the server in the foreground. Models live in the `ollama` volume, so
+re-runs are cheap; pull failures warn but never stop the server, and queries
+against a missing model fail until it is pulled.
 
 Create the first user and verify the stack as described in
 [Installation](./4_installation_zero_to_up.md#4-verify-health-and-create-a-query-identity);
@@ -146,13 +177,14 @@ the commands run against the production containers unchanged.
 
 ### GPU acceleration
 
-`docker-compose.gpu-override.yml` switches the reranker and the indexer worker
-to the published `-gpu` image variants and reserves one NVIDIA device for them
-and for Ollama. It requires the NVIDIA Container Toolkit on the host. Apply it
-by extending `COMPOSE_FILE`:
+`docker-compose.with-ollama-and-gpu.yml` switches the reranker and the indexer
+worker to the published `-gpu` image variants and reserves one NVIDIA device
+for them, for Ollama, and for the bridge (inert for the default bridge
+image). It requires the NVIDIA Container Toolkit on the host and builds on
+the Ollama addon, so include both files - the Ollama addon first:
 
 ```bash
-COMPOSE_FILE=docker-compose.yml:docker-compose.gpu-override.yml ./deploy.sh
+COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml ./deploy.sh
 ```
 
 The mounted `ollama-entrypoint.sh` disables GPU usage for the server when the
@@ -180,10 +212,10 @@ and set `ORIGIN` to that public URL. The scraper writes its crawl results
 into the shared `rawki_shared_storage` volume the scraper worker reads
 from, and the scraper worker waits for its health report before polling.
 Edit `forbidden_urls.txt` in the deployment directory to keep hosts and URL
-patterns out of every crawl. The override merges with the GPU file:
+patterns out of every crawl. The override chains with the other addons:
 
 ```bash
-COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml:docker-compose.gpu-override.yml ./deploy.sh
+COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml:docker-compose.scraper.yml ./deploy.sh
 ```
 
 ### Backups

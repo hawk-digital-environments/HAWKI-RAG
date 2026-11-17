@@ -80,5 +80,9 @@ Self-hosted proxy: start `with_litellm.yml` and point `LITELLM_API_URL` at
 ## Production
 
 These addons belong to the root/development composition only. The production
-composition (`_docker_production/`) ships its own service set and assumes the
-external gateway; it has no local proxy and runs its own Ollama entrypoint.
+composition (`_docker_production/`) mirrors this directory with its own
+additive `docker-compose.with-*.yml` overrides — a local Ollama server (with
+its production entrypoint), GPU acceleration, a LiteLLM gateway configured
+through a static config file instead of the startup renderer, and the
+Temporal UI — plus the optional scraper override. Its base stack likewise
+assumes the external gateway.
