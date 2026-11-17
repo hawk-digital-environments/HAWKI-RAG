@@ -95,8 +95,8 @@ def load_sweep(
     }
     print(
         f"Load-test plan: {planned} rerank requests; levels={levels}; per={per}; "
-        f"24 documents/request, {sum(lengths)} document characters/request; "
-        f"cooldown={cooldown}s.",
+        f"{len(data['candidates'])} documents/request, {sum(lengths)} document "
+        f"characters/request; cooldown={cooldown}s.",
         file=sys.stderr,
         flush=True,
     )

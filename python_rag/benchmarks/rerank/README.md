@@ -165,9 +165,13 @@ confusing cumulative RPM/TPM limits with a concurrency threshold.
 Unit tests use fake rerankers and make no inference calls:
 
 ```bash
-LITELLM_LOCAL_MODEL_COST_MAP=True PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-  .venv/bin/python -B -m pytest -q -p no:cacheprovider \
-  benchmarks/rerank/test_benchmark.py benchmarks/rerank/test_load_test.py
+# Canonical environment: every test runs (needs local-reranker + benchmark deps).
+uv sync --frozen --package hawki-bridge --extra local-reranker --group benchmark --group test
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync \
+  pytest -q -p no:cacheprovider benchmarks/rerank
+
+# Lighter environments still run: quality and local-inference tests skip
+# cleanly when ir_measures or sentence-transformers are not installed.
 ```
 
 ## Results

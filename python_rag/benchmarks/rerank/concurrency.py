@@ -34,7 +34,13 @@ def run_requests(
     progress: Callable[[RequestStats], None] | None = None,
     worker_requests: int | None = None,
 ) -> Iterator[tuple[tuple[int, dict], Outcome]]:
-    """Submit at most concurrency jobs; perform result evaluation in the caller."""
+    """Submit at most concurrency jobs; perform result evaluation in the caller.
+
+    Without worker_requests, batches of one job resubmit until the job iterable
+    is exhausted. With worker_requests set, each worker runs exactly that many
+    jobs and nothing resubmits: exactly concurrency * worker_requests jobs are
+    consumed and any further jobs are ignored (callers must size the iterable).
+    """
     lock = Lock()
 
     def invoke(job: tuple[int, dict]) -> Outcome:

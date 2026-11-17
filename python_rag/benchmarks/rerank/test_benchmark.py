@@ -33,6 +33,18 @@ def fixture_data():
     }
 
 
+@pytest.fixture
+def ir_measures():
+    """Quality metrics need the optional benchmark dependency group."""
+    return pytest.importorskip("ir_measures")
+
+
+@pytest.fixture
+def cross_encoder():
+    """Local CrossEncoder tests need the optional local extra installed."""
+    return pytest.importorskip("sentence_transformers")
+
+
 def response():
     return RerankResponse(
         results=[
@@ -68,7 +80,7 @@ def test_selection_and_key_permission_checks():
     assert skip_reason(dict(spec, model=None), True, True, {}) == "unverified model"
 
 
-def test_metrics_and_percentiles():
+def test_metrics_and_percentiles(ir_measures):
     assert metrics(["b", "a"], {"b": 2}).model_dump(by_alias=True) == {
         "ndcg@10": 1,
         "mrr@10": 1,
@@ -125,7 +137,7 @@ def mock_reranker_factory():
 
 
 def test_mock_execution_limits_usage_and_exports(
-    monkeypatch, tmp_path, mock_reranker_factory
+    ir_measures, monkeypatch, tmp_path, mock_reranker_factory
 ):
     config = select_models(json.loads((ROOT / "models.json").read_text()), ["cohere"])
     monkeypatch.setenv("COHERE_API_KEY", "secret-must-not-appear")
@@ -191,7 +203,9 @@ def test_failures_count_against_budget_and_do_not_expose_messages(monkeypatch):
     assert report["remote_calls_attempted"] == 0
 
 
-def test_parallel_requests_overlap_and_failures_respect_the_global_budget(monkeypatch):
+def test_parallel_requests_overlap_and_failures_respect_the_global_budget(
+    ir_measures, monkeypatch
+):
     spec = json.loads((ROOT / "models.json").read_text())[0]
     monkeypatch.setenv("COHERE_API_KEY", "private-key")
     barrier = Barrier(4, timeout=3)
@@ -298,7 +312,9 @@ def test_sdk_is_called_through_existing_client_without_retries(monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["local", "bge"])
-def test_local_uses_existing_client_and_cached_cpu_factory(monkeypatch, name):
+def test_local_uses_existing_client_and_cached_cpu_factory(
+    monkeypatch, cross_encoder, name
+):
     import sentence_transformers
     from hawki_reranking.local_reranker import LocalReranker
 
@@ -347,7 +363,7 @@ def test_missing_keys_and_zero_budget_never_construct_remote_clients(monkeypatch
     assert report["skips"][0]["reason"] == "remote call limit"
 
 
-def test_graded_metrics_and_recall_cutoff():
+def test_graded_metrics_and_recall_cutoff(ir_measures):
     result = metrics(["support", "direct"], {"support": 1, "direct": 2})
     assert result.ndcg == pytest.approx((1 + 3 / math.log2(3)) / (3 + 1 / math.log2(3)))
     assert result.recall == 1
@@ -447,7 +463,7 @@ def test_environment_file_loads_only_gateway_variables(monkeypatch, tmp_path):
     assert "UNRELATED_TEST_SETTING" not in os.environ
 
 
-def test_metric_model_serialization_and_zero_relevance():
+def test_metric_model_serialization_and_zero_relevance(ir_measures):
     from benchmarks.rerank.results import EvaluationMetrics, RankedResult
     from pydantic import ValidationError
 
@@ -536,7 +552,7 @@ def test_duplicate_query_ids_cli_does_not_export(
 
 
 def test_unique_query_ids_preserve_separate_qrels_and_runs(
-    mock_reranker_factory, tmp_path
+    ir_measures, mock_reranker_factory, tmp_path
 ):
     data = fixture_data()
     data["queries"].append(
