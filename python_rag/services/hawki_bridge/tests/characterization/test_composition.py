@@ -78,6 +78,7 @@ def test_default_provider_keeps_legacy_function(env):
         },
         {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "jina-rerank"},
         {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "ollama/mxbai-rerank"},
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "openai/gpt-4o-mini"},
     ],
 )
 def test_incomplete_backend_configuration_fails_at_composition(env):
@@ -85,11 +86,21 @@ def test_incomplete_backend_configuration_fails_at_composition(env):
         composition.build_query_dependencies(load_settings(env))
 
 
-def test_hosted_sdk_model_without_gateway_composes():
-    env = {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "voyage/rerank-2.5"}
+@pytest.mark.parametrize(
+    "model",
+    [
+        "voyage/rerank-2.5",
+        "huggingface/BAAI/bge-reranker-base",
+        # Cohere-dialect providers accepted per litellm#52252 dispatch truth.
+        "together_ai/some-reranker",
+        "infinity/mixedbread-ai/mxbai-rerank-base-v1",
+    ],
+)
+def test_dispatch_supported_sdk_models_compose(model):
+    env = {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": model}
     deps = composition.build_query_dependencies(load_settings(env))
     client = deps.rerank_hits.keywords["reranker"]
-    assert client.model == "voyage/rerank-2.5"
+    assert client.model == model
     assert client.fallback_model is None
 
 

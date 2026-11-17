@@ -10,29 +10,10 @@ from hawki_bridge.adapters.reranker_client import rerank_hits
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.settings import BridgeSettings, load_settings
 
-# Provider prefixes with a rerank config in the pinned LiteLLM SDK. LiteLLM
-# has no in-process reranking; anything else fails at composition time
-# instead of failing per query and silently degrading to original order.
-RERANK_SDK_PROVIDER_PREFIXES = frozenset(
-    {
-        "azure_ai",
-        "bedrock",
-        "cohere",
-        "dashscope",
-        "deepinfra",
-        "fireworks_ai",
-        "hosted_vllm",
-        "huggingface",
-        "infinity",
-        "jina_ai",
-        "litellm_proxy",
-        "nvidia_nim",
-        "scaleway",
-        "together_ai",
-        "vertex_ai",
-        "voyage",
-        "watsonx",
-    }
+# Providers that intentionally ride the Cohere rerank protocol in
+# litellm.rerank dispatch; any other Cohere-family config is a fallback.
+_RERANK_COHERE_DIALECT_PROVIDERS = frozenset(
+    {"cohere", "litellm_proxy", "bedrock", "infinity", "together_ai"}
 )
 
 
@@ -40,6 +21,42 @@ def _gateway_base(url: str) -> str:
     """Normalize a gateway base; LiteLLM appends /v1/rerank itself."""
     base = url.rstrip("/")
     return base[: -len("/v1")] if base.endswith("/v1") else base
+
+
+def _validate_sdk_rerank_model(
+    model: str, *, api_base: str | None = None, api_key: str | None = None
+) -> None:
+    """Reject RERANKER_MODEL values the pinned LiteLLM cannot rerank with.
+
+    Pure resolution mirroring litellm.rerank dispatch; no network or keys.
+    TODO(litellm#52252): simplify once the SDK rejects unsupported rerank
+    providers itself.
+    """
+    from litellm.types.utils import LlmProviders
+    from litellm.utils import ProviderConfigManager
+
+    import litellm
+
+    try:
+        _, provider, _, _ = litellm.get_llm_provider(
+            model=model, api_base=api_base, api_key=api_key
+        )
+        config = ProviderConfigManager.get_provider_rerank_config(
+            model, LlmProviders(provider), api_base, []
+        )
+    except Exception as exc:
+        raise ValueError(
+            f"LiteLLM cannot route RERANKER_MODEL {model!r} for reranking"
+            f" ({type(exc).__name__})"
+        ) from exc
+    if (
+        isinstance(config, (litellm.CohereRerankConfig, litellm.CohereRerankV2Config))
+        and provider not in _RERANK_COHERE_DIALECT_PROVIDERS
+    ):
+        raise ValueError(
+            f"RERANKER_MODEL {model!r}: provider {provider!r} has no rerank"
+            " support in the pinned LiteLLM"
+        )
 
 
 def _resolve_fallback_model(settings: BridgeSettings) -> str | None:
@@ -71,12 +88,7 @@ def build_query_dependencies(
         from hawki_reranking.litellm_reranker import LiteLLMReranker
 
         model = active.sdk_reranker_model
-        prefix, separator, _ = model.partition("/")
-        if not separator or prefix not in RERANK_SDK_PROVIDER_PREFIXES:
-            raise ValueError(
-                "RERANKER_MODEL needs a rerank-capable provider prefix "
-                "(for example litellm_proxy/jina-rerank or cohere/rerank-v3.5)"
-            )
+        prefix, _, _ = model.partition("/")
         options: dict[str, object] = {"timeout": 30, "num_retries": 0, "max_retries": 0}
         if prefix == "litellm_proxy":
             if not active.reranker_gateway_base or not active.reranker_gateway_key:
@@ -87,6 +99,11 @@ def build_query_dependencies(
                 api_base=_gateway_base(active.reranker_gateway_base),
                 api_key=active.reranker_gateway_key,
             )
+        _validate_sdk_rerank_model(
+            model,
+            api_base=options.get("api_base"),
+            api_key=options.get("api_key"),
+        )
         client = LiteLLMReranker(
             model,
             fallback_model=_resolve_fallback_model(active),
