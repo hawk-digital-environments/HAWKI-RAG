@@ -56,3 +56,15 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [ gpu ]
+
+  # Inert for the default bridge image (it contains no model stack); grants
+  # the CUDA device to the BRIDGE_LOCAL_RERANKER=true image so the in-process
+  # CrossEncoder (RERANKER_PROVIDER=local) leaves CPU-only torch defaults.
+  hawki_rag_bridge:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]

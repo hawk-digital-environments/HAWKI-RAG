@@ -115,6 +115,10 @@ unavailable at runtime. Loading remains lazy and inference is serialized per
 instance. CPU/GPU selection follows Sentence Transformers defaults. Deterministic
 query tests inject model/SDK doubles and do not download weights.
 
+GPU: the image already ships a CUDA-capable torch build; include the GPU addon
+(`compose/with_ollama_and_gpu.yml`) so the bridge container gets the NVIDIA
+reservation, and Sentence Transformers picks CUDA automatically.
+
 
 ### Gateway reranker fallback
 

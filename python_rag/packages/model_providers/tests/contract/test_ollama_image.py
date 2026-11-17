@@ -51,5 +51,12 @@ def test_ollama_gpu_addon_only_adds_nvidia_device_access() -> None:
         assert obsolete_setting not in gpu_ollama
 
 
+def test_gpu_addon_grants_the_bridge_a_device_reservation() -> None:
+    gpu_bridge = _service_block(OLLAMA_GPU_ADDON_FILE, "hawki_rag_bridge")
+
+    assert "driver: nvidia" in gpu_bridge
+    assert "capabilities: [ gpu ]" in gpu_bridge
+
+
 def test_ollama_lives_in_the_addon_not_the_base_compose() -> None:
     assert "ollama:" not in BASE_COMPOSE_FILE.read_text(encoding="utf-8")
