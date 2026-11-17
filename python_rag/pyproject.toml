@@ -53,13 +53,13 @@ conflicts = [
 ]
 
 [dependency-groups]
-benchmark = ["ir-measures==0.4.3"]
 lint = [
     "ruff==0.15.22",
 ]
 test = [
     "pytest==8.4.2",
     "pytest-cov==7.1.0",
+    "ir-measures==0.4.3",
 ]
 
 [tool.ruff]

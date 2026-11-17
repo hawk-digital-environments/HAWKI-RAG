@@ -1,9 +1,10 @@
 """Synthetic-payload load tests using fake SDK clients only."""
 
-from collections import Counter
-import json
 from threading import Barrier, Lock, current_thread
 from time import sleep
+from unittest.mock import Mock
+from collections import Counter
+import json
 
 import pytest
 from litellm.types.rerank import RerankResponse
@@ -13,17 +14,130 @@ from benchmarks.rerank import load_test
 from benchmarks.rerank.reporting import print_report, write_results
 
 
+class Limited(Exception):
+    status_code = 429
+
+
+@pytest.fixture(scope="module")
 def jina_spec():
     return runner.select_models(
         json.loads((runner.ROOT / "models.json").read_text()), ["jina"]
     )[0]
 
 
-def fake_response(count=24):
-    return RerankResponse(
-        results=[{"index": i, "relevance_score": 1 / (i + 1)} for i in range(count)],
-        meta={"tokens": {"input_tokens": 100}},
-    )
+@pytest.fixture
+def fake_response():
+    def make(count=24, tokens=100):
+        return RerankResponse(
+            results=[
+                {"index": i, "relevance_score": 1 / (i + 1)} for i in range(count)
+            ],
+            meta={"tokens": {"input_tokens": tokens}},
+        )
+
+    return make
+
+
+@pytest.fixture
+def gateway_env(monkeypatch):
+    monkeypatch.setenv("LITELLM_PROXY_API_BASE", "https://ai.ixdlab.hawk.de")
+    monkeypatch.setenv("LITELLM_PROXY_API_KEY", "test-key")
+
+
+@pytest.fixture
+def recorded_sleeps(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(load_test, "sleep", sleeps.append)
+    return sleeps
+
+
+@pytest.fixture
+def synchronized_client(fake_response):
+    """Reranker Mock whose workers meet at a barrier before completing."""
+
+    def make(barriers, per_worker, fail_at=()):
+        received = 0
+        lock = Lock()
+
+        def rerank(query, documents, top_n):
+            nonlocal received
+            assert len(documents) == top_n == 24
+            assert sum(map(len, documents)) == 38452
+            assert query.startswith("How does HAWKI-RAG handle ")
+            with lock:
+                received += 1
+                index = received
+                phase = 0 if index <= 6 else 1
+                worker = (phase, current_thread().name)
+                per_worker[worker] += 1
+                first = per_worker[worker] == 1
+            if first:
+                barriers[phase].wait()
+            sleep(0.002)
+            if index in fail_at:
+                raise Limited("private-upstream-error")
+            return fake_response()
+
+        client = Mock()
+        client.rerank.side_effect = rerank
+        return client
+
+    return make
+
+
+@pytest.fixture
+def responding_client(fake_response):
+    """Reranker Mock returning plain responses, optionally failing the first call.
+
+    Always use a single callable as side_effect; never a list like
+    [exception, callable]: items in a side_effect iterable are returned as
+    values, not called, so a callable item silently yields the function object
+    instead of its result.
+    """
+
+    def make(clear_meta=False, fail_first_with=None):
+        calls = {"count": 0}
+
+        def rerank(query, documents, top_n):
+            calls["count"] += 1
+            if fail_first_with is not None and calls["count"] == 1:
+                raise fail_first_with
+            result = fake_response()
+            if clear_meta:
+                result.meta = None
+            return result
+
+        client = Mock()
+        client.rerank.side_effect = rerank
+        return client
+
+    return make
+
+
+@pytest.fixture
+def client_factory():
+    """Factory Mock standing in for make_reranker; load_test caches one client."""
+
+    def make(client):
+        return Mock(return_value=(client, None))
+
+    return make
+
+
+@pytest.fixture
+def phase_saver(tmp_path):
+    """on_phase callback capturing attempts and persisting each phase report."""
+
+    def make():
+        attempts = []
+
+        def save(report):
+            write_results(report, tmp_path)
+            attempts.append(report["remote_calls_attempted"])
+
+        return attempts, save
+
+    return make
 
 
 def test_synthetic_load_payload_size_and_missing_relevance_judgments():
@@ -41,52 +155,24 @@ def test_synthetic_load_payload_size_and_missing_relevance_judgments():
 
 
 def test_fixed_workers_payload_failures_cooldown_and_client_reuse(
-    monkeypatch, tmp_path
+    jina_spec,
+    gateway_env,
+    recorded_sleeps,
+    synchronized_client,
+    client_factory,
+    phase_saver,
+    monkeypatch,
+    tmp_path,
 ):
-    monkeypatch.setenv("LITELLM_PROXY_API_BASE", "https://ai.ixdlab.hawk.de")
     monkeypatch.setenv("LITELLM_PROXY_API_KEY", "private-key")
     barriers = {0: Barrier(2, timeout=3), 1: Barrier(4, timeout=3)}
-    received = 0
-    lock = Lock()
     per_worker = Counter()
-    factory_calls = []
-    sleeps = []
-    saved_attempts = []
-    monkeypatch.setattr(load_test, "sleep", sleeps.append)
-
-    class Limited(Exception):
-        status_code = 429
-
-    class Fake:
-        def rerank(self, query, documents, top_n):
-            nonlocal received
-            assert len(documents) == top_n == 24
-            assert sum(map(len, documents)) == 38452
-            assert query.startswith("How does HAWKI-RAG handle ")
-            with lock:
-                received += 1
-                index = received
-                phase = 0 if index <= 6 else 1
-                worker = (phase, current_thread().name)
-                per_worker[worker] += 1
-                first = per_worker[worker] == 1
-            if first:
-                barriers[phase].wait()
-            sleep(0.002)
-            if index in (4, 8):
-                raise Limited("private-upstream-error")
-            return fake_response()
-
-    def factory(*_):
-        factory_calls.append(True)
-        return Fake(), None
-
-    def save(report):
-        write_results(report, tmp_path)
-        saved_attempts.append(report["remote_calls_attempted"])
+    client = synchronized_client(barriers, per_worker, fail_at=(4, 8))
+    attempts, save = phase_saver()
+    factory = client_factory(client)
 
     report = load_test.load_sweep(
-        [jina_spec()],
+        [jina_spec],
         levels=[2, 4],
         per=3,
         cooldown=3,
@@ -97,15 +183,15 @@ def test_fixed_workers_payload_failures_cooldown_and_client_reuse(
         factory=factory,
         on_phase=save,
     )
-    assert factory_calls == [True]
-    assert sleeps == [3]
+    assert factory.call_count == 1
+    assert recorded_sleeps == [3]
     assert (
-        received
+        client.rerank.call_count
         == report["planned_remote_calls"]
         == report["remote_calls_attempted"]
         == 18
     )
-    assert saved_attempts == [6, 18]
+    assert attempts == [6, 18]
     assert len(per_worker) == 6
     assert set(per_worker.values()) == {3}
     assert [row["peak_in_flight"] for row in report["summary"]] == [2, 4]
@@ -124,25 +210,15 @@ def test_fixed_workers_payload_failures_cooldown_and_client_reuse(
 
 
 def test_request_counts_need_not_be_a_multiple_of_six_and_unknown_usage_stays_unknown(
-    monkeypatch, capsys
+    jina_spec, gateway_env, responding_client, monkeypatch, capsys
 ):
-    monkeypatch.setenv("LITELLM_PROXY_API_BASE", "https://ai.ixdlab.hawk.de")
-    monkeypatch.setenv("LITELLM_PROXY_API_KEY", "test-key")
-    queries = []
-
-    class Fake:
-        def rerank(self, query, documents, top_n):
-            queries.append(query)
-            result = fake_response()
-            result.meta = None
-            return result
-
     def forbidden_metrics(*_):
         pytest.fail("Unjudged load payload must not calculate quality")
 
     monkeypatch.setattr(runner, "metrics", forbidden_metrics)
+    client = responding_client(clear_meta=True)
     report = load_test.load_sweep(
-        [jina_spec()],
+        [jina_spec],
         levels=[4],
         per=1,
         cooldown=0,
@@ -150,10 +226,10 @@ def test_request_counts_need_not_be_a_multiple_of_six_and_unknown_usage_stays_un
         execute=True,
         allow_remote=True,
         run_benchmark=runner.benchmark,
-        factory=lambda *_: (Fake(), None),
+        factory=lambda *_: (client, None),
     )
-    assert len(queries) == report["remote_calls_attempted"] == 4
-    assert set(queries) == {
+    assert client.rerank.call_count == report["remote_calls_attempted"] == 4
+    assert {call.args[0] for call in client.rerank.call_args_list} == {
         row["query"] for row in load_test.synthetic_load_dataset()["queries"][:4]
     }
     summary = report["summary"][0]
@@ -163,13 +239,15 @@ def test_request_counts_need_not_be_a_multiple_of_six_and_unknown_usage_stays_un
     assert "Input tokens" in capsys.readouterr().out
 
 
-def test_default_sweep_dry_run_never_constructs_clients_or_sleeps(monkeypatch):
+def test_default_sweep_dry_run_never_constructs_clients_or_sleeps(
+    jina_spec, monkeypatch
+):
     def forbidden(*_):
         pytest.fail("Dry-run cannot construct clients or sleep")
 
     monkeypatch.setattr(load_test, "sleep", forbidden)
     report = load_test.load_sweep(
-        [jina_spec()],
+        [jina_spec],
         levels=[24, 32, 48, 64],
         per=1,
         cooldown=3,
@@ -196,9 +274,9 @@ def test_default_sweep_dry_run_never_constructs_clients_or_sleeps(monkeypatch):
         {"models": [{"provider": "local"}]},
     ],
 )
-def test_invalid_sweep_is_rejected_before_inference(overrides):
+def test_invalid_sweep_is_rejected_before_inference(overrides, jina_spec):
     options = dict(
-        models=[jina_spec()],
+        models=[jina_spec],
         levels=[2],
         per=1,
         cooldown=0,
@@ -238,30 +316,19 @@ def test_cli_load_test_dry_run_uses_synthetic_payload(monkeypatch, tmp_path, cap
 
 
 def test_all_attempt_percentiles_include_failures_but_success_percentiles_do_not(
-    monkeypatch,
+    jina_spec, gateway_env, responding_client
 ):
-    monkeypatch.setenv("LITELLM_PROXY_API_BASE", "https://ai.ixdlab.hawk.de")
-    monkeypatch.setenv("LITELLM_PROXY_API_KEY", "test-key")
     ticks = iter([0, 4, 10, 12])
-
-    class Fake:
-        calls = 0
-
-        def rerank(self, *args, **kwargs):
-            self.calls += 1
-            if self.calls == 1:
-                raise TimeoutError("private-timeout")
-            return fake_response()
-
+    client = responding_client(fail_first_with=TimeoutError("private-timeout"))
     report = runner.benchmark(
-        [jina_spec()],
+        [jina_spec],
         load_test.synthetic_load_dataset(),
         execute=True,
         allow_remote=True,
         requests_per_model=2,
         worker_requests=2,
         max_remote_calls=2,
-        factory=lambda *_: (Fake(), None),
+        factory=lambda *_: (client, None),
         clock=lambda: next(ticks),
     )
     summary = report["summary"][0]

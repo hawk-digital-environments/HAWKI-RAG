@@ -118,10 +118,8 @@ remote model. Models themselves are tested one after another. For Jina, the
 supplied dataset has three queries, so 128 repetitions schedules 384 requests:
 
 ```bash
-# Install bridge dependencies, then add the workspace-root benchmark group.
-# --inexact retains the bridge packages during the group-only sync.
-uv sync --frozen --package hawki-bridge
-uv sync --frozen --only-group benchmark --inexact
+# Bridge dependencies; the test group already carries ir-measures.
+uv sync --frozen --package hawki-bridge --group test
 
 # Preview; no inference calls.
 .venv/bin/python benchmarks/rerank/benchmark.py --models jina \
@@ -162,16 +160,13 @@ an instance lock, so local comparison runs must use the default concurrency 1.
 Coordinate load on a shared gateway and allow cooldown between runs to avoid
 confusing cumulative RPM/TPM limits with a concurrency threshold.
 
-Unit tests use fake rerankers and make no inference calls:
+Unit tests use fake rerankers and make no inference calls; the CrossEncoder
+stack is stubbed, so one environment runs everything:
 
 ```bash
-# Canonical environment: every test runs (needs local-reranker + benchmark deps).
-uv sync --frozen --package hawki-bridge --extra local-reranker --group benchmark --group test
+uv sync --frozen --package hawki-bridge --group test   # + --extra local-reranker for real weights
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync \
   pytest -q -p no:cacheprovider benchmarks/rerank
-
-# Lighter environments still run: quality and local-inference tests skip
-# cleanly when ir_measures or sentence-transformers are not installed.
 ```
 
 ## Results
@@ -269,12 +264,9 @@ Historical files under `results/` are preserved unless you run with that output 
 
 ## Evaluation method and typed boundaries
 
-Install the bridge with `uv sync --frozen --package hawki-bridge`
-(add `--extra local-reranker` only for local model inference), then run
-`uv sync --frozen --only-group benchmark --inexact` from `python_rag`.
-The `benchmark` group belongs to the workspace root, so do not combine
-`--package hawki-bridge` with `--group benchmark`. The second sync adds
-`ir-measures==0.4.3` only to development/benchmark dependencies, never production.
+Install the bridge with `uv sync --frozen --package hawki-bridge --group test`
+(add `--extra local-reranker` only for local model inference). The test group
+carries `ir-measures==0.4.3` as a development dependency, never production.
 The reusable clients live in `packages/reranking` (`hawki_reranking`); bridge hit
 extraction and production score adaptation remain in `hawki_bridge`.
 

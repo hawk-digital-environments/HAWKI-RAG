@@ -3,8 +3,10 @@
 import csv
 import json
 import math
+import sys
 from threading import Barrier, Lock
 from time import sleep
+from unittest.mock import Mock
 
 import pytest
 from litellm.types.rerank import RerankResponse
@@ -34,15 +36,54 @@ def fixture_data():
 
 
 @pytest.fixture
-def ir_measures():
-    """Quality metrics need the optional benchmark dependency group."""
-    return pytest.importorskip("ir_measures")
+def cross_encoder(monkeypatch):
+    """Stub sentence_transformers; local factory tests never touch real weights."""
+    import types
+
+    stub = types.ModuleType("sentence_transformers")
+    monkeypatch.setitem(sys.modules, "sentence_transformers", stub)
+    return stub
 
 
 @pytest.fixture
-def cross_encoder():
-    """Local CrossEncoder tests need the optional local extra installed."""
-    return pytest.importorskip("sentence_transformers")
+def cohere_env(monkeypatch):
+    monkeypatch.setenv("COHERE_API_KEY", "private-key")
+
+
+@pytest.fixture
+def barrier_client():
+    """Reranker Mock whose first workers meet at a barrier before completing."""
+
+    def make(fail_on_even=False):
+        barrier = Barrier(4, timeout=3)
+        lock = Lock()
+        state = {"received": 0, "peak": 0, "active": 0}
+
+        class Limited(Exception):
+            status_code = 429
+
+        def rerank(*args, **kwargs):
+            with lock:
+                state["received"] += 1
+                index = state["received"]
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            try:
+                if index <= 4:
+                    barrier.wait()
+                sleep(0.005)
+                if fail_on_even and index % 2 == 0:
+                    raise Limited("private-error-and-key")
+                return response()
+            finally:
+                with lock:
+                    state["active"] -= 1
+
+        client = Mock()
+        client.rerank.side_effect = rerank
+        return client, state
+
+    return make
 
 
 def response():
@@ -80,7 +121,7 @@ def test_selection_and_key_permission_checks():
     assert skip_reason(dict(spec, model=None), True, True, {}) == "unverified model"
 
 
-def test_metrics_and_percentiles(ir_measures):
+def test_metrics_and_percentiles():
     assert metrics(["b", "a"], {"b": 2}).model_dump(by_alias=True) == {
         "ndcg@10": 1,
         "mrr@10": 1,
@@ -137,7 +178,7 @@ def mock_reranker_factory():
 
 
 def test_mock_execution_limits_usage_and_exports(
-    ir_measures, monkeypatch, tmp_path, mock_reranker_factory
+    monkeypatch, tmp_path, mock_reranker_factory
 ):
     config = select_models(json.loads((ROOT / "models.json").read_text()), ["cohere"])
     monkeypatch.setenv("COHERE_API_KEY", "secret-must-not-appear")
@@ -204,35 +245,10 @@ def test_failures_count_against_budget_and_do_not_expose_messages(monkeypatch):
 
 
 def test_parallel_requests_overlap_and_failures_respect_the_global_budget(
-    ir_measures, monkeypatch
+    barrier_client, cohere_env
 ):
     spec = json.loads((ROOT / "models.json").read_text())[0]
-    monkeypatch.setenv("COHERE_API_KEY", "private-key")
-    barrier = Barrier(4, timeout=3)
-    lock = Lock()
-    received = active = peak = 0
-
-    class Limited(Exception):
-        status_code = 429
-
-    class FakeReranker:
-        def rerank(self, *args, **kwargs):
-            nonlocal received, active, peak
-            with lock:
-                received += 1
-                index = received
-                active += 1
-                peak = max(peak, active)
-            try:
-                if index <= 4:
-                    barrier.wait()
-                sleep(0.005)
-                if index % 2 == 0:
-                    raise Limited("private-error-and-key")
-                return response()
-            finally:
-                with lock:
-                    active -= 1
+    client, received = barrier_client(fail_on_even=True)
 
     report = benchmark(
         [spec, dict(spec, name="second")],
@@ -242,11 +258,12 @@ def test_parallel_requests_overlap_and_failures_respect_the_global_budget(
         repetitions=10,
         concurrency=4,
         max_remote_calls=7,
-        factory=lambda *_: (FakeReranker(), None),
+        factory=lambda *_: (client, None),
     )
-    assert received == report["remote_calls_attempted"] == 7
-    assert peak == report["summary"][0]["peak_in_flight"] == 4
-    assert active == 0
+    assert received["received"] == client.rerank.call_count == 7
+    assert received["received"] == report["remote_calls_attempted"] == 7
+    assert received["peak"] == report["summary"][0]["peak_in_flight"] == 4
+    assert received["active"] == 0
     assert len(report["calls"]) == 4
     assert len(report["errors"]) == 3
     assert report["summary"][0]["attempted_calls"] == 7
@@ -315,7 +332,6 @@ def test_sdk_is_called_through_existing_client_without_retries(monkeypatch):
 def test_local_uses_existing_client_and_cached_cpu_factory(
     monkeypatch, cross_encoder, name
 ):
-    import sentence_transformers
     from hawki_reranking.local_reranker import LocalReranker
 
     created = []
@@ -329,7 +345,7 @@ def test_local_uses_existing_client_and_cached_cpu_factory(
             predictions.append(pairs)
             return [0.1, 0.9]
 
-    monkeypatch.setattr(sentence_transformers, "CrossEncoder", MockCrossEncoder)
+    cross_encoder.CrossEncoder = MockCrossEncoder
     spec = select_models(json.loads((ROOT / "models.json").read_text()), [name])[0]
     client, initialization = make_reranker(spec, False)
     assert isinstance(client, LocalReranker)
@@ -363,7 +379,7 @@ def test_missing_keys_and_zero_budget_never_construct_remote_clients(monkeypatch
     assert report["skips"][0]["reason"] == "remote call limit"
 
 
-def test_graded_metrics_and_recall_cutoff(ir_measures):
+def test_graded_metrics_and_recall_cutoff():
     result = metrics(["support", "direct"], {"support": 1, "direct": 2})
     assert result.ndcg == pytest.approx((1 + 3 / math.log2(3)) / (3 + 1 / math.log2(3)))
     assert result.recall == 1
@@ -463,7 +479,7 @@ def test_environment_file_loads_only_gateway_variables(monkeypatch, tmp_path):
     assert "UNRELATED_TEST_SETTING" not in os.environ
 
 
-def test_metric_model_serialization_and_zero_relevance(ir_measures):
+def test_metric_model_serialization_and_zero_relevance():
     from benchmarks.rerank.results import EvaluationMetrics, RankedResult
     from pydantic import ValidationError
 
@@ -552,7 +568,7 @@ def test_duplicate_query_ids_cli_does_not_export(
 
 
 def test_unique_query_ids_preserve_separate_qrels_and_runs(
-    ir_measures, mock_reranker_factory, tmp_path
+    mock_reranker_factory, tmp_path
 ):
     data = fixture_data()
     data["queries"].append(
