@@ -1,0 +1,22 @@
+{
+  "description": "Synthetic development fixture, not evidence of production retrieval quality. Grades: 0 irrelevant, 1 supporting, 2 directly relevant.",
+  "candidates": [
+    {"id": "delete-vector", "payload": {"content": "Dataset deletion removes owned Qdrant points."}},
+    {"id": "weather", "payload": {"content": "The weather in Germany is sunny."}},
+    {"id": "delete-graph", "payload": {"content": "Neo4j graph contributions are cleaned up during dataset deletion."}},
+    {"id": "embedding", "payload": {"content": "Embedding converts query text into vectors for semantic retrieval."}},
+    {"id": "retrieval", "payload": {"content": "Query retrieval searches the authorized dataset's Qdrant collection using an embedding."}},
+    {"id": "reranking", "payload": {"content": "Reranking scores query and candidate document pairs to improve relevance ordering."}},
+    {"id": "citation", "payload": {"content": "Grounded answers cite retrieved dataset evidence using numbered source references."}},
+    {"id": "context", "payload": {"content": "Source excerpts are sanitized and bounded before being added to the answer prompt."}},
+    {"id": "generation", "payload": {"content": "Answer generation receives a question, dataset source excerpts, and optional graph facts."}},
+    {"id": "football", "payload": {"content": "A football match lasts ninety minutes."}},
+    {"id": "recipe", "payload": {"content": "Bake a chocolate cake with flour and sugar."}},
+    {"id": "deletion-owner", "payload": {"content": "Managed deletion uses document ownership to clean up dataset artifacts."}}
+  ],
+  "queries": [
+    {"id": "deletion", "query": "How does HAWKI-RAG delete datasets?", "relevance": {"delete-vector": 2, "delete-graph": 2, "deletion-owner": 1}},
+    {"id": "search", "query": "How are embeddings used to retrieve relevant documents?", "relevance": {"embedding": 2, "retrieval": 2, "reranking": 1}},
+    {"id": "answer", "query": "How does HAWKI-RAG generate grounded answers with citations?", "relevance": {"citation": 2, "context": 1, "generation": 2}}
+  ]
+}

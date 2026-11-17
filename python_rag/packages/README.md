@@ -78,3 +78,10 @@ strategies are application-owned.
 Temporal activity-executor construction, heartbeat delivery, retry-delay value
 objects, and worker logging/settings. Laravel callbacks and external jobs live
 in their own packages.
+
+## reranking
+
+[hawki_reranking](reranking/README.md) provides reusable local CrossEncoder and
+LiteLLM SDK clients. Local dependencies are optional. Production configuration,
+hit adaptation to `RerankHitsPort`, and the IxDLab-specific default fallback policy
+belong to the bridge; the standalone HTTP reranker remains a separate service.

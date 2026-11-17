@@ -88,8 +88,9 @@ The `docker-compose.yml` contains a setup of multiple services:
   [GPU acceleration](#gpu-acceleration).
 * `hawki_rag_bridge` - The read-only FastAPI bridge that fronts query,
   configuration, health, and Temporal control operations for Laravel.
-* `hawki_rag_rerank` - The reranker that orders retrieved passages by
-  relevance.
+* `hawki_rag_rerank` - The standalone HTTP reranker used by the default
+  `external`/`cohere` bridge configuration. Bridge-local and SDK backends are
+  separate options; the service has not been removed.
 * `hawki-rag-temporal-workflow-worker`, `hawki-rag-temporal-scraper-worker`,
   `hawki-rag-temporal-converter-worker`, `hawki-rag-indexer-worker` - The
   Python activity workers. Each runs as its own image variant and shares the
@@ -159,6 +160,18 @@ The vector, graph, and model data live outside PostgreSQL in the named volumes
 (`qdrant_data`, `neo4j_data`, `ollama`, `rawki_shared_storage`). Losing them
 means re-pulling the models and re-ingesting the content, so include them in
 your backup strategy alongside the `./storage` bind mount.
+
+## Reranking backend choice
+
+The examples retain legacy HTTP defaults. Local CrossEncoder requires a bridge
+image built with `BRIDGE_LOCAL_RERANKER=true` and provisioned weights/cache; the
+published default bridge image excludes those dependencies. SDK reranking needs
+no local proxy container. IxDLab uses `litellm_proxy/jina-rerank` and its existing
+external gateway; one application JLU fallback is enabled only for that primary
+and gateway. Gateway-managed failover is not independently verified. See
+[backend configuration, examples, and fallback controls](../../python_rag/services/hawki_bridge/README.md#production-reranking-backends).
+Both production Python services receive the deployment `.env`; root development
+Compose differs. No reranker mode migrates or changes dataset embeddings.
 
 ## Building custom images
 
