@@ -10,8 +10,8 @@
 #
 # The up-core targets include this file by default (WITH_OLLAMA=1); start a
 # gateway-only stack with: make up-core WITH_OLLAMA=0
-# When combining with docker-compose-gpu-override.yml, include this file
-# before it. See compose/README.md for the full composition guide.
+# GPU acceleration bundles into compose/with_ollama_and_gpu.yml, which
+# requires this file - include this one first. See compose/README.md.
 x-service-env: &service_env
   env_file:
     - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}

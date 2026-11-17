@@ -14,7 +14,7 @@ PYTHON_ROOT = next(
 REPOSITORY_ROOT = PYTHON_ROOT.parent
 BASE_COMPOSE_FILE = REPOSITORY_ROOT / "docker-compose.yml"
 OLLAMA_ADDON_FILE = REPOSITORY_ROOT / "compose" / "with_ollama.yml"
-OLLAMA_GPU_ADDON_FILE = REPOSITORY_ROOT / "compose" / "with_ollama_gpu.yml"
+OLLAMA_GPU_ADDON_FILE = REPOSITORY_ROOT / "compose" / "with_ollama_and_gpu.yml"
 
 
 def _service_block(compose_file: Path, service_name: str) -> str:

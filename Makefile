@@ -25,7 +25,6 @@ ENV_FILE ?= .env
 BUILD_STACK ?= 1
 HOST_OS := $(shell uname -s)
 BASE_COMPOSE_FILE ?= docker-compose.yml
-GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 WITH_LITELLM_COMPOSE ?= compose/with_litellm.yml
@@ -68,7 +67,7 @@ FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
 # LiteLLM gateway).
 WITH_OLLAMA ?= 1
 WITH_OLLAMA_COMPOSE ?= compose/with_ollama.yml
-WITH_OLLAMA_GPU_COMPOSE ?= compose/with_ollama_gpu.yml
+WITH_OLLAMA_AND_GPU_COMPOSE ?= compose/with_ollama_and_gpu.yml
 OLLAMA_COMPOSE_SUFFIX :=
 CORE_GPU_COMPOSE_SUFFIX :=
 CORE_PROFILES := $(CORE_PROFILES_BASE)
@@ -78,14 +77,14 @@ ifeq ($(WITH_OLLAMA),1)
 endif
 
 ifeq ($(USE_OLLAMA_GPU),1)
-	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	ifeq ($(WITH_OLLAMA),1)
-		# The Ollama GPU reservation is its own addon so that GPU-accelerated
-		# reranker/indexer builds work on gateway-only stacks (WITH_OLLAMA=0).
-		CORE_GPU_COMPOSE_SUFFIX := $(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(WITH_OLLAMA_GPU_COMPOSE)
-	endif
+ifeq ($(WITH_OLLAMA),0)
+$(error GPU acceleration requires the Ollama addon: run with WITH_OLLAMA=1, or disable GPU with USE_OLLAMA_GPU=0)
+endif
+	# One GPU addon covers reranker/indexer CUDA builds and the Ollama and
+	# bridge reservations; it requires the Ollama addon to be included first.
+	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(WITH_OLLAMA_AND_GPU_COMPOSE)
 	PYTHON_TORCH_EXTRA := gpu
-	GPU_MESSAGE := Ollama and reranker GPU acceleration enabled.
+	GPU_MESSAGE := GPU acceleration enabled (Ollama addon + reranker/indexer CUDA builds).
 else
 	PYTHON_TORCH_EXTRA := cpu
 	GPU_MESSAGE := CPU mode; NVIDIA Python packages are excluded.

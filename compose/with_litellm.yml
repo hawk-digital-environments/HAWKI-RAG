@@ -11,8 +11,9 @@
 #   docker compose -f docker-compose.yml -f compose/with_litellm.yml up -d litellm
 #
 # Make shortcuts: make up-gateway / make down-gateway
-# When combining with docker-compose-gpu-override.yml, include this file
-# before it. See compose/README.md for the full composition guide.
+# When combining with GPU acceleration, include compose/with_ollama.yml and
+# compose/with_ollama_and_gpu.yml before this file's siblings if used.
+# See compose/README.md for the full composition guide.
 x-service-env: &service_env
   env_file:
     - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}

@@ -38,7 +38,7 @@ docker compose -f docker-compose.yml -f compose/with_ollama.yml \
 | File | Adds | Make shortcuts | Environment block |
 |---|---|---|---|
 | `with_ollama.yml` | Local Ollama server; restores the bridge/indexer `depends_on` health gates | `make up-core` (default, `WITH_OLLAMA=1`), `make pull-models` | `Compose Addon: local Ollama server` in `.env.example` |
-| `with_ollama_gpu.yml` | NVIDIA GPU reservation for Ollama (complements `docker-compose-gpu-override.yml`) | automatic on GPU hosts with `WITH_OLLAMA=1` | — |
+| `with_ollama_and_gpu.yml` | All GPU acceleration: CUDA builds for reranker/indexer + NVIDIA reservations for Ollama and the bridge; **requires `with_ollama.yml`** | automatic on GPU hosts (`USE_OLLAMA_GPU=1`) | — |
 | `with_litellm.yml` | Self-hosted LiteLLM proxy gateway on `127.0.0.1:4000` | `make up-gateway` / `make down-gateway` | `Compose Addon: local LiteLLM gateway` |
 | `with_temporal_ui.yml` | Temporal workflow UI | `make up-monitor-workflows-tool` / `down-…` | `Compose Addon: Temporal workflow UI` |
 
@@ -47,14 +47,13 @@ The variables each addon consumes live in matching, clearly-marked blocks in
 
 ## Ordering rules
 
-- When combining **GPU acceleration** with Ollama, include the files in this
-  order: base → `with_ollama.yml` → `docker-compose-gpu-override.yml` →
-  `with_ollama_gpu.yml`. The make targets do this automatically; the exact
-  default list on a GPU host is
-  `docker-compose.yml:compose/with_ollama.yml:docker-compose-gpu-override.yml:compose/with_ollama_gpu.yml:docker-compose.ui.yml`.
-- `with_ollama_gpu.yml` requires `with_ollama.yml` (it only patches that
-  service). `docker-compose-gpu-override.yml` alone (reranker + indexer GPU
-  builds) also works on gateway-only stacks.
+- GPU acceleration is one addon and **requires the Ollama addon**: include in
+  this order — base → `with_ollama.yml` → `with_ollama_and_gpu.yml`. The make
+  targets do this automatically on GPU hosts; the exact default list is
+  `docker-compose.yml:compose/with_ollama.yml:compose/with_ollama_and_gpu.yml:docker-compose.ui.yml`.
+  `make up-core WITH_OLLAMA=0` on a GPU host fails loudly (use
+  `USE_OLLAMA_GPU=0` too if you really want no GPU): gateway-only stacks have
+  no supported GPU composition.
 - Addons always compose **with the base file**; they are not standalone.
 
 ## Choosing where models run

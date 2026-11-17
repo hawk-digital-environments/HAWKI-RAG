@@ -33,6 +33,13 @@
   during container startup (`HAWKI_RERANKER_PRELOAD`) and keeps its weights in
   the `hf_models` volume; `OLLAMA_KEEP_ALIVE` (default 24h) pins loaded Ollama
   models between queries.
+- **Additive Compose addons.** Optional services no longer sit commented-out
+  in `docker-compose.yml`: local Ollama (`compose/with_ollama.yml`), all GPU
+  acceleration (`compose/with_ollama_and_gpu.yml`, requires the Ollama addon),
+  the self-hosted LiteLLM proxy (`compose/with_litellm.yml`) and the Temporal
+  UI (`compose/with_temporal_ui.yml`) are self-contained files activated by
+  inclusion, documented with copy-paste commands in `compose/README.md`. The
+  base composition assumes the external gateway via `.env` defaults.
 
 ### Quality of Life
 
