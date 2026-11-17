@@ -310,7 +310,10 @@ def test_malformed_responses_fall_back_atomically(candidate_hits, results):
 
 @pytest.mark.parametrize(
     ("response", "error_type"),
-    [(object(), "ValueError"), (RuntimeError("private text and credentials"), "RuntimeError")],
+    [
+        (object(), "ValueError"),
+        (RuntimeError("private text and credentials"), "RuntimeError"),
+    ],
 )
 def test_client_failure_logs_type_but_not_details(
     candidate_hits, response, error_type, caplog

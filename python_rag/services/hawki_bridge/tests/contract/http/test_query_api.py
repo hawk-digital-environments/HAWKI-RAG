@@ -512,7 +512,9 @@ def test_gateway_base_v1_suffix_is_normalized_before_sdk_dispatch(
 def test_production_disabled_override_skips_inference(
     production_query_client, backend, model
 ):
-    client, body, calls, names, *_ = production_query_client(backend, model, mode="none")
+    client, body, calls, names, *_ = production_query_client(
+        backend, model, mode="none"
+    )
     assert client.post("/query", json=body).status_code == 200
     assert calls == names == []
 

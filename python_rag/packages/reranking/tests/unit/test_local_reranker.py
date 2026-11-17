@@ -86,9 +86,7 @@ def test_non_positive_top_n_is_rejected_before_loading(top_n: int) -> None:
         pytest.fail("invalid top_n must not load a model")
 
     with pytest.raises(ValueError, match="top_n"):
-        LocalReranker(model_factory=unexpected_factory).rerank(
-            "query", ["text"], top_n
-        )
+        LocalReranker(model_factory=unexpected_factory).rerank("query", ["text"], top_n)
 
 
 @pytest.mark.parametrize("model_name", [None, "custom/model"])
