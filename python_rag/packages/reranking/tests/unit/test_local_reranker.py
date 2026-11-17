@@ -68,7 +68,7 @@ def test_top_n_limits_results_after_scoring_all_documents(
     assert len(model.calls[0]) == 3
 
 
-@pytest.mark.parametrize("documents, top_n", [([], None), ([], 2), (["text"], 0)])
+@pytest.mark.parametrize("documents, top_n", [([], None), ([], 2)])
 def test_empty_results_do_not_load_model(
     documents: list[str], top_n: int | None
 ) -> None:
@@ -80,13 +80,13 @@ def test_empty_results_do_not_load_model(
     assert client.rerank("query", documents, top_n).results == []
 
 
-@pytest.mark.parametrize("documents", [[], ["text"]])
-def test_negative_top_n_is_rejected_before_loading(documents: list[str]) -> None:
+@pytest.mark.parametrize("top_n", [-1, 0])
+def test_non_positive_top_n_is_rejected_before_loading(top_n: int) -> None:
     def unexpected_factory(_name: str) -> MockCrossEncoder:
         pytest.fail("invalid top_n must not load a model")
 
     with pytest.raises(ValueError, match="top_n"):
-        LocalReranker(model_factory=unexpected_factory).rerank("query", documents, -1)
+        LocalReranker(model_factory=unexpected_factory).rerank("query", ["text"], top_n)
 
 
 @pytest.mark.parametrize("model_name", [None, "custom/model"])

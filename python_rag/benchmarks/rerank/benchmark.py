@@ -1,15 +1,15 @@
-"""Sequential, opt-in reranking benchmark. See README.md for execution."""
+"""Opt-in reranking quality and concurrency benchmark. See README.md."""
 
 from __future__ import annotations
 
 import argparse
-import csv
 from collections import Counter
 from http.client import HTTPSConnection
 from importlib.metadata import version
 import json
 import math
 import os
+import sys
 from pathlib import Path
 from statistics import mean
 from time import perf_counter
@@ -17,8 +17,14 @@ from typing import Any
 
 
 try:
+    from .concurrency import RequestStats, run_requests
+    from .load_test import load_sweep
+    from .reporting import print_report, write_results
     from .results import EvaluationMetrics, RankedResult
 except ImportError:
+    from concurrency import RequestStats, run_requests
+    from load_test import load_sweep
+    from reporting import print_report, write_results
     from results import EvaluationMetrics, RankedResult
 
 ROOT = Path(__file__).resolve().parent
@@ -167,6 +173,12 @@ def verify_gateway_model(spec: dict) -> None:
         connection.close()
 
 
+def sdk_cost(response: Any, key: str) -> float | None:
+    # Private LiteLLM response surface; the version pin asserted in
+    # make_reranker guards this access.
+    return response._hidden_params.get(key)
+
+
 def make_reranker(spec: dict, allow_download: bool):
     if version("litellm") != "1.106.4":
         raise RuntimeError("benchmark requires LiteLLM 1.106.4")
@@ -221,12 +233,28 @@ def benchmark(
     allow_download: bool = False,
     repetitions: int = 1,
     max_remote_calls: int = 9,
+    concurrency: int = 1,
+    progress: bool = False,
+    requests_per_model: int | None = None,
+    worker_requests: int | None = None,
     factory=make_reranker,
     clock=perf_counter,
 ) -> dict:
-    if repetitions < 1 or max_remote_calls < 0:
+    if repetitions < 1 or max_remote_calls < 0 or concurrency < 1:
         raise ValueError(
-            "repetitions must be positive; remote limit must be non-negative"
+            "repetitions/concurrency must be positive; remote limit must be non-negative"
+        )
+    if concurrency > 1 and any(spec["provider"] == "local" for spec in models):
+        raise ValueError(
+            "Parallel benchmarks support remote models only; select --models jina, cohere or voyage"
+        )
+    if requests_per_model is not None and requests_per_model < 1:
+        raise ValueError("requests_per_model must be positive")
+    if worker_requests is not None and (
+        worker_requests < 1 or requests_per_model != concurrency * worker_requests
+    ):
+        raise ValueError(
+            "worker_requests requires exactly concurrency * worker_requests calls"
         )
     candidates = data["candidates"]
     ids = [item["id"] for item in candidates]
@@ -240,6 +268,8 @@ def benchmark(
             f"Duplicate query IDs: {duplicates}. Give each query a unique ID."
         )
     for query in data["queries"]:
+        if query.get("relevance") is None:
+            continue
         if set(query["relevance"]) - set(ids) or any(
             type(g) is not int or g < 0 for g in query["relevance"].values()
         ):
@@ -254,15 +284,18 @@ def benchmark(
         for m in models
         if m["provider"] != "local" and m.get("model") and not m.get("skip")
     ]
+    total_requests = requests_per_model or len(data["queries"]) * repetitions
     report = {
-        "qrels": {q["id"]: q["relevance"] for q in data["queries"]},
-        "planned_remote_calls": len(remote) * len(data["queries"]) * repetitions,
+        "planned_remote_calls": len(remote) * total_requests,
         "remote_calls_attempted": 0,
+        "concurrency": concurrency,
         "calls": [],
         "errors": [],
         "skips": [],
         "summary": [],
     }
+    if all(query.get("relevance") is not None for query in data["queries"]):
+        report["qrels"] = {q["id"]: q["relevance"] for q in data["queries"]}
     for spec in models:
         reason = skip_reason(spec, execute, allow_remote, dict(os.environ))
         if reason:
@@ -289,8 +322,13 @@ def benchmark(
             )
             continue
         calls = []
-        for repetition in range(repetitions):
-            for query in data["queries"]:
+        errors_before = len(report["errors"])
+        stats = RequestStats()
+
+        def jobs():
+            for index in range(total_requests):
+                repetition, query_index = divmod(index, len(data["queries"]))
+                query = data["queries"][query_index]
                 if spec["provider"] != "local":
                     if report["remote_calls_attempted"] >= max_remote_calls:
                         report["skips"].append(
@@ -302,55 +340,113 @@ def benchmark(
                         )
                         continue
                     report["remote_calls_attempted"] += 1
-                started = clock()
-                try:
-                    response = client.rerank(
-                        query["query"], list(documents), top_n=len(documents)
-                    )
-                    elapsed = clock() - started
-                    rankings = map_results(response, candidates)
-                    meta = response.meta or {}
-                    row = {
+                yield repetition, query
+
+        def show_progress(current: RequestStats) -> None:
+            print(
+                f"model={spec['name']} concurrency={concurrency} "
+                f"in_flight={current.active} peak={current.peak} "
+                f"completed={current.completed} failed={current.failures}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        phase_started = perf_counter()
+        for (repetition, query), outcome in run_requests(
+            jobs(),
+            lambda query: client.rerank(
+                query["query"], list(documents), top_n=len(documents)
+            ),
+            concurrency=concurrency,
+            stats=stats,
+            clock=clock,
+            progress=show_progress if progress else None,
+            worker_requests=worker_requests,
+        ):
+            if outcome.error is not None:
+                report["errors"].append(
+                    {
                         "model": spec["name"],
-                        "model_id": spec["model"],
                         "query": query["id"],
                         "repetition": repetition,
-                        "latency_seconds": elapsed,
-                        "rankings": [r.model_dump(mode="json") for r in rankings],
-                        "usage": {
-                            k: meta[k] for k in ("tokens", "billed_units") if k in meta
-                        }
-                        or None,
-                        "actual_cost_usd": None,
-                        "sdk_estimated_cost_usd": response._hidden_params.get(
-                            "response_cost"
-                        ),
-                        "sdk_provider_cost_usd": response._hidden_params.get("cost"),
-                        **metrics(
-                            [r.id for r in rankings], query["relevance"]
-                        ).model_dump(by_alias=True),
+                        "stage": "rerank",
+                        "latency_seconds": outcome.latency_seconds,
+                        **outcome.error,
                     }
-                    calls.append(row)
-                    report["calls"].append(row)
-                except Exception as exc:
-                    report["errors"].append(
-                        {
-                            "model": spec["name"],
-                            "query": query["id"],
-                            "stage": "rerank",
-                            "type": type(exc).__name__,
-                            "latency_seconds": clock() - started,
-                        }
+                )
+                continue
+            try:
+                response = outcome.response
+                elapsed = outcome.latency_seconds
+                rankings = map_results(response, candidates)
+                meta = response.meta or {}
+                quality = (
+                    metrics([r.id for r in rankings], query["relevance"]).model_dump(
+                        by_alias=True
                     )
+                    if query.get("relevance") is not None
+                    else {key: None for key in ("ndcg@10", "mrr@10", "recall@10")}
+                )
+                row = {
+                    "model": spec["name"],
+                    "model_id": spec["model"],
+                    "query": query["id"],
+                    "repetition": repetition,
+                    "latency_seconds": elapsed,
+                    "rankings": [r.model_dump(mode="json") for r in rankings],
+                    "usage": {
+                        k: meta[k] for k in ("tokens", "billed_units") if k in meta
+                    }
+                    or None,
+                    "actual_cost_usd": None,
+                    "sdk_estimated_cost_usd": sdk_cost(response, "response_cost"),
+                    "sdk_provider_cost_usd": sdk_cost(response, "cost"),
+                    **quality,
+                }
+                calls.append(row)
+                report["calls"].append(row)
+            except Exception as exc:
+                report["errors"].append(
+                    {
+                        "model": spec["name"],
+                        "query": query["id"],
+                        "repetition": repetition,
+                        "stage": "evaluation",
+                        "type": type(exc).__name__,
+                        "latency_seconds": outcome.latency_seconds,
+                    }
+                )
+        duration = perf_counter() - phase_started
+        if progress:
+            show_progress(stats)
+        phase_errors = report["errors"][errors_before:]
+        all_latencies = [row["latency_seconds"] for row in calls + phase_errors]
         report["summary"].append(
             {
                 "model": spec["name"],
+                "concurrency": concurrency,
+                "peak_in_flight": stats.peak,
+                "attempted_calls": stats.completed,
+                "failed_calls": len(report["errors"]) - errors_before,
+                "elapsed_seconds": duration,
+                "attempted_calls_per_second": stats.completed / duration
+                if duration
+                else None,
+                "all_p50_seconds": percentile(all_latencies, 0.5),
+                "all_p95_seconds": percentile(all_latencies, 0.95),
+                "max_seconds": max(all_latencies, default=None),
+                "error_counts": dict(Counter(row["type"] for row in phase_errors)),
+                "successful_calls_per_second": len(calls) / duration
+                if duration
+                else None,
                 "successful_calls": len(calls),
                 "initialization_seconds": initialization,
                 "p50_seconds": percentile([c["latency_seconds"] for c in calls], 0.5),
                 "p95_seconds": percentile([c["latency_seconds"] for c in calls], 0.95),
                 **{
-                    key: mean(c[key] for c in calls) if calls else None
+                    key: mean(c[key] for c in calls if c[key] is not None)
+                    if any(c[key] is not None for c in calls)
+                    else None
                     for key in ("ndcg@10", "mrr@10", "recall@10")
                 },
             }
@@ -358,49 +454,11 @@ def benchmark(
     return report
 
 
-def write_results(report: dict, output: Path) -> None:
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "results.json").write_text(
-        json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
-    if "qrels" in report:
-        (output / "qrels.json").write_text(
-            json.dumps(report["qrels"], indent=2) + "\n", encoding="utf-8"
-        )
-        runs = {}
-        for call in report["calls"]:
-            run = runs.setdefault(
-                f"{call['model']}:repetition:{call['repetition']}", {}
-            )
-            ranking = call["rankings"]
-            run[call["query"]] = {
-                r["id"]: len(ranking) - rank for rank, r in enumerate(ranking)
-            }
-        (output / "runs.json").write_text(
-            json.dumps(runs, indent=2) + "\n", encoding="utf-8"
-        )
-    for section in ("summary", "calls", "errors", "skips"):
-        rows = report[section]
-        fields = list(dict.fromkeys(key for row in rows for key in row)) or ["model"]
-        with (output / f"{section}.csv").open(
-            "w", newline="", encoding="utf-8"
-        ) as stream:
-            writer = csv.DictWriter(stream, fieldnames=fields)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(
-                    {
-                        k: json.dumps(v) if isinstance(v, (dict, list)) else v
-                        for k, v in row.items()
-                    }
-                )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", nargs="+")
     parser.add_argument("--config", type=Path, default=ROOT / "models.json")
-    parser.add_argument("--dataset", type=Path, default=ROOT / "dataset.json")
+    parser.add_argument("--dataset", type=Path)
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--allow-remote", action="store_true")
@@ -408,38 +466,62 @@ def main() -> None:
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--max-remote-calls", type=int, default=9)
+    parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument(
+        "--load-test",
+        action="store_true",
+        help="Use the synthetic load payload and stepped worker bursts",
+    )
+    parser.add_argument(
+        "--levels",
+        default="24,32,48,64",
+        help="Load-test concurrency levels, comma-separated",
+    )
+    parser.add_argument(
+        "--per", type=int, default=1, help="Requests per worker at each load-test level"
+    )
+    parser.add_argument(
+        "--cooldown", type=float, default=3, help="Seconds between load-test levels"
+    )
     args = parser.parse_args()
     if args.env_file:
         load_gateway_environment(args.env_file)
     try:
         models = select_models(json.loads(args.config.read_text()), args.models)
-        data = json.loads(args.dataset.read_text())
-        report = benchmark(
-            models,
-            data,
-            execute=args.execute,
-            allow_remote=args.allow_remote,
-            allow_download=args.allow_download,
-            repetitions=args.repetitions,
-            max_remote_calls=args.max_remote_calls,
-        )
+        if args.load_test:
+            if args.dataset or args.repetitions != 1 or args.concurrency != 1:
+                raise ValueError(
+                    "--load-test uses --levels and --per; omit --dataset, --repetitions and --concurrency"
+                )
+            report = load_sweep(
+                models,
+                levels=[int(value) for value in args.levels.split(",")],
+                per=args.per,
+                cooldown=args.cooldown,
+                max_remote_calls=args.max_remote_calls,
+                execute=args.execute,
+                allow_remote=args.allow_remote,
+                run_benchmark=benchmark,
+                factory=make_reranker,
+                on_phase=lambda current: write_results(current, args.output),
+            )
+        else:
+            data = json.loads((args.dataset or ROOT / "dataset.json").read_text())
+            report = benchmark(
+                models,
+                data,
+                execute=args.execute,
+                allow_remote=args.allow_remote,
+                allow_download=args.allow_download,
+                repetitions=args.repetitions,
+                max_remote_calls=args.max_remote_calls,
+                concurrency=args.concurrency,
+                progress=args.concurrency > 1,
+            )
     except ValueError as exc:
         parser.error(str(exc))
     write_results(report, args.output)
-    print(
-        f"Planned remote calls (before key/permission checks): {report['planned_remote_calls']}; "
-        f"attempted: {report['remote_calls_attempted']}"
-    )
-    print("Model             Calls   P50(s)   P95(s)   nDCG@10   MRR@10   Recall@10")
-    for row in report["summary"]:
-        values = [
-            "unknown" if row[k] is None else f"{row[k]:.4f}"
-            for k in ("p50_seconds", "p95_seconds", "ndcg@10", "mrr@10", "recall@10")
-        ]
-        print(f"{row['model']:<17} {row['successful_calls']:>5} " + " ".join(values))
-    print(
-        f"Errors: {len(report['errors'])}; skips: {len(report['skips'])}; output: {args.output}"
-    )
+    print_report(report, args.output)
 
 
 if __name__ == "__main__":

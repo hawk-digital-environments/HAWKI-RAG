@@ -73,11 +73,15 @@ class BridgeSettings:
 
 def load_settings(env: Mapping[str, str] | None = None) -> BridgeSettings:
     source = os.environ if env is None else env
+    reranker_provider = _value(source, "RERANKER_PROVIDER", "cohere").lower()
+    if reranker_provider == "legacy_http":
+        # Documented alias: the legacy HTTP backend predates the SDK providers.
+        reranker_provider = "cohere"
     return BridgeSettings(
         reranker_mode=_value(source, "RERANKER_MODE", "none"),
         reranker_mix_mode=_boolean(source, "RERANKER_MIX_MODE", True),
         reranker_mix_weight=float(_value(source, "RERANKER_MIX_WEIGHT", "0.5")),
-        reranker_provider=_value(source, "RERANKER_PROVIDER", "cohere").lower(),
+        reranker_provider=reranker_provider,
         local_reranker_model=_value(
             source, "HAWKI_RERANKER_MODEL", "mixedbread-ai/mxbai-rerank-base-v1"
         ),

@@ -3,6 +3,8 @@
 import csv
 import json
 import math
+import sys
+import types
 
 import pytest
 from litellm.types.rerank import RerankResponse
@@ -29,6 +31,14 @@ def fixture_data():
         ],
         "queries": [{"id": "q", "query": "question", "relevance": {"b": 2}}],
     }
+
+
+@pytest.fixture
+def cross_encoder(monkeypatch):
+    """Stub sentence_transformers; local factory tests never touch real weights."""
+    stub = types.ModuleType("sentence_transformers")
+    monkeypatch.setitem(sys.modules, "sentence_transformers", stub)
+    return stub
 
 
 def response():
@@ -224,8 +234,9 @@ def test_sdk_is_called_through_existing_client_without_retries(monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["local", "bge"])
-def test_local_uses_existing_client_and_cached_cpu_factory(monkeypatch, name):
-    import sentence_transformers
+def test_local_uses_existing_client_and_cached_cpu_factory(
+    monkeypatch, cross_encoder, name
+):
     from hawki_reranking.local_reranker import LocalReranker
 
     created = []
@@ -239,7 +250,7 @@ def test_local_uses_existing_client_and_cached_cpu_factory(monkeypatch, name):
             predictions.append(pairs)
             return [0.1, 0.9]
 
-    monkeypatch.setattr(sentence_transformers, "CrossEncoder", MockCrossEncoder)
+    cross_encoder.CrossEncoder = MockCrossEncoder
     spec = select_models(json.loads((ROOT / "models.json").read_text()), [name])[0]
     client, initialization = make_reranker(spec, False)
     assert isinstance(client, LocalReranker)

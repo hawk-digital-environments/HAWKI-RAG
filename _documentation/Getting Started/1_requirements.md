@@ -54,14 +54,15 @@ Only published ports must be available on the host.
 | Port / binding | When needed |
 |---|---|
 | `127.0.0.1:8080` | Laravel UI/API with `up-core` or `up-core-local` |
-| `127.0.0.1:8081` | Optional Temporal UI; configurable host binding and port |
-| `127.0.0.1:4000` | Optional LiteLLM profile; configurable port |
+| `127.0.0.1:8081` | Temporal UI addon (`compose/with_temporal_ui.yml`); configurable binding and port |
+| `127.0.0.1:4000` | Local LiteLLM gateway addon (`compose/with_litellm.yml`); configurable port |
 | Reverse proxy's HTTP/HTTPS ports | Server deployment; the core server profile publishes no Laravel host port |
 
-The optional local LiteLLM Proxy service is currently commented out in root
-Compose, so its profile/port is available only after enabling that service in a
-local deployment definition. It is not required for the LiteLLM Python SDK or
-external IxDLab reranking gateway; production Compose does not define it.
+Optional services are **additive compose addons** under `compose/` (see
+`compose/README.md`); the base file starts none of them. The local LiteLLM
+gateway is not required for the LiteLLM Python SDK or the external IxDLab
+reranking gateway — the base setup assumes an external gateway configured
+through `.env`. Production Compose ships its own service set with no proxy.
 
 The external-tool Make targets report crawler UI port **8041** and converter
 health port **8004**. Their actual bindings belong to the sibling projects'
@@ -79,8 +80,9 @@ These do **not** need to be free on the host.
 | Qdrant HTTP | `qdrant:6333` |
 | Neo4j HTTP / Bolt | `hawki_rag_neo4j:7474` / `hawki_rag_neo4j:7687` |
 | Query / Temporal-control bridge | `hawki_rag_bridge:80` |
-| Reranker / Ollama | `hawki_rag_rerank:80` / `hawki_ollama:11434` |
-| Optional LiteLLM / Temporal UI | `litellm:4000` / `temporal-ui:8080` |
+| Reranker (base) / Ollama addon | `hawki_rag_rerank:80` / `hawki_ollama:11434` |
+| Optional LiteLLM gateway / Temporal UI addons | `litellm:4000` / `temporal-ui:8080` |
+| Local Ollama addon | `hawki_ollama:11434` |
 | External crawler | `crawl4ai-service:80` |
 | External file converter | `hawki-toolkit-file-converter-file-converter-1:80` |
 

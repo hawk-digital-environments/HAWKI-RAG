@@ -491,21 +491,42 @@ def test_production_backends_rank_expand_and_generate(
                 assert "api_base" not in call and "api_key" not in call
 
 
-@pytest.mark.parametrize("backend", ["local", "litellm"])
-def test_production_disabled_override_skips_inference(production_query_client, backend):
+@pytest.mark.parametrize(
+    "gateway_base", ["https://gateway.invalid/v1", "https://gateway.invalid/v1/"]
+)
+def test_gateway_base_v1_suffix_is_normalized_before_sdk_dispatch(
+    production_query_client, gateway_base
+):
+    client, body, calls, *_ = production_query_client(
+        "litellm", "litellm_proxy/jina-rerank", gateway_base=gateway_base
+    )
+    response = client.post("/query", json=body)
+    assert response.status_code == 200, response.text
+    assert calls
+    assert all(call["api_base"] == "https://gateway.invalid" for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("backend", "model"), [("local", "test/model"), ("litellm", "cohere/rerank-v3.5")]
+)
+def test_production_disabled_override_skips_inference(
+    production_query_client, backend, model
+):
     client, body, calls, names, *_ = production_query_client(
-        backend, "test/model", mode="none"
+        backend, model, mode="none"
     )
     assert client.post("/query", json=body).status_code == 200
     assert calls == names == []
 
 
-@pytest.mark.parametrize("backend", ["local", "litellm"])
+@pytest.mark.parametrize(
+    ("backend", "model"), [("local", "test/model"), ("litellm", "cohere/rerank-v3.5")]
+)
 def test_production_backend_failures_continue_query(
-    production_query_client, backend, caplog
+    production_query_client, backend, model, caplog
 ):
     client, body, calls, _, prompts, *_ = production_query_client(
-        backend, "test/model", fail=True
+        backend, model, fail=True
     )
     response = client.post("/query", json=body)
     assert response.status_code == 200
@@ -517,9 +538,10 @@ def test_production_backend_failures_continue_query(
 
 
 @pytest.mark.parametrize(
-    "outcome", ["primary_success", "jlu_success", "both_fail", "auth_error", "disabled"]
+    "outcome",
+    ["primary_success", "fallback_success", "both_fail", "auth_error", "disabled"],
 )
-def test_production_ixdlab_fallback_preserves_query_policy(
+def test_production_gateway_fallback_preserves_query_policy(
     production_query_client, outcome, caplog
 ):
     import litellm
@@ -540,15 +562,15 @@ def test_production_ixdlab_fallback_preserves_query_policy(
         gateway_base="https://ai.ixdlab.hawk.de",
         primary_error=error,
         fallback_error=timeout if outcome == "both_fail" else None,
-        fallback_override="none" if outcome == "disabled" else None,
+        fallback_override="none" if outcome == "disabled" else fallback,
     )
     response = client.post("/query", json=body)
     assert response.status_code == 200
-    retried = outcome in {"jlu_success", "both_fail"}
+    retried = outcome in {"fallback_success", "both_fail"}
     assert [call["model"] for call in calls] == (
         [primary, fallback] * 2 if retried else [primary] * 2
     )
-    success = outcome in {"primary_success", "jlu_success"}
+    success = outcome in {"primary_success", "fallback_success"}
     assert [h["id"] for h in response.json()["hits"]] == (
         ["second", "first"] if success else ["first", "second"]
     )

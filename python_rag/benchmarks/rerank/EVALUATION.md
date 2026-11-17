@@ -161,8 +161,8 @@ library selection are described in [Evaluation method](README.md#evaluation-meth
 `qrels.json` includes only completely judged queries; `runs.json` retains measured
 runs separately per model/repetition. Candidate IDs and original labels are unchanged.
 
-Production bridge fallback is separate from this single-model evaluator: primary
-`litellm_proxy/jina-rerank` may get one application retry at
-`litellm_proxy/jlu/jina-rerank` on eligible errors. `RERANKER_FALLBACK_MODEL` is
-read by bridge composition, not this CLI. Gateway-managed failover remains
+Production bridge fallback is separate from this single-model evaluator:
+`RERANKER_FALLBACK_MODEL` explicitly names another `litellm_proxy/` alias (for
+example `litellm_proxy/jlu/jina-rerank`) and is read by bridge composition, not
+this CLI. Gateway-managed failover remains
 unverified; successful synthetic access tests do not establish that policy.

@@ -17,6 +17,7 @@ COPY python_rag/pyproject.toml python_rag/uv.lock ./
 FROM python-builder-base AS bridge-builder
 
 ARG BRIDGE_LOCAL_RERANKER=false
+ARG TORCH_VARIANT=cpu
 
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
 COPY python_rag/packages/contracts/src packages/contracts/src
@@ -35,7 +36,8 @@ COPY python_rag/packages/reranking/src packages/reranking/src
 COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_bridge/README.md services/hawki_bridge/
 COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \
-    if [ "$BRIDGE_LOCAL_RERANKER" = "true" ]; then extra="--extra local-reranker"; else extra=""; fi \
+    if [ "$BRIDGE_LOCAL_RERANKER" = "true" ] && [ "$TORCH_VARIANT" = "gpu" ]; then extra="--extra local-reranker-gpu"; \
+    elif [ "$BRIDGE_LOCAL_RERANKER" = "true" ]; then extra="--extra local-reranker"; else extra=""; fi \
     && uv sync --frozen --no-dev --no-editable --package hawki-bridge $extra \
     && find .venv -depth -type d \( -name __pycache__ -o -name .pytest_cache -o -name tests -o -name test -o -name build -o -name dist -o -name '*.egg-info' \) -exec rm -rf '{}' + \
     && find .venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete

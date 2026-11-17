@@ -88,9 +88,10 @@ Compose services, starts PostgreSQL/Temporal/Laravel, runs Laravel migrations,
 and starts the remaining services. Laravel startup initializes shared storage;
 there is no separate migration container.
 
-Startup also attempts to pull the local models. Pull failures are suppressed
-by the Make target, so successful command completion does not prove the models
-are available.
+Startup also attempts to pull the local models when the Ollama addon is
+active (it is included by default; `make up-core WITH_OLLAMA=0` starts a
+gateway-only stack). Pull failures are suppressed by the Make target, so
+successful command completion does not prove the models are available.
 
 Open [http://localhost:8080](http://localhost:8080).
 For source-mounted development or a reverse proxy, use the
@@ -102,12 +103,13 @@ For source-mounted development or a reverse proxy, use the
 make health
 curl -fsS http://localhost:8080/up
 curl -fsS http://localhost:8080/api/ping
-docker exec hawki_ollama ollama list
+docker exec hawki_ollama ollama list        # Ollama addon only (default on)
 docker exec hawki_rag_app php artisan pipeline:workers
 ```
 
 Expect the liveness/API requests to succeed, the template's models to appear
-in Ollama, and configured worker/queue ownership to be listed. The listing
+in Ollama when the addon runs, and configured worker/queue ownership to be
+listed. The listing
 does not prove live workers are polling. Inspect every `WARN` and `SKIPPED`
 line from `make health`: some essential RAG components are classified as
 optional by that target. [Monitoring](../Operations/monitoring.md) explains

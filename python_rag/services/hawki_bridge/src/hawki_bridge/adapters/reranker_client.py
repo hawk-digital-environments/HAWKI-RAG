@@ -176,9 +176,13 @@ def rerank_hits(
             return _rank_candidates(
                 candidates, scores, hits, mix_mode, mix_weight, orig_scores
             )
-        except Exception:
-            # SDK errors can contain credentials and submitted document contents.
-            logger.warning("Reranker failed; continuing with original order")
+        except Exception as exc:
+            # SDK errors can contain credentials and submitted document contents;
+            # only the exception class is safe to log.
+            logger.warning(
+                "Reranker failed (%s); continuing with original order",
+                type(exc).__name__,
+            )
             return hits
 
     try:

@@ -52,7 +52,15 @@ class BridgeCompositionCharacterizationTests(unittest.TestCase):
         self.assertEqual(reranker.call_args.kwargs["top_n"], 1)
 
 
-@pytest.mark.parametrize("env", [{}, {"RERANKER_PROVIDER": "cohere"}])
+@pytest.mark.parametrize(
+    "env",
+    [
+        {},
+        {"RERANKER_PROVIDER": "cohere"},
+        {"RERANKER_PROVIDER": "legacy_http"},
+        {"RERANKER_PROVIDER": "LEGACY_HTTP"},
+    ],
+)
 def test_default_provider_keeps_legacy_function(env):
     dependencies = composition.build_query_dependencies(load_settings(env))
     assert dependencies.rerank_hits is composition.rerank_hits
@@ -64,11 +72,36 @@ def test_default_provider_keeps_legacy_function(env):
         {"RERANKER_PROVIDER": "unsupported"},
         {"RERANKER_PROVIDER": "litellm"},
         {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "litellm_proxy/model"},
+        {
+            "RERANKER_PROVIDER": "litellm",
+            "RERANKER_MODEL": "local/mixedbread-ai/mxbai-rerank-base-v1",
+        },
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "jina-rerank"},
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "ollama/mxbai-rerank"},
+        {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": "openai/gpt-4o-mini"},
     ],
 )
 def test_incomplete_backend_configuration_fails_at_composition(env):
     with pytest.raises(ValueError):
         composition.build_query_dependencies(load_settings(env))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "voyage/rerank-2.5",
+        "huggingface/BAAI/bge-reranker-base",
+        # Cohere-dialect providers accepted per litellm#52252 dispatch truth.
+        "together_ai/some-reranker",
+        "infinity/mixedbread-ai/mxbai-rerank-base-v1",
+    ],
+)
+def test_dispatch_supported_sdk_models_compose(model):
+    env = {"RERANKER_PROVIDER": "litellm", "RERANKER_MODEL": model}
+    deps = composition.build_query_dependencies(load_settings(env))
+    client = deps.rerank_hits.keywords["reranker"]
+    assert client.model == model
+    assert client.fallback_model is None
 
 
 def test_gateway_key_is_not_in_settings_repr():
@@ -77,41 +110,55 @@ def test_gateway_key_is_not_in_settings_repr():
 
 
 @pytest.mark.parametrize(
-    "model,base,override,expected",
+    "base",
     [
-        (
-            "litellm_proxy/jina-rerank",
-            "https://ai.ixdlab.hawk.de",
-            None,
-            "litellm_proxy/jlu/jina-rerank",
-        ),
-        (
-            "litellm_proxy/jina-rerank",
-            "https://ai.ixdlab.hawk.de/v1/",
-            None,
-            "litellm_proxy/jlu/jina-rerank",
-        ),
-        ("litellm_proxy/jina-rerank", "https://ai.ixdlab.hawk.de", "none", None),
-        ("litellm_proxy/jina-rerank", "https://ai.ixdlab.hawk.de", "", None),
-        (
-            "litellm_proxy/jina-rerank",
-            "https://ai.ixdlab.hawk.de",
-            "litellm_proxy/other",
-            "litellm_proxy/other",
-        ),
-        ("litellm_proxy/other", "https://ai.ixdlab.hawk.de", None, None),
-        ("litellm_proxy/jlu/jina-rerank", "https://ai.ixdlab.hawk.de", None, None),
-        ("cohere/rerank-v3.5", "https://ai.ixdlab.hawk.de", None, None),
-        ("litellm_proxy/jina-rerank", "https://other.invalid", None, None),
+        "https://gateway.invalid",
+        "https://gateway.invalid/",
+        "https://gateway.invalid/v1",
+        "https://gateway.invalid/v1/",
     ],
 )
-def test_ixdlab_fallback_selection_is_narrow(model, base, override, expected):
+def test_gateway_base_is_normalized_for_the_sdk_transport(base):
     env = {
         "RERANKER_PROVIDER": "litellm",
-        "RERANKER_MODEL": model,
+        "RERANKER_MODEL": "litellm_proxy/jina-rerank",
         "LITELLM_PROXY_API_BASE": base,
         "LITELLM_PROXY_API_KEY": "test-placeholder",
     }
+    deps = composition.build_query_dependencies(load_settings(env))
+    client = deps.rerank_hits.keywords["reranker"]
+    # LiteLLM appends /v1/rerank itself; a preconfigured /v1 must not double.
+    assert client._rerank_fn.keywords["api_base"] == "https://gateway.invalid"
+
+
+@pytest.mark.parametrize(
+    "model, override, expected",
+    [
+        ("litellm_proxy/jina-rerank", None, None),
+        ("litellm_proxy/jina-rerank", "", None),
+        ("litellm_proxy/jina-rerank", "none", None),
+        ("litellm_proxy/jina-rerank", "NONE", None),
+        (
+            "litellm_proxy/jina-rerank",
+            "litellm_proxy/jlu/jina-rerank",
+            "litellm_proxy/jlu/jina-rerank",
+        ),
+        (
+            "litellm_proxy/other",
+            "litellm_proxy/jlu/jina-rerank",
+            "litellm_proxy/jlu/jina-rerank",
+        ),
+        ("cohere/rerank-v3.5", None, None),
+    ],
+)
+def test_fallback_model_is_explicit_configuration(model, override, expected):
+    env = {
+        "RERANKER_PROVIDER": "litellm",
+        "RERANKER_MODEL": model,
+        "LITELLM_PROXY_API_KEY": "test-placeholder",
+    }
+    if model.startswith("litellm_proxy/"):
+        env["LITELLM_PROXY_API_BASE"] = "https://gateway.invalid"
     if override is not None:
         env["RERANKER_FALLBACK_MODEL"] = override
     deps = composition.build_query_dependencies(load_settings(env))
@@ -120,16 +167,22 @@ def test_ixdlab_fallback_selection_is_narrow(model, base, override, expected):
 
 
 @pytest.mark.parametrize(
-    "override", ["cohere/other", "litellm_proxy/", "litellm_proxy/jina-rerank"]
+    ("model", "override"),
+    [
+        ("litellm_proxy/jina-rerank", "cohere/other"),
+        ("litellm_proxy/jina-rerank", "litellm_proxy/"),
+        ("litellm_proxy/jina-rerank", "litellm_proxy/jina-rerank"),
+        ("cohere/rerank-v3.5", "litellm_proxy/jlu/jina-rerank"),
+    ],
 )
-def test_fallback_cannot_escape_gateway_or_repeat_primary(override):
+def test_fallback_cannot_escape_gateway_or_repeat_primary(model, override):
     with pytest.raises(ValueError):
         composition.build_query_dependencies(
             load_settings(
                 {
                     "RERANKER_PROVIDER": "litellm",
-                    "RERANKER_MODEL": "litellm_proxy/jina-rerank",
-                    "LITELLM_PROXY_API_BASE": "https://ai.ixdlab.hawk.de",
+                    "RERANKER_MODEL": model,
+                    "LITELLM_PROXY_API_BASE": "https://gateway.invalid",
                     "LITELLM_PROXY_API_KEY": "test-placeholder",
                     "RERANKER_FALLBACK_MODEL": override,
                 }
