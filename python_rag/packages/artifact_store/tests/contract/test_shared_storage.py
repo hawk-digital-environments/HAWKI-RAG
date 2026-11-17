@@ -16,7 +16,10 @@ COMPOSE_FILE = ROOT / "docker-compose.yml"
 COMPOSE_FILES = (
     COMPOSE_FILE,
     ROOT / "docker-compose.local.yml",
-    ROOT / "docker-compose-gpu-override.yml",
+    ROOT / "compose" / "with_ollama.yml",
+    ROOT / "compose" / "with_ollama_and_gpu.yml",
+    ROOT / "compose" / "with_litellm.yml",
+    ROOT / "compose" / "with_temporal_ui.yml",
     ROOT / "docker-compose.ui.yml",
 )
 ENV_EXAMPLE_FILE = ROOT / ".env.example"

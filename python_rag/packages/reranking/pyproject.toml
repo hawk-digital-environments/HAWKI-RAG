@@ -1,0 +1,47 @@
+[project]
+name = "hawki-reranking"
+version = "0.1.0"
+description = "Reusable local and SDK reranking clients"
+requires-python = "==3.13.14"
+dependencies = ["litellm==1.106.4"]
+
+[project.optional-dependencies]
+local = ["sentence-transformers==5.6.0", "transformers==4.57.6"]
+local-cpu = [
+    "sentence-transformers==5.6.0",
+    "transformers==4.57.6",
+    "torch==2.13.0",
+]
+local-gpu = [
+    "sentence-transformers==5.6.0",
+    "transformers==4.57.6",
+    "torch==2.13.0",
+]
+
+[tool.uv]
+conflicts = [
+    [
+        { extra = "local-cpu" },
+        { extra = "local-gpu" },
+    ],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "local-cpu" },
+    { index = "pytorch-cu130", extra = "local-gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"

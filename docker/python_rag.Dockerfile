@@ -16,6 +16,9 @@ COPY python_rag/pyproject.toml python_rag/uv.lock ./
 
 FROM python-builder-base AS bridge-builder
 
+ARG BRIDGE_LOCAL_RERANKER=false
+ARG TORCH_VARIANT=cpu
+
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
 COPY python_rag/packages/contracts/src packages/contracts/src
 COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
@@ -28,10 +31,14 @@ COPY python_rag/packages/graph_store/pyproject.toml python_rag/packages/graph_st
 COPY python_rag/packages/graph_store/src packages/graph_store/src
 COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_store/README.md packages/vector_store/
 COPY python_rag/packages/vector_store/src packages/vector_store/src
+COPY python_rag/packages/reranking/pyproject.toml python_rag/packages/reranking/README.md packages/reranking/
+COPY python_rag/packages/reranking/src packages/reranking/src
 COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_bridge/README.md services/hawki_bridge/
 COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \
-    uv sync --frozen --no-dev --no-editable --package hawki-bridge \
+    if [ "$BRIDGE_LOCAL_RERANKER" = "true" ] && [ "$TORCH_VARIANT" = "gpu" ]; then extra="--extra local-reranker-gpu"; \
+    elif [ "$BRIDGE_LOCAL_RERANKER" = "true" ]; then extra="--extra local-reranker"; else extra=""; fi \
+    && uv sync --frozen --no-dev --no-editable --package hawki-bridge $extra \
     && find .venv -depth -type d \( -name __pycache__ -o -name .pytest_cache -o -name tests -o -name test -o -name build -o -name dist -o -name '*.egg-info' \) -exec rm -rf '{}' + \
     && find .venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 
@@ -150,6 +157,11 @@ RUN chmod 0644 /container/custom/env/10-rawki-runtime.env \
     && chmod 0755 /container/custom/entrypoint/80-rawki-runtime-permissions.sh
 
 FROM runtime-base AS bridge-runtime
+
+ARG BRIDGE_LOCAL_RERANKER=false
+RUN if [ "$BRIDGE_LOCAL_RERANKER" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends libgomp1 \
+      && rm -rf /var/lib/apt/lists/*; fi
 
 ENV PYTHON_APP_MODULE=hawki_bridge.main:app \
     GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker \

@@ -1,0 +1,51 @@
+# ============================================================================
+# ADDON: local LiteLLM gateway (self-hosted OpenAI-compatible proxy)
+# ============================================================================
+# The base composition assumes an EXTERNAL LiteLLM gateway configured through
+# .env (RAG_PROVIDER=litellm + LITELLM_API_URL). Add this file only to
+# self-host the gateway container instead:
+#
+#   docker compose -f docker-compose.yml -f compose/with_litellm.yml up -d
+#
+# Start only the gateway beside an already running stack:
+#   docker compose -f docker-compose.yml -f compose/with_litellm.yml up -d litellm
+#
+# Make shortcuts: make up-gateway / make down-gateway
+# When combining with GPU acceleration, include compose/with_ollama.yml and
+# compose/with_ollama_and_gpu.yml before this file's siblings if used.
+# See compose/README.md for the full composition guide.
+x-service-env: &service_env
+  env_file:
+    - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
+
+services:
+  litellm:
+    <<: *service_env
+    image: ${LITELLM_IMAGE}
+    container_name: hawki_litellm
+    # The proxy config renders at container startup from the canonical model
+    # keys (EMBED/CHAT/VISION_MODEL plus the plural allowlists) and the
+    # standard provider credentials. The renderer is the
+    # hawki-model-providers package, mounted read-only from the checkout;
+    # its import closure is pinned image-safe by contract tests.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PYTHONPATH=/opt/hawki python3 -m hawki_model_providers.gateway_config --output /tmp/config.yaml
+        exec litellm --config /tmp/config.yaml --port 4000
+    volumes:
+      - ./python_rag/packages/model_providers/src/hawki_model_providers:/opt/hawki/hawki_model_providers:ro
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    networks:
+      - default
+      - hawki-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

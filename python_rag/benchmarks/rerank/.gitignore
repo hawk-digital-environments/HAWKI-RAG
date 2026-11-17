@@ -1,0 +1,6 @@
+!models.json
+!dataset.json
+!queries.json
+/results/
+/collected/
+/evaluation-results/

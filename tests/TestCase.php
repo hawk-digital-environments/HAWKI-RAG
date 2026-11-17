@@ -35,7 +35,7 @@ abstract class TestCase extends BaseTestCase
         $user = User::query()->create([
             'username' => 'api-test-'.uniqid(),
             'email' => 'api-test-'.uniqid().'@example.test',
-            'ip' => '127.0.0.'.random_int(1, 254),
+            'ip' => '127.'.random_int(0, 255).'.'.random_int(0, 255).'.'.random_int(1, 254),
         ]);
 
         $this->withToken(

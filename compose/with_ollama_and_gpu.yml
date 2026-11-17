@@ -1,0 +1,70 @@
+# ============================================================================
+# ADDON: GPU acceleration for the local-inference stack
+# ============================================================================
+# Bundles every GPU switch in one file: CUDA build variants for the reranker
+# and indexer-worker images plus NVIDIA device reservations for Ollama and
+# the bridge (the reservation is inert for the default bridge image; it
+# accelerates RERANKER_PROVIDER=local when the BRIDGE_LOCAL_RERANKER=true
+# image is deployed).
+#
+# REQUIRES compose/with_ollama.yml - include this file after it:
+#
+#   docker compose -f docker-compose.yml -f compose/with_ollama.yml \
+#     -f compose/with_ollama_and_gpu.yml up -d
+#
+# The make up-core targets include both automatically on GPU hosts
+# (USE_OLLAMA_GPU=1); WITH_OLLAMA=0 with GPU enabled fails loudly instead.
+# Gateway-only stacks have no supported GPU composition. See compose/README.md.
+x-service-env: &service_env
+  env_file:
+    - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
+
+services:
+  hawki_rag_rerank:
+    build:
+      target: reranker-runtime
+      args:
+        TORCH_VARIANT: gpu
+    image: hawki-rag-reranker:gpu-local
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  hawki-rag-indexer-worker:
+    build:
+      target: indexer-runtime
+      args:
+        TORCH_VARIANT: gpu
+    image: hawki-rag-indexer-worker:gpu-local
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  # Inert for the default bridge image (it contains no model stack); grants
+  # the CUDA device to the BRIDGE_LOCAL_RERANKER=true image so the in-process
+  # CrossEncoder (RERANKER_PROVIDER=local) leaves CPU-only torch defaults.
+  hawki_rag_bridge:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
