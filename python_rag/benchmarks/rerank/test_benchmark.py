@@ -3,6 +3,8 @@
 import csv
 import json
 import math
+from threading import Barrier, Lock
+from time import sleep
 
 import pytest
 from litellm.types.rerank import RerankResponse
@@ -187,6 +189,78 @@ def test_failures_count_against_budget_and_do_not_expose_messages(monkeypatch):
     )
     assert report["errors"][0]["stage"] == "initialization"
     assert report["remote_calls_attempted"] == 0
+
+
+def test_parallel_requests_overlap_and_failures_respect_the_global_budget(monkeypatch):
+    spec = json.loads((ROOT / "models.json").read_text())[0]
+    monkeypatch.setenv("COHERE_API_KEY", "private-key")
+    barrier = Barrier(4, timeout=3)
+    lock = Lock()
+    received = active = peak = 0
+
+    class Limited(Exception):
+        status_code = 429
+
+    class FakeReranker:
+        def rerank(self, *args, **kwargs):
+            nonlocal received, active, peak
+            with lock:
+                received += 1
+                index = received
+                active += 1
+                peak = max(peak, active)
+            try:
+                if index <= 4:
+                    barrier.wait()
+                sleep(0.005)
+                if index % 2 == 0:
+                    raise Limited("private-error-and-key")
+                return response()
+            finally:
+                with lock:
+                    active -= 1
+
+    report = benchmark(
+        [spec, dict(spec, name="second")],
+        fixture_data(),
+        execute=True,
+        allow_remote=True,
+        repetitions=10,
+        concurrency=4,
+        max_remote_calls=7,
+        factory=lambda *_: (FakeReranker(), None),
+    )
+    assert received == report["remote_calls_attempted"] == 7
+    assert peak == report["summary"][0]["peak_in_flight"] == 4
+    assert active == 0
+    assert len(report["calls"]) == 4
+    assert len(report["errors"]) == 3
+    assert report["summary"][0]["attempted_calls"] == 7
+    assert report["summary"][0]["failed_calls"] == 3
+    assert all(error["status_code"] == 429 for error in report["errors"])
+    assert sorted(
+        row["repetition"] for row in report["calls"] + report["errors"]
+    ) == list(range(7))
+    assert report["skips"][-1] == {"model": "second", "reason": "remote call limit"}
+    assert "private" not in json.dumps(report)
+
+
+def test_parallel_dry_run_constructs_no_clients():
+    def forbidden(*_):
+        pytest.fail("dry-run must not construct clients")
+
+    spec = json.loads((ROOT / "models.json").read_text())[0]
+    report = benchmark([spec], fixture_data(), concurrency=40, factory=forbidden)
+    assert report["concurrency"] == 40
+    assert report["remote_calls_attempted"] == 0
+
+
+def test_invalid_concurrency_and_parallel_local_inference_are_rejected():
+    for concurrency in [0, -1]:
+        with pytest.raises(ValueError, match="positive"):
+            benchmark([], fixture_data(), concurrency=concurrency)
+    with pytest.raises(ValueError, match="remote models only"):
+        benchmark([{"provider": "local"}], fixture_data(), concurrency=2)
 
 
 def test_dry_run_does_not_construct_rerankers():
