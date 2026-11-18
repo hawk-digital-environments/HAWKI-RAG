@@ -31,7 +31,7 @@ function createOverlay() {
                 <span></span><span></span><span></span>
             </div>
             <div class="hawki-health-gate-copy">
-                <p class="hawki-health-gate-kicker">HAWKI-RAG Health/Repair</p>
+                <p class="hawki-health-gate-kicker">Advisory system readiness</p>
                 <h2 id="hawki-health-gate-title">Checking system health</h2>
                 <p class="hawki-health-gate-summary">Checking core services...</p>
             </div>
@@ -137,46 +137,24 @@ function renderChecks(checks = []) {
     });
 }
 
-function renderPayload(payload) {
+function renderPayload(_payload) {
+    // Readiness is advisory even when an older server sends enforce=true.
+    // The troubleshooter remains the place to inspect and act on diagnostics.
     createOverlay();
-
-    if (!payload?.enforce || payload.status !== 'blocked') {
-        setBlocked(false);
-        return;
-    }
-
-    const blocked = Array.isArray(payload.blocking) ? payload.blocking : [];
-    const count = blocked.length;
-    if (title) title.textContent = 'System repair required';
-    if (summary) {
-        summary.textContent = count === 1
-            ? 'One required HAWKI-RAG service is not smooth yet. Repair it before continuing.'
-            : `${count} required HAWKI-RAG services are not smooth yet. Repair them before continuing.`;
-    }
-
-    renderChecks(payload.checks || []);
-    renderActions(payload.repairActions || []);
-
-    if (checkedAt) {
-        checkedAt.textContent = payload.checkedAt
-            ? `Last check: ${new Date(payload.checkedAt).toLocaleString()}`
-            : 'Last check finished.';
-    }
-
-    setBlocked(true);
+    setBlocked(false);
 }
 
 function renderFailure(error) {
     createOverlay();
-    setBlocked(true);
+    setBlocked(false);
 
     if (title) title.textContent = 'Service unavailable';
     if (summary) {
-        summary.textContent = 'Service gate itself is unavailable. Repair Laravel routing or the app container first.';
+        summary.textContent = 'Advisory readiness is unavailable. Open Troubleshoot to inspect diagnostics.';
     }
 
     renderChecks([{
-        title: 'HAWKI-RAG Health/Repair Gate',
+        title: 'Advisory system readiness',
         status: 'fail',
         detail: error?.message || 'System gate request failed.',
         fix: 'Run health checks from the terminal and inspect Laravel logs.',

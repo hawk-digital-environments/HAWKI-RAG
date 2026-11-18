@@ -59,7 +59,9 @@ def configure(engine, root):
         workflow_status=AsyncMock(side_effect=workflow_status),
         acknowledge_url_terminal=AsyncMock(),
     )
-    control = WorkflowControl(OperationRepository(engine), port)
+    control = WorkflowControl(
+        OperationRepository(engine, dataset_source="environment"), port
+    )
     instance = UrlIngestionService(
         repository=UrlRepository(engine),
         policy=LocalGrantPolicy(DatabaseGrantReader(engine)),

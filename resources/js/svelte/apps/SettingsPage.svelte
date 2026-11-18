@@ -59,6 +59,9 @@
     }
 
     interface SettingsConfig {
+        effective?: boolean;
+        notice?: string;
+        managedBy?: string;
         customConverter?: CustomConverterConfig;
         models?: ModelConfig;
         providers?: ProviderOption[];
@@ -256,7 +259,9 @@
         graphModel = provider.defaultGraphModel || '';
         embeddingModel = provider.embeddingSupported ? provider.defaultEmbeddingModel || '' : '';
         visionModel = provider.defaultVisionModel || '';
-        setStatus(`${provider.label} selected. Save settings to activate this runtime.`);
+        setStatus(initialConfig.effective === false
+            ? `${provider.label} preview only. Python runtime settings are deployment-managed.`
+            : `${provider.label} selected. Save settings to activate this runtime.`);
     }
 
     function providerApiKeyPlaceholder(provider: ProviderOption): string {
@@ -317,6 +322,7 @@
     }
 
     async function saveSettings(): Promise<void> {
+        if (initialConfig.effective === false) return;
         busy = true;
         setStatus('Saving settings...');
 
@@ -374,6 +380,9 @@
     />
 
     <form class="settings-layout" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
+        {#if initialConfig.effective === false}
+            <p role="status">{initialConfig.notice || 'Python runtime settings are deployment-managed. These Laravel settings are not effective.'}</p>
+        {/if}
         <section class="settings-panel" aria-labelledby="settings-converter-title">
             <div class="section-head">
                 <div>
@@ -490,7 +499,7 @@
             </div>
 
             <p class="settings-model-safety">
-                Provider selection is explicit: an unavailable LiteLLM gateway fails visibly and never falls back to Ollama. Chat and vision models apply immediately. The embedding model is captured when a dataset is created; existing datasets require re-ingestion to change vector models.
+                Provider selection is explicit: an unavailable LiteLLM gateway fails visibly and never falls back to Ollama. In Laravel mode, chat and vision models apply immediately. Python runtime models are deployment-managed. The embedding model is captured when a dataset is created; existing datasets require re-ingestion to change vector models.
             </p>
 
             {#if isEnvironmentManaged(selectedProvider)}
@@ -604,7 +613,7 @@
         </section>
 
         <div class="settings-actions">
-            <button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save Settings'}</button>
+            <button type="submit" disabled={busy || initialConfig.effective === false}>{busy ? 'Saving...' : 'Save Settings'}</button>
             <span class="settings-status" data-tone={tone} aria-live="polite">{status}</span>
         </div>
     </form>

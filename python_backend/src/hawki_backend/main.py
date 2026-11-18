@@ -5,12 +5,15 @@ from contextlib import asynccontextmanager, suppress
 import asyncio
 import logging
 import os
+from typing import Literal
 
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
 
 from hawki_backend.api.v1.health import router as health_router
 from hawki_backend.api.v1.query import router as query_router
+from hawki_backend.ops.api import router as ops_router
+from hawki_backend.ops.service import OpsService
 from hawki_backend.auth.jwks import JwksKeyProvider, KeyProvider
 from hawki_backend.auth.jwt import JwtAuthenticator
 from hawki_backend.authorization import (
@@ -97,6 +100,7 @@ def create_app(
     managed_document_service: ManagedService | None = None,
     url_ingestion_service: UrlIngestionService | None = None,
     dataset_service: DatasetService | None = None,
+    ops_service: OpsService | None = None,
 ) -> FastAPI:
     """Create an application with health, authentication and query surfaces.
 
@@ -201,7 +205,7 @@ def create_app(
                 owned_engine = build_engine(control_database)
         if owned_engine is not None and control_secret:
             resolved_workflow_control = WorkflowControl(
-                OperationRepository(owned_engine),
+                OperationRepository(owned_engine, dataset_source=dataset_source),
                 TemporalControlClient(load_workflow_settings()),
             )
 
@@ -331,6 +335,7 @@ def create_app(
     )
     application.include_router(health_router, prefix="/v1")
     application.include_router(query_router, prefix="/v1")
+    application.include_router(ops_router, prefix="/v1")
     if resolved_dataset_service is not None:
         application.include_router(dataset_router, prefix="/v1")
     application.include_router(text_ingestion_router, prefix="/v1")
@@ -344,6 +349,24 @@ def create_app(
     application.state.grant_policy = resolved_policy
     application.state.query_settings = resolved_query_settings
     application.state.query_dependencies = resolved_query_dependencies
+    application.state.ops_service = ops_service
+    if (
+        ops_service is None
+        and dataset_store is not None
+        and resolved_policy is not None
+        and resolved_query_settings is not None
+    ):
+        application.state.ops_service = OpsService(
+            dataset_store,
+            resolved_policy,
+            resolved_query_settings,
+            QdrantCatalog(
+                os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
+                os.environ.get("QDRANT_API_KEY", ""),
+            ),
+            owned_engine,
+            ManagedRepository(owned_engine),
+        )
     application.state.dataset_service = resolved_dataset_service
     application.state.workflow_control = resolved_workflow_control
     application.state.workflow_control_secret = control_secret
@@ -378,7 +401,7 @@ async def _reconcile_periodically(service: DatasetService) -> None:
         await _reconcile_once(service)
 
 
-def _dataset_source() -> str:
+def _dataset_source() -> Literal["environment", "database"]:
     """Return the selected runtime dataset authority or fail startup."""
 
     raw = os.environ.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE")
@@ -389,7 +412,7 @@ def _dataset_source() -> str:
         raise QueryConfigurationError(
             "HAWKI_BACKEND_QUERY_DATASET_SOURCE must be environment or database"
         )
-    return source
+    return "database" if source == "database" else "environment"
 
 
 def _positive_int(name: str, default: int, *, allow_zero: bool = False) -> int:

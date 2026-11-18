@@ -29,6 +29,12 @@ from hawki_graph_store.requests import (
     normalize_graph_write_scope,
 )
 from hawki_graph_store.settings import Neo4jSettings, load_neo4j_settings
+from hawki_graph_store.requests import (
+    ops_scope,
+    ops_node_projection,
+    ops_edge_projection,
+)
+from hawki_graph_store.responses import ops_node, ops_edge, scoped_entity_key
 from hawki_graph_store.responses import (
     parse_count,
     parse_fact_rows,
@@ -124,6 +130,155 @@ class Neo4jGraph:
         """Close the underlying driver."""
         if getattr(self, "_driver", None) is not None:
             self._driver.close()
+
+    def _ops_params(self, **extra: Any) -> dict[str, Any]:
+        dataset, namespace = _required_read_scope(
+            self._dataset_id, self._neo4j_namespace
+        )
+        return {"dataset_id": dataset, "neo4j_namespace": namespace, **extra}
+
+    def _ops_read(self, statement: str, **extra: Any) -> list[dict]:
+        params = self._ops_params(**extra)
+        query = Neo4jQueryRequest(statement, params, operation="neo4j.scoped_ops")
+        return self._run_read(
+            query,
+            callback=lambda tx: [
+                dict(row) for row in tx.run(statement, parameters=params)
+            ],
+        )
+
+    def graph_overview(self, limit: int = 80) -> dict:
+        """Bound the scene by nodes, then read only edges between those nodes."""
+        rows = self._ops_read(
+            f"MATCH (n:Entity) WHERE {ops_scope('n')} AND n.entity_key IS NOT NULL "
+            f"RETURN {ops_node_projection()} AS node ORDER BY node.key LIMIT $limit",
+            limit=max(1, min(300, int(limit))),
+        )
+        nodes = [row["node"] for row in rows]
+        return self._ops_scene(nodes, self._ops_edges([node["key"] for node in nodes]))
+
+    def _ops_edges(self, keys: list[str], limit: int = 1000) -> list[dict]:
+        return [
+            row["edge"]
+            for row in self._ops_read(
+                f"MATCH (s:Entity)-[r]->(o:Entity) WHERE {ops_scope('s')} AND {ops_scope('r')} "
+                f"AND {ops_scope('o')} AND s.entity_key IN $keys AND o.entity_key IN $keys "
+                f"RETURN {ops_edge_projection()} AS edge ORDER BY s.entity_key, o.entity_key, type(r) LIMIT $limit",
+                keys=keys,
+                limit=limit,
+            )
+        ]
+
+    def graph_search(
+        self, query: str, limit: int = 12, *, names: list[str] | None = None
+    ) -> list[dict]:
+        """Case-insensitive, scoped lookup; no index discovery or global fallback."""
+        predicate = (
+            "toLower(coalesce(n.name, n.entity_id, '')) IN $names"
+            if names is not None
+            else "toLower(coalesce(n.name, n.entity_id, '')) CONTAINS toLower($query)"
+        )
+        rows = self._ops_read(
+            f"MATCH (n:Entity) WHERE {ops_scope('n')} AND n.entity_key IS NOT NULL AND {predicate} "
+            f"RETURN {ops_node_projection()} AS node, "
+            "CASE WHEN toLower(n.name) = toLower($query) THEN 10.0 ELSE 1.0 END AS score "
+            "ORDER BY score DESC, n.entity_key LIMIT $limit",
+            query=query[:4000],
+            names=[name.lower() for name in (names or [])][:100],
+            limit=max(1, min(50, int(limit))),
+        )
+        return [
+            ops_node(
+                dict(row["node"], score=row["score"]),
+                self._dataset_id,
+                self._neo4j_namespace,
+            )
+            for row in rows
+        ]
+
+    def graph_node(self, node_id: str, limit: int = 80) -> dict:
+        return self.graph_expand(node_id, depth=1, limit=limit)
+
+    def graph_expand(self, node_id: str, depth: int = 1, limit: int = 80) -> dict:
+        dataset, namespace = _required_read_scope(
+            self._dataset_id, self._neo4j_namespace
+        )
+        key = scoped_entity_key(node_id, dataset, namespace)
+        if key is None:
+            return self._ops_scene([], []) | {
+                "warnings": ["Node is unavailable in this dataset."]
+            }
+        depth = max(1, min(3, int(depth)))
+        limit = max(1, min(250, int(limit)))
+        center = self._ops_read(
+            f"MATCH (n:Entity) WHERE {ops_scope('n')} AND n.entity_key = $key "
+            f"RETURN {ops_node_projection()} AS node LIMIT 1",
+            key=key,
+        )
+        if not center:
+            return self._ops_scene([], []) | {
+                "warnings": ["Node is unavailable in this dataset."]
+            }
+        rows = self._ops_read(
+            f"MATCH p=(center:Entity)-[*1..{depth}]-(n:Entity) WHERE {ops_scope('center')} "
+            "AND center.entity_key = $key "
+            "AND all(n IN nodes(p) WHERE n.dataset_id = $dataset_id AND n.neo4j_namespace = $neo4j_namespace AND n.entity_key IS NOT NULL) "
+            "AND all(r IN relationships(p) WHERE r.dataset_id = $dataset_id AND r.neo4j_namespace = $neo4j_namespace) "
+            f"RETURN DISTINCT {ops_node_projection()} AS node ORDER BY node.key LIMIT $limit",
+            key=key,
+            limit=max(0, limit - 1),
+        )
+        nodes = {row["node"]["key"]: row["node"] for row in center + rows}
+        return self._ops_scene(list(nodes.values()), self._ops_edges(list(nodes))) | {
+            "expanded_node_id": node_id,
+            "entry_node_id": node_id,
+            "depth": depth,
+        }
+
+    def _ops_scene(self, nodes: list[dict], edges: list[dict]) -> dict:
+        dataset, namespace = _required_read_scope(
+            self._dataset_id, self._neo4j_namespace
+        )
+        normalized_nodes = [ops_node(node, dataset, namespace) for node in nodes]
+        normalized_edges = {
+            edge["id"]: edge
+            for raw in edges
+            if raw["source"] and raw["target"]
+            for edge in [ops_edge(raw, dataset, namespace)]
+        }
+        return {
+            "ok": True,
+            "nodes": normalized_nodes,
+            "edges": list(normalized_edges.values()),
+            "warnings": [],
+        }
+
+    def graph_counts(self) -> dict[str, int]:
+        nodes = self._ops_read(
+            f"MATCH (n) WHERE {ops_scope('n')} RETURN count(n) AS count"
+        )[0]["count"]
+        edges = self._ops_read(
+            f"MATCH (s)-[r]->(o) WHERE {ops_scope('s')} AND {ops_scope('r')} AND {ops_scope('o')} RETURN count(r) AS count"
+        )[0]["count"]
+        return {"entities": nodes, "triplets": edges}
+
+    def clear_dataset_graph(self) -> dict[str, int]:
+        """Atomic scoped clear; foreign relationships cause rollback, never detach."""
+        params = self._ops_params()
+        delete_edges = f"MATCH (s)-[r]->(o) WHERE {ops_scope('s')} AND {ops_scope('r')} AND {ops_scope('o')} DELETE r RETURN count(r) AS count"
+        delete_nodes = (
+            f"MATCH (n) WHERE {ops_scope('n')} DELETE n RETURN count(n) AS count"
+        )
+        query = Neo4jQueryRequest(
+            delete_nodes, params, operation="neo4j.clear_dataset_graph"
+        )
+
+        def clear(tx: Any) -> dict[str, int]:
+            edges = tx.run(delete_edges, **params).single()["count"]
+            nodes = tx.run(delete_nodes, **params).single()["count"]
+            return {"deleted_nodes": nodes, "deleted_relationships": edges}
+
+        return self._run_write(query, callback=clear)
 
     def _run_read(
         self, query: Neo4jQueryRequest, *, callback: Callable[[Any], Any]

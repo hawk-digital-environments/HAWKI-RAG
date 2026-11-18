@@ -23,6 +23,8 @@ from hawki_backend.text_ingestion.writers import (
     writers_released,
 )
 from hawki_backend.persistence.datasets import (
+    DatasetInactiveError,
+    DatasetNotFoundError,
     lock_active_dataset,
     lock_dataset_for_cleanup,
 )
@@ -54,6 +56,52 @@ def one(connection: Connection, table: sa.Table, *conditions: Any) -> dict | Non
 
 
 class ManagedRepository:
+    def graph_sources(
+        self, tenant: str, dataset: str, doc_ids: set[str]
+    ) -> dict[str, dict]:
+        """Resolve only current Python-owned revision targets, without filesystem reads."""
+        if not doc_ids:
+            return {}
+        resolved = {}
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                sa.select(
+                    documents.c.managed_document_id,
+                    documents.c.attributes,
+                    revisions.c.writer_state,
+                )
+                .select_from(
+                    documents.join(
+                        revisions,
+                        documents.c.current_revision_id == revisions.c.revision_id,
+                    )
+                )
+                .where(
+                    documents.c.tenant_id == tenant,
+                    documents.c.dataset_id == dataset,
+                    revisions.c.tenant_id == tenant,
+                    revisions.c.dataset_id == dataset,
+                    documents.c.status == "indexed",
+                    revisions.c.status == "ready",
+                )
+            ).mappings()
+            for row in rows:
+                for doc_id in doc_ids.intersection(
+                    row["writer_state"].get("managed_targets", {})
+                ):
+                    attrs = row["attributes"]
+                    resolved[doc_id] = {
+                        "docId": doc_id,
+                        "documentId": row["managed_document_id"],
+                        "datasetId": dataset,
+                        "label": attrs.get("display_name")
+                        or attrs.get("original_filename")
+                        or doc_id,
+                        "originalFilename": attrs.get("original_filename"),
+                        "missing": False,
+                    }
+        return resolved
+
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
 
@@ -619,6 +667,15 @@ class ManagedRepository:
         with self.engine.begin() as connection:
             lock(connection, "managed-event:" + event.event_id)
             revision = self.owner(connection, event.workflow_id)
+            if event.action == "acquire":
+                try:
+                    lock_active_dataset(
+                        connection, revision["tenant_id"], revision["dataset_id"]
+                    )
+                except (DatasetInactiveError, DatasetNotFoundError):
+                    raise ManagedError(
+                        409, "Dataset writer admission is closed."
+                    ) from None
             lock(connection, "managed-document:" + revision["managed_document_id"])
             revision = one(
                 connection,

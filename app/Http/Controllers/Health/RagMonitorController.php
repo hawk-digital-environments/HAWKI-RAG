@@ -12,6 +12,8 @@ class RagMonitorController extends Controller
 {
     public function show(RagMonitorService $monitor): JsonResponse
     {
-        return response()->json($monitor->show());
+        $result = $monitor->show();
+
+        return response()->json($result, (int) ($result['status'] ?? 200));
     }
 }

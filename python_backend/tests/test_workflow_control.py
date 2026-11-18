@@ -119,7 +119,9 @@ def control(monkeypatch):
         delete_schedule=AsyncMock(),
         workflow_status=AsyncMock(),
     )
-    service = WorkflowControl(OperationRepository(engine), port)
+    service = WorkflowControl(
+        OperationRepository(engine, dataset_source="environment"), port
+    )
     app = create_app(
         workflow_control=service, workflow_control_secret="control-test-secret"
     )

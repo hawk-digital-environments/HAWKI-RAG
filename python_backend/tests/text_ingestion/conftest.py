@@ -145,7 +145,9 @@ def env(tmp_path, monkeypatch):
         reconcile_start=AsyncMock(return_value=None),
         cancel_workflow_and_wait=AsyncMock(),
     )
-    control = WorkflowControl(OperationRepository(engine), port)
+    control = WorkflowControl(
+        OperationRepository(engine, dataset_source="environment"), port
+    )
     settings = TextIngestionSettings(enabled=True, shared_root=str(tmp_path))
     repository = TextOperationRepository(engine)
     port.repository = repository

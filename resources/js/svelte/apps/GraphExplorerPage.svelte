@@ -51,7 +51,7 @@
                 </div>
 
                 <div class="graph-control-group">
-                    <label for="graph-semantic-dataset">Semantic dataset</label>
+                    <label for="graph-semantic-dataset">Dataset</label>
                     <select id="graph-semantic-dataset">
                         <option value="">Loading query-ready datasets...</option>
                     </select>
@@ -91,6 +91,8 @@
                     <button type="button" id="graph-overview-btn">Overview</button>
                     <button type="button" id="graph-relayout-btn">Layout</button>
                     <button type="button" id="graph-clear-view-btn">Clear view</button>
+                    <button type="button" id="neo4j-clear-btn" disabled>Clear selected dataset graph</button>
+                    <span id="neo4j-clear-note"></span>
                 </div>
 
                 <div class="graph-control-group">

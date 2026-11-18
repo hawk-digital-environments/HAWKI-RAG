@@ -21,6 +21,7 @@ class SaveGraphSnapshotRequest extends FormRequest
         return [
             'name' => ['sometimes', 'nullable', 'string', 'max:120'],
             'scene' => ['required', 'array'],
+            'dataset_id' => ['required', 'string', 'max:191'],
         ];
     }
 

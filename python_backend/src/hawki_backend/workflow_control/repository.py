@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
@@ -21,8 +22,13 @@ class OperationConflict(Exception):
 
 
 class OperationRepository:
-    def __init__(self, engine: Engine):
+    def __init__(
+        self, engine: Engine, *, dataset_source: Literal["environment", "database"]
+    ):
+        if dataset_source not in {"environment", "database"}:
+            raise ValueError("OperationRepository requires canonical dataset authority")
         self.engine = engine
+        self.dataset_source = dataset_source
 
     def prepare(self, action: str, workflow_id: str, payload: dict, key: list) -> dict:
         operation_id = digest([action, workflow_id, *key])
@@ -34,6 +40,45 @@ class OperationRepository:
         )
         input_digest = digest(comparison)
         with self.engine.begin() as connection:
+            if (
+                action in {"source", "text", "schedule"}
+                and self.dataset_source == "database"
+            ):
+                from hawki_backend.persistence.datasets import lock_active_dataset
+                from hawki_backend.persistence.schema import datasets
+
+                wire = payload["workflow_input"]
+                namespace = wire.get("ingestion", {}).get("neo4j_namespace")
+                # Bind compatibility dispatch to canonical physical scope.
+                # Unknown/unregistered writers cannot enter a Python graph.
+                dataset = (
+                    connection.execute(
+                        sa.select(datasets).where(
+                            datasets.c.dataset_id == wire.get("dataset_id"),
+                            datasets.c.neo4j_namespace == namespace,
+                        )
+                    )
+                    .mappings()
+                    .first()
+                    if namespace
+                    else None
+                )
+                if wire.get("ingestion", {}).get("graph") and dataset is None:
+                    raise OperationConflict(
+                        "Graph dispatch has no canonical dataset scope."
+                    )
+                if dataset is not None:
+                    lock_active_dataset(
+                        connection, dataset["tenant_id"], dataset["dataset_id"]
+                    )
+                    if not (
+                        wire.get("managed_document_id")
+                        or wire.get("owner") == "url"
+                        or wire.get("text_writer_protocol") == 1
+                    ):
+                        raise OperationConflict(
+                            "Graph dispatch requires the managed writer protocol."
+                        )
             try:
                 with connection.begin_nested():
                     connection.execute(

@@ -139,6 +139,21 @@ _DATASET_COLUMNS = (
 class DatasetStore:
     """Read and write canonical dataset state in the owned schema."""
 
+    def active_records(self, tenant_id: str) -> list[DatasetRecord]:
+        """Read all active scopes for this tenant's operations projection."""
+        with self._engine.connect() as connection:
+            return [
+                _record(row)
+                for row in connection.execute(
+                    sa.select(*_DATASET_COLUMNS)
+                    .where(
+                        datasets.c.tenant_id == tenant_id,
+                        datasets.c.status == ACTIVE_STATUS,
+                    )
+                    .order_by(datasets.c.dataset_id)
+                ).mappings()
+            ]
+
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
@@ -661,6 +676,8 @@ def lock_active_dataset(
     connection: Connection,
     tenant_id: str,
     dataset_id: str,
+    *,
+    allow_graph_clear: bool = False,
 ) -> DatasetRecord:
     """Lock one dataset row and require it to be active.
 
@@ -689,6 +706,24 @@ def lock_active_dataset(
     record = _record(row)
     if record.status != ACTIVE_STATUS:
         raise DatasetInactiveError()
+    if not allow_graph_clear:
+        # Extend the existing admission fence with the existing durable
+        # operation ledger. A lost Neo4j acknowledgement must survive the
+        # PostgreSQL transaction and keep later admissions closed.
+        from hawki_backend.workflow_control.schema import operations
+
+        pending = connection.execute(
+            sa.select(operations.c.operation_id)
+            .where(
+                operations.c.action == "graph_clear",
+                operations.c.status.in_(["dispatching", "uncertain"]),
+                operations.c.payload["tenant_id"].as_string() == tenant_id,
+                operations.c.payload["dataset_id"].as_string() == dataset_id,
+            )
+            .limit(1)
+        ).first()
+        if pending:
+            raise DatasetInactiveError()
     return record
 
 

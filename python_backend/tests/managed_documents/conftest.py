@@ -70,7 +70,9 @@ def configure(engine, root):
         reconcile_start=AsyncMock(return_value=None),
         cancel_workflow_and_wait=AsyncMock(),
     )
-    control = WorkflowControl(OperationRepository(engine), port)
+    control = WorkflowControl(
+        OperationRepository(engine, dataset_source="environment"), port
+    )
     service = ManagedService(
         repository=ManagedRepository(engine),
         storage=UploadStorage(str(root)),

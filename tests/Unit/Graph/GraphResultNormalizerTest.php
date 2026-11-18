@@ -10,6 +10,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use App\Services\Graph\GraphResultNormalizer;
+use App\Services\Graph\GraphSourceDocumentResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -145,6 +146,9 @@ class GraphResultNormalizerTest extends TestCase
             $this->assertTrue(mb_check_encoding($snippet, 'UTF-8'));
             $this->assertStringContainsString('ö', $snippet);
             $this->assertIsString(json_encode($graph, JSON_THROW_ON_ERROR));
+            $scoped = app(GraphSourceDocumentResolver::class)->attachToNodes($graph['nodes'], 'another-dataset');
+            $this->assertTrue($scoped[0]['source_documents'][0]['missing']);
+            $this->assertArrayNotHasKey('markdownSnippet', $scoped[0]['source_documents'][0]);
         } finally {
             File::delete($path);
         }

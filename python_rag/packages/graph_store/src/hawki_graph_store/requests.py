@@ -238,3 +238,19 @@ def canonical_entity_key(value: str) -> str:
 
 def clean_query_terms(terms: Iterable[str]) -> list[str]:
     return [t.strip().lower() for t in terms if t and len(t.strip()) > 2]
+
+
+def ops_scope(alias: str) -> str:
+    """Only internal, fixed aliases may be interpolated into scoped Cypher."""
+    if alias not in {"n", "s", "o", "r", "center"}:
+        raise ValueError("Unsupported graph alias")
+    return f"{alias}.dataset_id = $dataset_id AND {alias}.neo4j_namespace = $neo4j_namespace"
+
+
+def ops_node_projection(alias: str = "n") -> str:
+    ops_scope(alias)
+    return f"{{key: {alias}.entity_key, labels: labels({alias}), properties: properties({alias})}}"
+
+
+def ops_edge_projection() -> str:
+    return "{source: s.entity_key, target: o.entity_key, type: type(r), properties: properties(r)}"

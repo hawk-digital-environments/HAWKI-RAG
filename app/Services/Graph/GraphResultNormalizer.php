@@ -9,9 +9,7 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class GraphResultNormalizer
 {
-    public function __construct(private GraphSourceDocumentResolver $sources)
-    {
-    }
+    public function __construct(private GraphSourceDocumentResolver $sources) {}
 
     /**
      * @return list<array<string, mixed>>
@@ -58,7 +56,7 @@ readonly class GraphResultNormalizer
             }
         }
 
-        $normalizedNodes = $this->sources->attachToNodes($this->nodes($nodes));
+        $normalizedNodes = $this->sources->attachToNodes($this->nodes($nodes), $extra['dataset_id'] ?? null);
 
         return array_merge([
             'ok' => true,
@@ -71,11 +69,11 @@ readonly class GraphResultNormalizer
     /**
      * @return list<array<string, mixed>>
      */
-    public function nodeSearchResults(array $records): array
+    public function nodeSearchResults(array $records, ?string $datasetId = null): array
     {
-        return array_values(array_filter(array_map(function (array $record): ?array {
+        return array_values(array_filter(array_map(function (array $record) use ($datasetId): ?array {
             $graphNodes = $record['_graph']['nodes'] ?? [];
-            $node = $this->sources->attachToNodes($this->nodes($graphNodes))[0] ?? null;
+            $node = $this->sources->attachToNodes($this->nodes($graphNodes), $datasetId)[0] ?? null;
             if ($node) {
                 $node['score'] = $record['score'] ?? null;
                 $node['highlighted'] = true;
@@ -100,7 +98,7 @@ readonly class GraphResultNormalizer
                 continue;
             }
             $properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
-            unset($properties['embedding'], $properties['vector']);
+            unset($properties['embedding'], $properties['vector'], $properties['dataset_id'], $properties['neo4j_namespace']);
             $labels = array_values($node['labels'] ?? []);
             $docIds = $this->stringList($properties['doc_ids'] ?? $properties['doc_id'] ?? []);
             $normalized[$id] = [
@@ -136,6 +134,7 @@ readonly class GraphResultNormalizer
                 continue;
             }
             $properties = is_array($edge['properties'] ?? null) ? $edge['properties'] : [];
+            unset($properties['dataset_id'], $properties['neo4j_namespace']);
             $label = (string) ($properties['type'] ?? $properties['keywords'] ?? $properties['description'] ?? $edge['type'] ?? 'REL');
             $normalized[$id] = [
                 'id' => $id,

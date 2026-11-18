@@ -22,6 +22,34 @@ readonly class RagHealthService
      */
     public function show(): array
     {
+        $authority = $this->config->get('config.query_backend', 'laravel');
+        if ($authority === 'python') {
+            $url = $this->config->get('config.python_query_url');
+            $parts = is_string($url) ? parse_url($url) : false;
+            if (! is_array($parts) || ! in_array($parts['scheme'] ?? '', ['http', 'https'], true)
+                || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])
+                || isset($parts['query']) || isset($parts['fragment']) || ($parts['path'] ?? '') !== '/v1/query') {
+                return ['status' => 503, 'payload' => ['ok' => false, 'authority' => 'python',
+                    'status' => 503, 'latency_ms' => null, 'endpoint' => null, 'data' => null]];
+            }
+            $healthUrl = substr($url, 0, -strlen('/query')).'/health';
+            try {
+                $start = $this->timer->start();
+                $response = $this->http->connectTimeout(2)->timeout(10)->withoutRedirecting()
+                    ->get($healthUrl);
+
+                return ['status' => $response->successful() ? 200 : 503,
+                    'payload' => ['ok' => $response->successful(), 'authority' => 'python',
+                        'status' => $response->status(), 'latency_ms' => $this->timer->elapsedMs($start),
+                        'endpoint' => $healthUrl, 'data' => $response->successful() ? $response->json() : null]];
+            } catch (\Throwable) {
+                return ['status' => 503, 'payload' => ['ok' => false, 'authority' => 'python',
+                    'status' => 503, 'latency_ms' => null, 'endpoint' => $healthUrl, 'data' => null]];
+            }
+        }
+        if ($authority !== 'laravel') {
+            return ['status' => 503, 'payload' => ['ok' => false, 'message' => 'Invalid query authority.']];
+        }
         $lastError = null;
         foreach ($this->candidateEndpoints() as $url) {
             try {
@@ -36,6 +64,7 @@ readonly class RagHealthService
                         'body' => $response->body(),
                         'endpoint' => $url,
                     ];
+
                     continue;
                 }
 

@@ -5,30 +5,29 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Graph;
 
 use App\Http\Requests\Graph\SaveGraphSnapshotRequest;
-use App\Services\Graph\Neo4jGraphExplorer;
+use App\Services\Graph\GraphSnapshotService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class GraphSnapshotController extends GraphController
 {
-    public function index(Neo4jGraphExplorer $graph): JsonResponse
+    public function index(Request $request, GraphSnapshotService $snapshots): JsonResponse
     {
-        return $this->noStore(response()->json($graph->snapshots()));
+        return $this->noStore(response()->json($snapshots->list($request->user())));
     }
 
-    public function store(SaveGraphSnapshotRequest $request, Neo4jGraphExplorer $graph): JsonResponse
+    public function store(SaveGraphSnapshotRequest $request, GraphSnapshotService $snapshots): JsonResponse
     {
-        return response()->json($graph->saveSnapshot($request->snapshot()));
+        return $this->noStore(response()->json($snapshots->save($request->user(), $request->snapshot())));
     }
 
-    public function show(string $id, Neo4jGraphExplorer $graph): JsonResponse
+    public function show(string $id, Request $request, GraphSnapshotService $snapshots): JsonResponse
     {
-        $result = $graph->loadSnapshot($id);
-
-        return $this->noStore(response()->json($result, ($result['ok'] ?? false) ? 200 : 404));
+        return $this->noStore(response()->json($snapshots->load($request->user(), $id)));
     }
 
-    public function destroy(string $id, Neo4jGraphExplorer $graph): JsonResponse
+    public function destroy(string $id, Request $request, GraphSnapshotService $snapshots): JsonResponse
     {
-        return $this->noStore(response()->json($graph->deleteSnapshot($id)));
+        return $this->noStore(response()->json($snapshots->delete($request->user(), $id)));
     }
 }

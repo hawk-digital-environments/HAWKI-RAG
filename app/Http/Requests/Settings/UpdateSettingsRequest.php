@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Requests\Settings;
@@ -19,6 +20,8 @@ class UpdateSettingsRequest extends FormRequest
      */
     public function rules(): array
     {
+        abort_if(app(SettingsService::class)->deploymentManaged(), 409, 'settings_managed_by_deployment');
+
         return [
             'customConverter' => 'nullable|array',
             'customConverter.enabled' => 'nullable|boolean',

@@ -10,6 +10,8 @@ from sqlalchemy.engine import Connection, Engine
 
 from hawki_backend.auth.models import AuthenticatedPrincipal
 from hawki_backend.persistence.datasets import (
+    DatasetInactiveError,
+    DatasetNotFoundError,
     lock_active_dataset,
     lock_dataset_for_cleanup,
 )
@@ -756,6 +758,13 @@ class UrlRepository:
         with self.engine.begin() as connection:
             lock(connection, "url-event:" + event.event_id)
             row = self.owner(connection, event.workflow_id)
+            if event.action == "acquire":
+                try:
+                    lock_active_dataset(connection, row["tenant_id"], row["dataset_id"])
+                except (DatasetInactiveError, DatasetNotFoundError):
+                    raise UrlIngestionError(
+                        409, "Dataset writer admission is closed."
+                    ) from None
             source = one(connection, sources, sources.c.source_id == row["source_id"])
             row = one(
                 connection,

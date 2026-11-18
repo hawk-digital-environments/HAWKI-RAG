@@ -29,6 +29,8 @@ class HawkiRagSystemGateServiceTest extends TestCase
         $report = $service->report(1);
 
         $this->assertSame('ready', $report['status']);
+        $this->assertFalse($report['enforce']);
+        $this->assertTrue($report['advisory']);
         $this->assertSame(['retrieval', 'graph', 'pipeline'], array_column($report['checks'], 'key'));
         $this->assertSame([], $report['blocking']);
         $this->assertSame('2026-06-18T12:00:00+00:00', $report['checkedAt']);
@@ -57,10 +59,9 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
     private function passingPipeline(): PipelineHealthService
     {
-        return new readonly class extends PipelineHealthService {
-            public function __construct()
-            {
-            }
+        return new readonly class extends PipelineHealthService
+        {
+            public function __construct() {}
 
             public function check(int $timeout): array
             {
@@ -75,10 +76,9 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
     private function passingRag(): RagHealthService
     {
-        return new readonly class extends RagHealthService {
-            public function __construct()
-            {
-            }
+        return new readonly class extends RagHealthService
+        {
+            public function __construct() {}
 
             public function show(): array
             {
@@ -92,10 +92,9 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
     private function passingStats(): RagStatsService
     {
-        return new readonly class extends RagStatsService {
-            public function __construct()
-            {
-            }
+        return new readonly class extends RagStatsService
+        {
+            public function __construct() {}
 
             public function show(): array
             {

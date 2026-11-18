@@ -32,6 +32,8 @@ class GraphSnapshotStore
                 'id' => $id,
                 'name' => trim((string) ($payload['name'] ?? '')) ?: 'Graph snapshot '.$now->format('Y-m-d H:i:s'),
                 'created_at' => $now->format(\DateTimeInterface::ATOM),
+                'dataset_id' => $payload['dataset_id'] ?? null,
+                'tenant_id' => $payload['tenant_id'] ?? null,
                 'scene' => $payload['scene'] ?? [],
             ];
             $path .= DIRECTORY_SEPARATOR.$id.'.json';
@@ -62,6 +64,8 @@ class GraphSnapshotStore
                         'id' => $data['id'] ?? $file->getBasename('.json'),
                         'name' => $data['name'] ?? $file->getBasename('.json'),
                         'created_at' => $data['created_at'] ?? null,
+                        'dataset_id' => $data['dataset_id'] ?? null,
+                        'tenant_id' => $data['tenant_id'] ?? null,
                     ];
                 }
             }

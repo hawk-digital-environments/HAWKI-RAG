@@ -85,7 +85,9 @@ def pg(env, monkeypatch):
         )
     repository = TextOperationRepository(engine)
     env.port.repository = repository
-    control = WorkflowControl(OperationRepository(engine), env.port)
+    control = WorkflowControl(
+        OperationRepository(engine, dataset_source="environment"), env.port
+    )
     service = TextIngestionService(
         repository=repository,
         artifacts=TextArtifactStorage(str(env.root)),

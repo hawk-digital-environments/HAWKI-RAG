@@ -13,7 +13,6 @@ if (root) {
             datasetsEndpoint: apiUrl('query/datasets'),
             monitorEndpoint: apiUrl('rag/monitor'),
             statsEndpoint: apiUrl('rag/stats'),
-            qdrantCollectionEndpointBase: apiUrl('rag/qdrant/collections'),
             neo4jClearEndpoint: apiUrl('rag/neo4j/clear'),
             uploadDownloadEndpoint: apiUrl('documents/uploads/download'),
         },

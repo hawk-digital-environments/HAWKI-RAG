@@ -18,6 +18,13 @@ use Illuminate\Support\LazyCollection;
 #[Singleton]
 readonly class DatasetRepository
 {
+    public function activeGraphScopes(): Collection
+    {
+        $this->backend->assertLegacyWriter();
+
+        return Dataset::query()->where('status', Dataset::STATUS_ACTIVE)->orderBy('dataset_id')->get();
+    }
+
     public function __construct(
         private DatasetBackend $backend,
         private PythonDatasetClient $python,

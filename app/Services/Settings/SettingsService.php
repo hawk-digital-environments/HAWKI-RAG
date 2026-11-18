@@ -26,6 +26,7 @@ readonly class SettingsService
         $stored = $this->settings->read();
 
         return [
+            ...$this->authority(),
             'customConverter' => $this->customConverterPublicDefaults($stored),
             'models' => $this->modelRuntime($stored),
             'providers' => $this->providerOptions($stored),
@@ -38,6 +39,7 @@ readonly class SettingsService
      */
     public function update(array $validated): array
     {
+        abort_if($this->deploymentManaged(), 409, 'settings_managed_by_deployment');
         $current = $this->settings->read();
         $next = $current;
 
@@ -56,6 +58,26 @@ readonly class SettingsService
         $this->settings->write($next);
 
         return $this->browserPayload();
+    }
+
+    public function deploymentManaged(): bool
+    {
+        foreach (['query_backend', 'graph_ops_backend', 'pipeline_execution_backend', 'text_ingestion_backend', 'managed_document_backend', 'crawler_ingestion_backend'] as $selector) {
+            if ($this->config->get('config.'.$selector, 'laravel') !== 'laravel') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function authority(): array
+    {
+        $managed = $this->deploymentManaged();
+
+        return ['authority' => $managed ? 'python' : 'laravel', 'effective' => ! $managed,
+            'managedBy' => $managed ? 'deployment' : 'laravel',
+            'notice' => $managed ? 'Python runtime configuration is deployment-managed. These Laravel settings are not effective.' : null];
     }
 
     /**
@@ -258,6 +280,7 @@ readonly class SettingsService
             $providerConfig = $this->providerConfig($provider);
             if (($this->stringValue($providerConfig['configuration_mode'] ?? null) ?? 'settings') !== 'settings') {
                 unset($next[$provider]);
+
                 continue;
             }
 

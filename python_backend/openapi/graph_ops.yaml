@@ -1,0 +1,435 @@
+openapi: 3.1.0
+info:
+  title: HAWKI Python Graph / Operations API
+  version: 0.1.0
+paths:
+  /v1/ops/graph/overview:
+    get:
+      tags:
+      - graph-ops
+      summary: Overview
+      operationId: overview_v1_ops_graph_overview_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 191
+          title: Dataset Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 300
+          minimum: 1
+          default: 80
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:query, exact
+        dataset QUERY grant, active graph-enabled canonical scope.'
+  /v1/ops/graph/search:
+    get:
+      tags:
+      - graph-ops
+      summary: Search
+      operationId: search_v1_ops_graph_search_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 191
+          title: Dataset Id
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 50
+          minimum: 1
+          default: 12
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:query, exact
+        dataset QUERY grant, active graph-enabled canonical scope.'
+  /v1/ops/graph/node:
+    get:
+      tags:
+      - graph-ops
+      summary: Node
+      operationId: node_v1_ops_graph_node_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 191
+          title: Dataset Id
+      - name: node_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          title: Node Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:query, exact
+        dataset QUERY grant, active graph-enabled canonical scope.'
+  /v1/ops/graph/expand:
+    post:
+      tags:
+      - graph-ops
+      summary: Expand
+      operationId: expand_v1_ops_graph_expand_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpandBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:query, exact
+        dataset QUERY grant, active graph-enabled canonical scope.'
+  /v1/ops/graph/semantic-search:
+    get:
+      tags:
+      - graph-ops
+      summary: Semantic Search
+      operationId: semantic_search_v1_ops_graph_semantic_search_get
+      parameters:
+      - name: dataset_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 191
+          title: Dataset Id
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 25
+          minimum: 1
+          default: 8
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:query, exact
+        dataset QUERY grant, active graph-enabled canonical scope.'
+  /v1/ops/graph/clear:
+    post:
+      tags:
+      - graph-ops
+      summary: Clear
+      operationId: clear_v1_ops_graph_clear_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearBody'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:datasets:manage
+        and exact tenant ownership.'
+  /v1/ops/stats:
+    get:
+      tags:
+      - graph-ops
+      summary: Stats
+      operationId: stats_v1_ops_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:datasets:manage
+        and exact tenant ownership.'
+  /v1/ops/config:
+    get:
+      tags:
+      - graph-ops
+      summary: Config
+      operationId: config_v1_ops_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Insufficient scope
+        '404':
+          description: Dataset unavailable
+        '409':
+          description: Dataset graph disabled, active writers or unresolved clear
+        '503':
+          description: Selected authority unavailable; no fallback
+      security:
+      - BearerAuth: []
+      description: ' Existing authenticated JWT boundary. Requires rag:datasets:manage
+        and exact tenant ownership.'
+components:
+  schemas:
+    ClearBody:
+      properties:
+        dataset_id:
+          type: string
+          maxLength: 191
+          minLength: 1
+          title: Dataset Id
+        confirm:
+          type: string
+          const: CLEAR_DATASET_GRAPH
+          title: Confirm
+      additionalProperties: false
+      type: object
+      required:
+      - dataset_id
+      - confirm
+      title: ClearBody
+    ExpandBody:
+      properties:
+        dataset_id:
+          type: string
+          maxLength: 191
+          minLength: 1
+          title: Dataset Id
+        node_id:
+          type: string
+          maxLength: 4096
+          minLength: 1
+          title: Node Id
+        depth:
+          type: integer
+          title: Depth
+          default: 1
+        limit:
+          type: integer
+          maximum: 250.0
+          minimum: 1.0
+          title: Limit
+          default: 80
+      additionalProperties: false
+      type: object
+      required:
+      - dataset_id
+      - node_id
+      title: ExpandBody
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

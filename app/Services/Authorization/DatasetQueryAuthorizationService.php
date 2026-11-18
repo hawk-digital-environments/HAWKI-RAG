@@ -30,11 +30,21 @@ readonly class DatasetQueryAuthorizationService
 
     public function authorize(User $user, string $datasetId, bool $includeGraph = false): AuthorizedDatasetScope
     {
+        return $this->authorizeDataset($user, $datasetId, $includeGraph, $this->canQueryAllDatasets());
+    }
+
+    public function authorizeExactQuery(User $user, string $datasetId, bool $includeGraph = false): AuthorizedDatasetScope
+    {
+        return $this->authorizeDataset($user, $datasetId, $includeGraph, false);
+    }
+
+    private function authorizeDataset(User $user, string $datasetId, bool $includeGraph, bool $queryAll): AuthorizedDatasetScope
+    {
         $principal = $this->principalFor($user);
         $dataset = $this->grants->findActiveDatasetForQuery(
             $principal,
             trim($datasetId),
-            $this->canQueryAllDatasets(),
+            $queryAll,
         );
 
         if (! $dataset instanceof Dataset) {

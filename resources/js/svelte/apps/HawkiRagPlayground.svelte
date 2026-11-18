@@ -22,7 +22,6 @@
         /** Browser URL for Qdrant and Neo4j stats. */
         statsEndpoint: string;
         /** Browser URL prefix for deleting one Qdrant collection. */
-        qdrantCollectionEndpointBase: string;
         /** Browser URL for clearing Neo4j graph data. */
         neo4jClearEndpoint: string;
         /** Browser URL for downloading original uploaded source files. */
@@ -53,6 +52,7 @@
     }
 
     interface CollectionStat {
+        datasetId: string;
         name: string;
         count: number | null;
     }
@@ -72,6 +72,8 @@
     }
 
     interface MonitorState {
+        authority: string;
+        notice: string;
         bridgeOk: boolean;
         latencyMs: number | null;
         graphEngine: string;
@@ -115,7 +117,6 @@
         datasetsEndpoint,
         monitorEndpoint,
         statsEndpoint,
-        qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
         uploadDownloadEndpoint,
         class: className = '',
@@ -156,6 +157,8 @@
         relationships: [],
     });
     let monitor = $state<MonitorState>({
+        authority: 'unknown',
+        notice: '',
         bridgeOk: false,
         latencyMs: null,
         graphEngine: 'unknown',
@@ -166,7 +169,6 @@
         graphTriplets: null,
         failures: [],
     });
-    let deletingCollection = $state('');
     let clearingGraph = $state(false);
 
     const hasResult = $derived(Boolean(rawPayload));
@@ -367,6 +369,7 @@
             const collection = asRecord(item);
 
             return {
+                datasetId: textValue(collection.dataset_id),
                 name: textValue(collection.name, 'unnamed'),
                 count: nullableNumber(collection.count),
             };
@@ -391,20 +394,26 @@
     }
 
     function parseMonitor(payload: JsonRecord): MonitorState {
-        const bridge = asRecord(payload.bridge);
+        const python = payload.authority === 'python';
+        const bridge = asRecord(python ? payload.health : payload.bridge);
         const config = asRecord(payload.config);
-        const latest = asRecord(payload.latest_document_graph);
-        const failures = asArray(payload.graph_failures)
+        const legacy = asRecord(payload.legacy_telemetry);
+        const latest = asRecord(python ? null : payload.latest_document_graph);
+        const dataset = asRecord(asArray(config.datasets).find(item => asRecord(item).dataset_id === selectedDatasetId));
+        const models = asRecord(asRecord(config.models)[textValue(dataset.embedding_provider)]);
+        const failures = asArray(python ? legacy.graph_failures : payload.graph_failures)
             .map((item) => textValue(asRecord(item).error || asRecord(item).message))
             .filter(Boolean)
             .slice(0, 3);
 
         return {
+            authority: python ? 'python' : config.effective === false ? 'legacy Laravel telemetry' : 'laravel',
+            notice: python ? 'Effective Python configuration is deployment-managed. Laravel artifacts are legacy telemetry.' : textValue(config.notice),
             bridgeOk: boolValue(bridge.ok),
             latencyMs: nullableNumber(bridge.latency_ms),
-            graphEngine: textValue(config.graph_engine, 'raganything'),
-            graphModel: textValue(config.graph_model, 'unknown'),
-            embeddingModel: textValue(config.embedding_model, 'unknown'),
+            graphEngine: python ? 'Python graph ops' : textValue(config.graph_engine, 'unknown'),
+            graphModel: textValue(python ? models.chat_model : config.graph_model, 'unknown'),
+            embeddingModel: textValue(python ? dataset.embedding_model : config.embedding_model, 'unknown'),
             latestDocument: textValue(latest.title || latest.document_id, 'none'),
             latestDataset: textValue(latest.dataset_id, 'none'),
             graphTriplets: nullableNumber(latest.graph_triplets),
@@ -420,7 +429,7 @@
                 pushActivity('Stats', `Qdrant ${stats.collections.length}, Neo4j ${stats.triplets} triplets`);
             }
         } catch (error) {
-            stats = {...stats, qdrantOk: false, neo4jOk: false};
+            stats = {...stats, qdrantOk: false, neo4jOk: false, collections: [], entities: 0, triplets: 0, relationships: []};
             if (addActivity) {
                 pushActivity('Stats', error instanceof Error ? error.message : 'Stats unavailable', 'warn');
             }
@@ -432,7 +441,9 @@
             const payload = await requestJson(monitorEndpoint);
             monitor = parseMonitor(payload);
         } catch (error) {
-            monitor = {...monitor, bridgeOk: false};
+            monitor = {...monitor, bridgeOk: false, authority: 'unavailable', notice: 'Selected runtime authority is unavailable.',
+                graphEngine: 'unavailable', graphModel: 'unavailable', embeddingModel: 'unavailable',
+                latestDocument: 'none', latestDataset: 'none', graphTriplets: null, failures: []};
             pushActivity('Monitor', error instanceof Error ? error.message : 'Monitor unavailable', 'warn');
         }
     }
@@ -570,39 +581,16 @@
         }
     }
 
-    async function deleteCollection(collection: string): Promise<void> {
-        const name = collection.trim();
-        if (!name || deletingCollection) return;
-        if (!window.confirm(`Delete Qdrant collection "${name}"?`)) return;
-
-        deletingCollection = name;
-        try {
-            await requestJson(`${qdrantCollectionEndpointBase}/${encodeURIComponent(name)}`, {
-                method: 'DELETE',
-                headers: {'X-CSRF-TOKEN': csrfToken()},
-            });
-            pushActivity('Qdrant', `Deleted ${name}`, 'warn');
-            await loadStats(false);
-            const refreshed = await loadQueryReadyDatasets();
-            if (refreshed) {
-                status = `Deleted ${name}; available datasets were refreshed.`;
-            }
-        } catch (error) {
-            pushActivity('Qdrant', error instanceof Error ? error.message : 'Delete failed', 'fail');
-        } finally {
-            deletingCollection = '';
-        }
-    }
-
     async function clearNeo4j(): Promise<void> {
-        if (clearingGraph) return;
-        if (!window.confirm('Clear the Neo4j graph?')) return;
+        if (clearingGraph || !selectedDatasetId) return;
+        if (!window.confirm(`Clear the graph for dataset "${selectedDatasetId}"? This cannot be undone.`)) return;
 
         clearingGraph = true;
         try {
             await requestJson(neo4jClearEndpoint, {
                 method: 'POST',
-                headers: {'X-CSRF-TOKEN': csrfToken()},
+                body: JSON.stringify({dataset_id: selectedDatasetId, confirm: 'CLEAR_DATASET_GRAPH'}),
+                headers: {'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/json'},
             });
             pushActivity('Neo4j', 'Graph cleared', 'warn');
             await loadStats(false);
@@ -976,13 +964,14 @@
                     <strong>Runtime</strong>
                     <span data-tone={monitor.bridgeOk ? 'ready' : 'fail'}>{monitor.bridgeOk ? 'online' : 'offline'}</span>
                 </div>
+                <p>{monitor.authority}{monitor.notice ? ` · ${monitor.notice}` : ''}</p>
                 <dl class="runtime-list">
                     <div>
                         <dt>Engine</dt>
                         <dd>{monitor.graphEngine}</dd>
                     </div>
                     <div>
-                        <dt>Graph model</dt>
+                        <dt>{monitor.authority === 'python' ? 'Query model' : 'Graph model'}</dt>
                         <dd>{monitor.graphModel}</dd>
                     </div>
                     <div>
@@ -1005,16 +994,10 @@
                     {#each stats.collections as collection (collection.name)}
                         <article>
                             <div>
-                                <strong>{collection.name}</strong>
+                                <strong>{collection.datasetId || collection.name}</strong>
                                 <span>{collection.count ?? 'n/a'} points</span>
                             </div>
-                            <button
-                                type="button"
-                                disabled={deletingCollection === collection.name}
-                                onclick={() => { void deleteCollection(collection.name); }}
-                            >
-                                {deletingCollection === collection.name ? 'Deleting' : 'Delete'}
-                            </button>
+                            <a href="/datasets">Manage dataset storage</a>
                         </article>
                     {:else}
                         <p class="empty-copy">No collections reported.</p>
@@ -1025,7 +1008,7 @@
             <section class="system-section">
                 <div class="mini-heading">
                     <strong>Neo4j</strong>
-                    <button type="button" class="danger-action" disabled={clearingGraph} onclick={() => { void clearNeo4j(); }}>
+                    <button type="button" class="danger-action" disabled={clearingGraph || !selectedDatasetId} onclick={() => { void clearNeo4j(); }}>
                         {clearingGraph ? 'Clearing' : 'Clear graph'}
                     </button>
                 </div>

@@ -20,6 +20,8 @@ from sqlalchemy.exc import IntegrityError
 from .deletion import DeletionSnapshot, owner_identity
 from .identity import document_id
 from hawki_backend.persistence.datasets import (
+    DatasetInactiveError,
+    DatasetNotFoundError,
     lock_active_dataset,
     lock_dataset_for_cleanup,
 )
@@ -576,6 +578,11 @@ class TextOperationRepository:
         if row is None:
             raise WriterConflict()
         with self._engine.begin() as connection:
+            if event.action == "acquire":
+                try:
+                    lock_active_dataset(connection, row["tenant_id"], row["dataset_id"])
+                except (DatasetInactiveError, DatasetNotFoundError):
+                    raise WriterConflict() from None
             self._lock_source(connection, row["tenant_id"], row["source_id"])
             rows = self._source_rows(connection, row["tenant_id"], row["source_id"])
             row = next(

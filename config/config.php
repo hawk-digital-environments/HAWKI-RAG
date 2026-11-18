@@ -52,6 +52,10 @@ return [
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
     'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
     'graph_snapshot_path' => env('HAWKI_RAG_GRAPH_SNAPSHOT_PATH', storage_path('app/graph_snapshots')),
+    'graph_ops_backend' => env('GRAPH_OPS_BACKEND', 'laravel'),
+    'python_graph_ops_url' => env('HAWKI_PYTHON_GRAPH_OPS_URL', 'http://hawki_backend/v1/ops'),
+    'python_graph_ops_timeout' => (int) env('HAWKI_PYTHON_GRAPH_OPS_TIMEOUT', 10),
+    'python_query_dataset_source' => env('HAWKI_BACKEND_QUERY_DATASET_SOURCE', 'environment'),
     'admin_settings_path' => env(
         'HAWKI_RAG_ADMIN_SETTINGS_PATH',
         env('HAWKI_RAG_OPERATOR_SETTINGS_PATH', storage_path('app/hawki-rag/settings.json')),

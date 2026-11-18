@@ -4,20 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Graph;
 
-use App\Services\Graph\GraphCacheService;
-use App\Services\Graph\Neo4jAdmin;
+use App\Services\Graph\GraphOpsService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class ClearNeo4jController extends GraphController
 {
-    public function __invoke(Neo4jAdmin $neo4j, GraphCacheService $cache): JsonResponse
+    public function __invoke(Request $request, GraphOpsService $ops): JsonResponse
     {
-        $result = $neo4j->clearAll();
-        $status = ($result['ok'] ?? false) ? 200 : 502;
-        if (($result['ok'] ?? false)) {
-            $result['graph_cache'] = $cache->clearBridgeCache();
-        }
+        $data = $request->validate(['dataset_id' => ['required', 'string', 'max:191'],
+            'confirm' => ['required', 'in:CLEAR_DATASET_GRAPH']]);
 
-        return $this->noStore(response()->json($result, $status));
+        return $this->graphResponse(fn (): array => $ops->clear($data));
     }
 }

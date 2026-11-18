@@ -23,7 +23,7 @@ readonly class GraphSourceDocumentResolver
      * @param  list<array<string, mixed>>  $nodes
      * @return list<array<string, mixed>>
      */
-    public function attachToNodes(array $nodes): array
+    public function attachToNodes(array $nodes, ?string $datasetId = null): array
     {
         $docIds = [];
         foreach ($nodes as $node) {
@@ -32,7 +32,7 @@ readonly class GraphSourceDocumentResolver
             }
         }
 
-        $documents = $this->documentsByBridgeId($docIds);
+        $documents = $this->documentsByBridgeId($docIds, $datasetId);
 
         foreach ($nodes as &$node) {
             $label = $this->stringValue($node['label'] ?? null);
@@ -82,12 +82,15 @@ readonly class GraphSourceDocumentResolver
      * @param  list<string>  $docIds
      * @return Collection<string, array{model:ManagedDocument,payload:array<string,mixed>}>
      */
-    private function documentsByBridgeId(array $docIds): Collection
+    private function documentsByBridgeId(array $docIds, ?string $datasetId = null): Collection
     {
         $wanted = array_fill_keys($docIds, true);
         $resolved = collect();
 
         foreach ($this->documents->forActiveBridgeDocumentIds($docIds) as $document) {
+            if ($datasetId !== null && (string) $document->dataset_id !== $datasetId) {
+                continue;
+            }
             $payload = $this->payloads->build($document, includeDetails: true);
 
             foreach ($document->outputs as $output) {

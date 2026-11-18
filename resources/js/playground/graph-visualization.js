@@ -39,6 +39,38 @@ let pathFocusNodeIds = new Set();
 let pathFocusEdgeIds = new Set();
 let activeSearchQuery = '';
 let detailLevel = 'medium';
+let datasetGeneration = 0;
+let overviewPollTimer = null;
+
+function selectedDataset() {
+    return semanticDatasetSelect?.value || '';
+}
+
+function datasetChanged() {
+    datasetGeneration += 1;
+    clearInterval(overviewPollTimer);
+    overviewPollTimer = null;
+    cy?.elements().remove();
+    selectedNodeId = null;
+    searchMatchIds = new Set();
+    recentNodeIds = new Set();
+    recentEdgeIds = new Set();
+    pathFocusNodeIds = new Set();
+    pathFocusEdgeIds = new Set();
+    if (searchResults) searchResults.innerHTML = '';
+    if (semanticResults) semanticResults.innerHTML = '';
+    renderDetails(null);
+    for (const control of [searchInput, semanticInput, overviewBtn, clearBtn, snapshotSaveBtn, snapshotLoad,
+        depthSelect, layoutSelect, groupingSelect, relayoutBtn, clearViewBtn, snapshotDeleteBtn]) {
+        if (control) control.disabled = !selectedDataset();
+    }
+    if (!selectedDataset()) {
+        setStatus('Select a dataset to explore its graph.');
+        return;
+    }
+    loadOverview();
+    overviewPollTimer = setInterval(() => loadOverview({ quiet: true, replace: false }), OVERVIEW_POLL_INTERVAL_MS);
+}
 
 function csrfToken() {
     return window.playgroundLogs?.csrfToken
@@ -61,6 +93,17 @@ function setMeta(message) {
 }
 
 async function requestJson(url, options = {}) {
+    const generation = datasetGeneration;
+    const graphAction = url.includes('/rag/neo4j/');
+    if (graphAction && !url.endsWith('/graph/snapshots')) {
+        if (!selectedDataset()) throw new Error('Select a dataset first.');
+    }
+    if (graphAction) {
+        const target = new URL(url, window.location.origin);
+        target.searchParams.set('dataset_id', selectedDataset());
+        url = target.toString();
+        if (options.body) options = {...options, body: JSON.stringify({...JSON.parse(options.body), dataset_id: selectedDataset()})};
+    }
     const response = await fetch(url, {
         cache: 'no-store',
         headers: {
@@ -72,8 +115,11 @@ async function requestJson(url, options = {}) {
         ...options,
     });
     const data = await response.json().catch(() => ({}));
+    if (graphAction && generation !== datasetGeneration) throw new Error('Dataset changed; discarded stale graph response.');
     if (!response.ok || data.ok === false) {
-        throw new Error(data.message || data.error || `Request failed (${response.status})`);
+        const error = new Error(data.message || data.error || `Request failed (${response.status})`);
+        error.code = data.error;
+        throw error;
     }
     return data;
 }
@@ -491,6 +537,7 @@ function escapeHtml(value) {
 }
 
 async function loadOverview({ quiet = false, replace = true } = {}) {
+    if (!selectedDataset()) return;
     if (!quiet) {
         setStatus('Loading graph overview...');
     }
@@ -556,6 +603,7 @@ async function loadSemanticDatasets() {
         semanticDatasetSelect.replaceChildren();
         if (datasets.length === 0) {
             semanticDatasetSelect.add(new Option('No query-ready datasets', ''));
+            datasetChanged();
             return;
         }
 
@@ -575,8 +623,10 @@ async function loadSemanticDatasets() {
         if (selectedDatasetId) {
             window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
         }
+        datasetChanged();
     } catch (error) {
         semanticDatasetSelect.replaceChildren(new Option('Query-ready datasets unavailable', ''));
+        datasetChanged();
         semanticResults.innerHTML = `<div class="graph-result-error">${escapeHtml(error.message)}</div>`;
     }
 }
@@ -719,6 +769,10 @@ async function loadSnapshot(id) {
     setStatus('Loading snapshot...');
     try {
         const data = await requestJson(apiUrl(`rag/neo4j/graph/snapshots/${encodeURIComponent(id)}`));
+        if (data.snapshot?.dataset_id !== selectedDataset()) {
+            setStatus(data.snapshot?.dataset_id ? 'Snapshot belongs to another dataset.' : 'Snapshot has no trusted dataset ownership.', 'warn');
+            return;
+        }
         const scene = data.snapshot?.scene || {};
         cy.elements().remove();
         cy.add([...(scene.nodes || []).map((node) => ({ group: 'nodes', data: node.data, position: node.position })), ...(scene.edges || []).map((edge) => ({ group: 'edges', data: edge.data }))]);
@@ -752,11 +806,8 @@ function debounce(callback, wait = 300) {
 if (graphCanvas) {
     initGraph();
     loadSnapshotList().catch(() => {});
+    datasetChanged();
     loadSemanticDatasets();
-    loadOverview();
-    const overviewPollTimer = setInterval(() => {
-        loadOverview({ quiet: true, replace: false });
-    }, OVERVIEW_POLL_INTERVAL_MS);
 
     searchInput?.addEventListener('input', debounce((event) => searchEntities(event.target.value), 350));
     semanticInput?.addEventListener('keydown', (event) => {
@@ -766,7 +817,7 @@ if (graphCanvas) {
         if (semanticDatasetSelect.value) {
             window.localStorage.setItem('hawkiRagQueryDatasetId', semanticDatasetSelect.value);
         }
-        semanticResults.innerHTML = '';
+        datasetChanged();
     });
     overviewBtn?.addEventListener('click', loadOverview);
     relayoutBtn?.addEventListener('click', runLayout);
@@ -799,19 +850,21 @@ if (graphCanvas) {
 
 if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
-        const ok = confirm('This will delete ALL Neo4j graph data. This cannot be undone. Continue?');
+        const datasetId = selectedDataset();
+        if (!datasetId) return;
+        const ok = confirm(`Clear the graph for dataset "${datasetId}"? This cannot be undone.`);
         if (!ok) return;
         clearBtn.disabled = true;
         if (clearNote) clearNote.textContent = 'Clearing Neo4j graph...';
         try {
-            const data = await requestJson(apiUrl('rag/neo4j/clear'), { method: 'POST', body: JSON.stringify({}) });
+            const data = await requestJson(apiUrl('rag/neo4j/clear'), { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, confirm: 'CLEAR_DATASET_GRAPH' }) });
             if (clearNote) clearNote.textContent = data.ok ? 'Neo4j graph cleared.' : 'Failed to clear Neo4j graph.';
             cy?.elements().remove();
             window.playgroundLogs?.pollRagStats?.();
         } catch (error) {
             if (clearNote) clearNote.textContent = error.message;
         } finally {
-            clearBtn.disabled = false;
+            clearBtn.disabled = !selectedDataset();
         }
     });
 }

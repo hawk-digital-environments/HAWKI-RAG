@@ -4,81 +4,60 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Graph;
 
-use App\Services\Graph\Neo4jGraphExplorer;
-use Mockery\MockInterface;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Support\QueryBffFixture;
 use Tests\TestCase;
 
 class GraphRequestValidationTest extends TestCase
 {
-    public function test_graph_requests_forward_validated_values_and_defaults(): void
+    use RefreshDatabase;
+
+    private function user(array $attributes = []): User
     {
-        $this->mock(Neo4jGraphExplorer::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('overview')
-                ->once()
-                ->with(80)
-                ->andReturn(['ok' => true]);
-            $mock->shouldReceive('searchEntities')
-                ->once()
-                ->with('alpha', 12)
-                ->andReturn(['ok' => true]);
-            $mock->shouldReceive('expand')
-                ->once()
-                ->with('node-1', 1, 80)
-                ->andReturn(['ok' => true]);
-            $mock->shouldReceive('graphForNode')
-                ->once()
-                ->with('node-2', 80)
-                ->andReturn(['ok' => true]);
-            $mock->shouldReceive('saveSnapshot')
-                ->once()
-                ->with(['scene' => ['nodes' => [], 'edges' => []]])
-                ->andReturn(['ok' => true]);
-        });
+        $identity = 'epoch14-'.bin2hex(random_bytes(4));
 
-        $this->getJson('/api/rag/neo4j/graph/overview')
-            ->assertOk()
-            ->assertJsonPath('ok', true);
+        $user = User::query()->create(['username' => $identity, 'email' => $identity.'@example.test', 'ip' => '127.0.0.1']);
+        $user->forceFill($attributes)->save();
 
-        $this->getJson('/api/rag/neo4j/graph/search?q=alpha')
-            ->assertOk()
-            ->assertJsonPath('ok', true);
-
-        $this->postJson('/api/rag/neo4j/graph/expand', ['node_id' => 'node-1'])
-            ->assertOk()
-            ->assertJsonPath('ok', true);
-
-        $this->getJson('/api/rag/neo4j/graph/node?node_id=node-2')
-            ->assertOk()
-            ->assertJsonPath('ok', true);
-
-        $this->postJson('/api/rag/neo4j/graph/snapshots', [
-            'scene' => ['nodes' => [], 'edges' => []],
-        ])->assertOk()
-            ->assertJsonPath('ok', true);
+        return $user;
     }
 
-    public function test_graph_requests_reject_invalid_input(): void
+    public function test_graph_reads_require_dataset_and_validate_limits(): void
     {
-        $this->getJson('/api/rag/neo4j/graph/overview?limit=4')
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('limit');
+        $this->actingAs($this->user());
+        Http::fake();
+        foreach (['overview', 'search?q=alpha', 'node?node_id=x', 'semantic-search?q=alpha'] as $path) {
+            $this->getJson('/api/rag/neo4j/graph/'.$path)->assertUnprocessable()->assertJsonValidationErrors('dataset_id');
+        }
+        $this->getJson('/api/rag/neo4j/graph/overview?dataset_id=one&limit=301')->assertUnprocessable();
+        $this->postJson('/api/rag/neo4j/graph/expand', ['node_id' => 'node'])->assertUnprocessable();
+        Http::assertNothingSent();
+    }
 
-        $this->getJson('/api/rag/neo4j/graph/search?limit=12')
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('q');
+    public function test_graph_requests_forward_dataset_and_clamp_expansion(): void
+    {
+        $fixture = new QueryBffFixture;
+        try {
+            config()->set(['config.graph_ops_backend' => 'python', 'config.dataset_backend' => 'python',
+                'config.pipeline_execution_backend' => 'python', 'config.python_query_dataset_source' => 'database',
+                'config.python_graph_ops_url' => 'http://python.test/v1/ops',
+                'config.query_backend' => 'python', 'config.text_ingestion_backend' => 'python',
+                'config.managed_document_backend' => 'python', 'config.crawler_ingestion_backend' => 'python',
+                'config.query_auth.all_datasets_by_default' => false,
+                'temporal.enabled' => true, 'temporal.callbacks.secret' => 'epoch14-test-secret',
+                'temporal.control_url' => 'http://python.test', 'config.python_url_ingestion_url' => 'http://python.test',
 
-        $this->postJson('/api/rag/neo4j/graph/expand', [
-            'node_id' => 'node-1',
-            'depth' => 4,
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors('depth');
-
-        $this->getJson('/api/rag/neo4j/graph/node?node_id=node-2&limit=251')
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('limit');
-
-        $this->postJson('/api/rag/neo4j/graph/snapshots', ['scene' => 'invalid'])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('scene');
+                'config.query_bff' => $fixture->config->get('config.query_bff')]);
+            $this->actingAs($this->user());
+            Http::fake(['http://python.test/v1/ops/*' => Http::response(['ok' => true, 'nodes' => [], 'edges' => []])]);
+            $this->getJson('/api/rag/neo4j/graph/overview?dataset_id=one')->assertOk();
+            $this->postJson('/api/rag/neo4j/graph/expand', ['dataset_id' => 'one', 'node_id' => 'node', 'depth' => 99])->assertOk();
+            Http::assertSent(fn ($request): bool => $request->method() === 'POST' && $request['dataset_id'] === 'one' && $request['depth'] === 3);
+            Http::assertSentCount(2);
+        } finally {
+            $fixture->close();
+        }
     }
 }

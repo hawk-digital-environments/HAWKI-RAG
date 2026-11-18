@@ -144,7 +144,7 @@
 
             summary = 'Troubleshoot could not complete.';
             checks = [{
-                title: 'HAWKI-RAG Health/Repair Gate',
+                title: 'Advisory system readiness',
                 status: 'fail',
                 required: true,
                 detail: error instanceof Error ? error.message : 'System gate request failed.',
@@ -232,7 +232,7 @@
                 <button type="button" class="close" onclick={closePanel}>Close</button>
             </div>
 
-            <p class="summary">{summary}</p>
+            <p class="summary">Advisory readiness · {summary}</p>
 
             <div
                 class="progress"

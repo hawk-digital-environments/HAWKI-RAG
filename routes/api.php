@@ -13,12 +13,8 @@ use App\Http\Controllers\Document\UnifiedDocumentController;
 use App\Http\Controllers\DocumentBrowserController;
 use App\Http\Controllers\Graph\ClearGraphViewController;
 use App\Http\Controllers\Graph\ClearNeo4jController;
-use App\Http\Controllers\Graph\GraphExpansionController;
-use App\Http\Controllers\Graph\GraphNodeController;
-use App\Http\Controllers\Graph\GraphOverviewController;
-use App\Http\Controllers\Graph\GraphSearchController;
+use App\Http\Controllers\Graph\GraphOpsController;
 use App\Http\Controllers\Graph\GraphSnapshotController;
-use App\Http\Controllers\Graph\SemanticGraphSearchController;
 use App\Http\Controllers\Health\HawkiRagSystemGateController;
 use App\Http\Controllers\Health\PipelineHealthController;
 use App\Http\Controllers\Health\RagHealthController;
@@ -270,8 +266,8 @@ Route::prefix('pipeline')->group(function (): void {
 | gate. /up provides the minimal liveness endpoint for infrastructure probes.
 */
 Route::get('/rag/health', [RagHealthController::class, 'show']);
-Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
-Route::get('/health/system-gate', [HawkiRagSystemGateController::class, 'show']);
+Route::get('/rag/monitor', [RagMonitorController::class, 'show'])->middleware(['auth:sanctum', RequireDatasetManager::class]);
+Route::get('/health/system-gate', [HawkiRagSystemGateController::class, 'show'])->middleware(['auth:sanctum', RequireDatasetManager::class]);
 
 /*
 |----------------------------------------------------------------------
@@ -279,7 +275,7 @@ Route::get('/health/system-gate', [HawkiRagSystemGateController::class, 'show'])
 |----------------------------------------------------------------------
 | Reports RAG/Qdrant statistics and allows explicit collection cleanup.
 */
-Route::get('/rag/stats', [RagStatsController::class, 'show']);
+Route::get('/rag/stats', [RagStatsController::class, 'show'])->middleware(['auth:sanctum', RequireDatasetManager::class]);
 Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection']);
 
 /*
@@ -291,16 +287,16 @@ Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class
 | view.
 */
 Route::prefix('rag/neo4j')->group(function (): void {
-    Route::get('/graph/overview', [GraphOverviewController::class, 'index']);
-    Route::get('/graph/search', GraphSearchController::class);
-    Route::get('/graph/semantic-search', SemanticGraphSearchController::class)
+    foreach (['overview', 'search', 'semantic-search', 'node'] as $operation) {
+        Route::get('/graph/'.$operation, [GraphOpsController::class, $operation === 'semantic-search' ? 'semanticSearch' : $operation])
+            ->middleware('browser-query-principal');
+    }
+    Route::post('/graph/expand', [GraphOpsController::class, 'expand'])
         ->middleware('browser-query-principal');
-    Route::get('/graph/node', [GraphNodeController::class, 'show']);
-    Route::post('/graph/expand', GraphExpansionController::class);
     Route::post('/graph/clear-view', ClearGraphViewController::class);
-    Route::get('/graph/snapshots', [GraphSnapshotController::class, 'index']);
-    Route::post('/graph/snapshots', [GraphSnapshotController::class, 'store']);
-    Route::get('/graph/snapshots/{id}', [GraphSnapshotController::class, 'show']);
-    Route::delete('/graph/snapshots/{id}', [GraphSnapshotController::class, 'destroy']);
-    Route::post('/clear', ClearNeo4jController::class);
+    Route::get('/graph/snapshots', [GraphSnapshotController::class, 'index'])->middleware('browser-query-principal');
+    Route::post('/graph/snapshots', [GraphSnapshotController::class, 'store'])->middleware('browser-query-principal');
+    Route::get('/graph/snapshots/{id}', [GraphSnapshotController::class, 'show'])->middleware('browser-query-principal');
+    Route::delete('/graph/snapshots/{id}', [GraphSnapshotController::class, 'destroy'])->middleware('browser-query-principal');
+    Route::post('/clear', ClearNeo4jController::class)->middleware(['auth:sanctum', RequireDatasetManager::class]);
 });

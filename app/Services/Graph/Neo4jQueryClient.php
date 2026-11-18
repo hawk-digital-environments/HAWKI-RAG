@@ -17,14 +17,13 @@ readonly class Neo4jQueryClient
         private HttpFactory $http,
         private ConfigRepository $config,
         private LoggerInterface $logger,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param list<array<string, mixed>> $statements
+     * @param  list<array<string, mixed>>  $statements
      * @return array<string, mixed>
      */
-    public function postStatements(array $statements): array
+    public function postStatements(array $statements, bool $requireValidEnvelope = false): array
     {
         $response = $this->http->timeout(20)
             ->withBasicAuth($this->user(), $this->password())
@@ -39,6 +38,25 @@ readonly class Neo4jQueryClient
             throw Neo4jClientException::httpError($response->status(), $response->body());
         }
 
+        if ($requireValidEnvelope) {
+            // Preserve JSON object/array distinctions before associative decoding.
+            $envelope = json_decode($response->body());
+            if (json_last_error() !== JSON_ERROR_NONE || ! $envelope instanceof \stdClass
+                || ! is_array($envelope->results ?? null) || ! is_array($envelope->errors ?? null)) {
+                throw Neo4jClientException::invalidClearAcknowledgement();
+            }
+            foreach ($envelope->results as $result) {
+                if (! $result instanceof \stdClass || ! is_array($result->columns ?? null)
+                    || ! is_array($result->data ?? null)) {
+                    throw Neo4jClientException::invalidClearAcknowledgement();
+                }
+                foreach ($result->data as $data) {
+                    if (! $data instanceof \stdClass || ! is_array($data->row ?? null)) {
+                        throw Neo4jClientException::invalidClearAcknowledgement();
+                    }
+                }
+            }
+        }
         $payload = $response->json() ?: [];
         $errors = $payload['errors'] ?? [];
         if (! empty($errors) && is_array($errors)) {

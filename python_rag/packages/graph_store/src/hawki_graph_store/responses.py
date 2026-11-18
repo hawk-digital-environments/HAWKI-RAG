@@ -2,10 +2,80 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 from typing import Any
 
 from hawki_graph_store.contracts import GraphFact, GraphStructuralHit
 from hawki_graph_store.normalization import dedupe_one_way_triplets
+
+
+def scoped_node_id(dataset_id: str, namespace: str, key: str) -> str:
+    """Bind a domain entity key to its scope without disclosing physical scope."""
+    scope = hashlib.sha256(json.dumps([dataset_id, namespace]).encode()).hexdigest()
+    encoded = base64.urlsafe_b64encode(key.encode()).decode().rstrip("=")
+    return f"entity:{scope}:{encoded}"
+
+
+def scoped_entity_key(node_id: str, dataset_id: str, namespace: str) -> str | None:
+    try:
+        prefix, digest, encoded = node_id.split(":", 2)
+        key = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
+        ).decode()
+        if prefix == "entity" and scoped_node_id(dataset_id, namespace, key) == node_id:
+            return key
+    except (ValueError, UnicodeError):
+        pass
+    return None
+
+
+def ops_properties(properties: dict) -> dict:
+    return {
+        key: value
+        for key, value in properties.items()
+        if key
+        not in {
+            "dataset_id",
+            "neo4j_namespace",
+            "collection",
+            "qdrant_collection",
+            "embedding",
+            "vector",
+            "elementId",
+        }
+    }
+
+
+def ops_node(raw: dict, dataset_id: str, namespace: str) -> dict:
+    properties = ops_properties(dict(raw["properties"]))
+    docs = properties.get("doc_ids") or properties.get("doc_id") or []
+    return {
+        "id": scoped_node_id(dataset_id, namespace, raw["key"]),
+        "label": properties.get("name") or properties.get("entity_id") or raw["key"],
+        "type": (raw.get("labels") or ["Entity"])[0],
+        "properties": properties,
+        "score": raw.get("score"),
+        "highlighted": False,
+        "source_document_ids": docs if isinstance(docs, list) else [docs],
+    }
+
+
+def ops_edge(raw: dict, dataset_id: str, namespace: str) -> dict:
+    properties = ops_properties(dict(raw["properties"]))
+    source = scoped_node_id(dataset_id, namespace, raw["source"])
+    target = scoped_node_id(dataset_id, namespace, raw["target"])
+    relation = properties.get("type") or properties.get("relation") or raw["type"]
+    identity = json.dumps([source, target, raw["type"], relation])
+    return {
+        "id": "edge:" + hashlib.sha256(identity.encode()).hexdigest(),
+        "source": source,
+        "target": target,
+        "type": relation,
+        "properties": properties,
+        "weight": max(1, len(properties.get("doc_ids") or [])),
+    }
 
 
 Neo4jFactRow = GraphFact

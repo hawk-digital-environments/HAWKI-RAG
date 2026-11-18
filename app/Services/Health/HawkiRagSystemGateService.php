@@ -20,9 +20,8 @@ readonly class HawkiRagSystemGateService
         private PipelineHealthService $pipeline,
         private RagHealthService $rag,
         private RagStatsService $stats,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -46,7 +45,9 @@ readonly class HawkiRagSystemGateService
 
         return [
             'success' => true,
-            'enforce' => $enabled,
+            'enforce' => false,
+            'advisory' => true,
+            'notice' => 'Advisory operational readiness; not an authorization decision.',
             'status' => $enabled ? ($blocking === [] ? 'ready' : 'blocked') : 'disabled',
             'checkedAt' => $this->clock->now()->format(DATE_ATOM),
             'required' => $required,
@@ -178,7 +179,7 @@ readonly class HawkiRagSystemGateService
     }
 
     /**
-     * @param array<string, mixed> $meta
+     * @param  array<string, mixed>  $meta
      * @return array<string, mixed>
      */
     private function check(
