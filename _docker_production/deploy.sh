@@ -15,7 +15,21 @@
 # (docker-compose.with-temporal-ui.yml) and the scraper
 # (docker-compose.scraper.yml) chain the same way.
 
-docker compose up --pull always -d
+# Env assembly: the core .env is always loaded; provider/addon fragments
+# (.env.ollama, .env.litellm, .env.scraper - copies of the matching
+# .env.*.example files) are picked up automatically when present, both for
+# ${...} interpolation here and for the services' env_file lists. Passing
+# them explicitly matters for values the COMPOSE FILES interpolate
+# (image tags like HAWKI_RAG_SCRAPER_VERSION or LITELLM_PORT), which resolve
+# from the project environment only.
+ENV_FILE_ARGS="--env-file .env"
+for fragment in .env.ollama .env.litellm .env.scraper; do
+    if [ -f "$fragment" ]; then
+        ENV_FILE_ARGS="$ENV_FILE_ARGS --env-file $fragment"
+    fi
+done
+
+docker compose $ENV_FILE_ARGS up --pull always -d
 
 # Stop if the previous command failed
 if [ $? -ne 0 ]; then

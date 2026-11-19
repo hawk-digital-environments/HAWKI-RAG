@@ -17,7 +17,14 @@ services:
         image: temporalio/ui:2.34.0
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         ports:
             - "${TEMPORAL_UI_HOST_BIND:-127.0.0.1}:${TEMPORAL_UI_HOST_PORT:-8081}:8080"
         depends_on:

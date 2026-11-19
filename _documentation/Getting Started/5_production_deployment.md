@@ -67,9 +67,11 @@ A few things to consider:
   `APP_ENV=production` and `APP_DEBUG=false` rarely need touching. Values
   may reference variables defined earlier in the file (for example
   `EXTERNAL_CONVERTER_URL=${FILE_CONVERTER_BASE_URL}`); Docker Compose
-  expands such references when it builds the container environments. The
-  file is the configuration reference for this stack: extend it rather
-  than guessing variable names.
+  expands such references when it builds the container environments. What
+  every variable does, its allowed values and default, is documented in
+  [Environment & Configuration](../Operations/5_environment_db_queue.md);
+  ready-made provider setups (Ollama, local LiteLLM gateway, external
+  gateway) live in [Model Provider Recipes](../Reference/9_model_provider_recipes.md).
 
 :::warning Fill in the secrets before the first start
 
@@ -203,9 +205,15 @@ external crawler instead. To run it inside this stack, apply the override:
 COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml ./deploy.sh
 ```
 
-Then uncomment the "Website Scraper" block in `.env`; the URLs point at the
-`scraper` service through `${...}` references. The scraper publishes no host
-port: it joins the default network (for this stack) and `hawki-rag-network`
+Then activate the scraper environment fragment - the URLs point at the
+`scraper` service through `${...}` references:
+
+```bash
+cp .env.scraper.example .env.scraper   # and set ORIGIN to the public URL
+```
+
+The scraper publishes no host port: it joins the default network (for this
+stack) and `hawki-rag-network`
 (for the main HAWKI stack), so its unauthenticated API stays unreachable
 from the host. Serve its UI through the reverse proxy of the HAWKI stack
 and set `ORIGIN` to that public URL. The scraper writes its crawl results

@@ -62,6 +62,10 @@ grounded in those passages.
   Find the Laravel/Python implementation and tests for a change.
   [Open chapter](./Reference/8_repo_map.md)
 
+- <span className="grid-icon">⚙️</span> __9. Model Provider Recipes__
+  Ready-made setups: local Ollama, local LiteLLM, foreign gateway.
+  [Open chapter](./Reference/9_model_provider_recipes.md)
+
 </div>
 
 ## Explore by Topic
@@ -73,6 +77,8 @@ grounded in those passages.
 | Understand vector, graph, and application state | [Storage](./Core%20Concepts/storage.md) |
 | Inspect workflows, queues, and callbacks | [Temporal Operations](./Operations/temporal_operations.md) |
 | Diagnose a failed or incomplete run | [Monitoring](./Operations/monitoring.md), [Troubleshooting](./Operations/troubleshooting.md), and [Recovery](./Operations/ingestion_recovery.md) |
+| Look up an environment variable | [Environment & Configuration](./Operations/5_environment_db_queue.md) |
+| Switch model serving (Ollama / LiteLLM / external gateway) | [Model Provider Recipes](./Reference/9_model_provider_recipes.md) |
 | Integrate an application | [REST APIs](./Reference/rest_apis.md) and [Direct Text Ingestion](./Reference/direct_text_ingestion.md) |
 | Contribute a change | [Testing](./Developer/testing.md) and [Architecture Rules](./Developer/architecture_rules.md) |
 

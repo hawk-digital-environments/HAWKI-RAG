@@ -32,7 +32,14 @@ services:
         image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
         volumes:
             - ./litellm-config.yml:/etc/litellm/config.yaml:ro

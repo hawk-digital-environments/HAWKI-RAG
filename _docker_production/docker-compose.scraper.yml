@@ -33,7 +33,14 @@ services:
         image: ${HAWKI_RAG_SCRAPER_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag-scraper}:${HAWKI_RAG_SCRAPER_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         environment:
             # The image default, set explicitly so a stray ENVIRONMENT entry
             # in .env cannot flip the stack into development tuning.

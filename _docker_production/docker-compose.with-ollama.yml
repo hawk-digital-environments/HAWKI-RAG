@@ -29,7 +29,14 @@ services:
         image: ollama/ollama:0.40.13
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         volumes:
             - ollama:/root/.ollama
             - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro

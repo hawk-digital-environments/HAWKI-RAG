@@ -33,7 +33,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         command: ["php", "artisan", "migrate", "--force"]
         volumes:
             - shared_storage:/app/shared
@@ -52,7 +59,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         volumes:
             - shared_storage:/app/shared
             - shared_storage:/shared
@@ -89,7 +103,14 @@ services:
         container_name: hawki_rag_postgres
         image: postgres:16
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         restart: always
         volumes:
             - postgres_data:/var/lib/postgresql/data
@@ -110,7 +131,14 @@ services:
         container_name: temporal
         image: temporalio/auto-setup:1.25.2
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         restart: always
         depends_on:
             postgres:
@@ -186,7 +214,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:bridge-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         depends_on:
             migrator:
                 condition: service_completed_successfully
@@ -214,7 +249,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         restart: always
         stop_grace_period: 40s
         healthcheck:
@@ -232,7 +274,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:workflow-worker-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         depends_on:
             migrator:
                 condition: service_completed_successfully
@@ -249,7 +298,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:scraper-worker-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         volumes:
             - shared_storage:/shared
         group_add:
@@ -272,7 +328,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:converter-worker-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         volumes:
             - shared_storage:/shared
         group_add:
@@ -300,7 +363,14 @@ services:
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-${HAWKI_RAG_VERSION:-latest}
         pull_policy: always
         env_file:
-            - .env
+            - path: .env
+              required: true
+            - path: .env.ollama
+              required: false
+            - path: .env.litellm
+              required: false
+            - path: .env.scraper
+              required: false
         volumes:
             - shared_storage:/shared
         group_add:
