@@ -87,15 +87,16 @@ readonly class HawkiRagSystemGateService
             $result = $this->rag->show();
             $payload = is_array($result['payload'] ?? null) ? $result['payload'] : [];
             $ok = (int) ($result['status'] ?? 0) === 200 && (bool) ($payload['ok'] ?? false);
+            $python = ($payload['authority'] ?? null) === 'python';
 
             return $this->check(
                 'retrieval',
                 'HAWKI-RAG Retrieval',
                 $ok ? 'ok' : 'fail',
                 $ok
-                    ? 'RAG bridge is reachable for Qdrant-backed retrieval.'
-                    : (string) ($payload['message'] ?? $payload['body'] ?? 'RAG bridge is not ready.'),
-                $ok ? '' : 'Open health checks and verify HAWKI_RAG_BRIDGE_URL, RAG bridge, and Qdrant.',
+                    ? ($python ? 'Python query runtime is reachable.' : 'Legacy RAG bridge is reachable for rollback retrieval.')
+                    : (string) ($payload['message'] ?? $payload['body'] ?? ($python ? 'Python query runtime is not ready.' : 'Legacy RAG bridge is not ready.')),
+                $ok ? '' : ($python ? 'Verify the Python query backend and its readiness checks.' : 'Verify the configured legacy bridge and Qdrant for rollback.'),
                 $required,
                 ['payload' => $payload],
             );

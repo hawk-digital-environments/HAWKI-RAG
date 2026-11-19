@@ -12,6 +12,7 @@ use App\Models\ManagedDocumentDeletion;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Authorization\DatasetIngestionAuthorizationService;
 use App\Services\Dataset\DatasetService;
+use App\Services\Document\ManagedDocumentDeletionReceiptVerifier;
 use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
@@ -19,8 +20,10 @@ use App\Services\Profile\Values\ApiTokenAbility;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\TestWith;
 use Psr\Log\NullLogger;
 use Tests\TestCase;
@@ -378,6 +381,32 @@ class ManagedDocumentDeletionTest extends TestCase
         $operation = ManagedDocumentDeletion::query()->where('operation_id', '!=', $previous->operation_id)->firstOrFail();
 
         return [$previous->fresh(), $operation];
+    }
+
+    public function test_terminal_replay_needs_only_retained_document_and_operation_tables(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk();
+        $operation->refresh();
+        $document = ManagedDocument::query()->firstOrFail();
+        $before = [$operation->getAttributes(), $document->getAttributes()];
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+        app(ManagedDocumentDeletionReceiptVerifier::class)->verify($operation, $document, $receipt);
+        $this->assertSame([], $queries);
+        $this->assertSame($before, [$operation->getAttributes(), $document->getAttributes()]);
+        // Future-schema proof in the guarded in-memory test database only.
+        $this->assertSame(':memory:', DB::connection()->getDatabaseName());
+        Schema::drop('managed_document_outputs');
+        Schema::drop('ingestion_sources');
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertDatabaseCount('managed_document_deletions', 1);
+        Http::assertSentCount(1);
     }
 
     public function test_delete_retains_trimmed_request_key_and_unknown_mutations_return_not_found(): void

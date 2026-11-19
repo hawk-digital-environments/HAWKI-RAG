@@ -1,5 +1,9 @@
 # Epoch 15A: final Python cutover and legacy drain
 
+For the subsequent non-destructive preparation, expanded drain counters and
+still-gated removal plan, see [Epoch 15B-1 preparation](epoch15b_preparation.md).
+The sections below record the Epoch 15A rollout contract and historical results.
+
 This release changes checked-in defaults; it does not activate an existing
 deployment whose environment explicitly selects Laravel. Review the effective
 environment on every BFF/backend/worker replica. Do not copy `.env.example`

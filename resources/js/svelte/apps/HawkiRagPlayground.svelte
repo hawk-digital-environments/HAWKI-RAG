@@ -178,7 +178,7 @@
     const totalHitScore = $derived(hits.reduce((sum, hit) => sum + scoreWeight(hit.score), 0));
     const systemSignals = $derived<SignalItem[]>([
         {
-            label: 'Bridge',
+            label: 'Query runtime',
             value: monitor.bridgeOk ? `${monitor.latencyMs ?? 'n/a'} ms` : 'offline',
             tone: monitor.bridgeOk ? 'ready' : 'fail',
         },

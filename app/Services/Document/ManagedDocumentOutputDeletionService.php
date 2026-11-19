@@ -37,6 +37,7 @@ readonly class ManagedDocumentOutputDeletionService
         private ConfigRepository $config,
         private ManagedDocumentWriterRepository $writerJobs,
         private PipelineTaskCancellationService $cancellations,
+        private ManagedDocumentDeletionReceiptVerifier $receipts,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -328,7 +329,7 @@ readonly class ManagedDocumentOutputDeletionService
                 throw ManagedDeletionException::conflict('Deletion callback workflow identity is invalid.');
             }
             if (in_array($operation->status, ['completed', 'continued'], true)) {
-                $this->assertTerminalReceipt($operation, $document, $receipt);
+                $this->receipts->verify($operation, $document, $receipt);
 
                 return $operation;
             }
@@ -358,7 +359,7 @@ readonly class ManagedDocumentOutputDeletionService
             }
             $targets = $operation->workflow_input['targets'];
             $results = $receipt['results'];
-            $this->assertSinkEvidence($operation, $results);
+            $this->receipts->assertSinkEvidence($operation, $results);
             $now = Carbon::instance($this->clock->now());
             $this->outputs->deactivateSelected($document, $targets, $now);
             foreach (array_unique(array_filter([...array_keys($operation->attempts['source_states'] ?? []), ...array_column($targets, 'source_id'), $document->latest_source_id])) as $id) {
@@ -378,47 +379,9 @@ readonly class ManagedDocumentOutputDeletionService
         });
     }
 
-    /** The legacy SQL ledger proves ownership; a callback cannot establish a new run. */
-    private function assertLegacyOperationReceipt(ManagedDocumentDeletion $operation, ManagedDocument $document, array $receipt): void
-    {
-        $input = $operation->workflow_input;
-        $run = $operation->attempts['runs'][$operation->run_id] ?? null;
-        if ($receipt['operation_id'] !== $operation->operation_id
-            || $document->document_id !== $operation->document_id
-            || $document->dataset_id !== $operation->dataset_id
-            || ($input['operation_id'] ?? null) !== $operation->operation_id
-            || ($input['managed_document_id'] ?? null) !== $document->document_id
-            || ($input['dataset_id'] ?? null) !== $document->dataset_id
-            || $operation->workflow_id !== 'managed-'.$operation->operation_id
-            || $receipt['workflow_id'] !== $operation->workflow_id
-            || ! $operation->run_id || $receipt['run_id'] !== $operation->run_id
-            || ($run !== null && (! is_array($run) || ($run['superseded'] ?? false)
-                || ! in_array($run['status'] ?? null, ['pending', 'failed'], true)))
-            || ($operation->attempts['dispatch_sequence'] ?? 0) < 1
-            || ! in_array($operation->status, ['pending', 'failed', 'completed', 'continued'], true)) {
-            throw ManagedDeletionException::conflict('Deletion drain receipt has no matching durable legacy operation and run.');
-        }
-    }
-
-    /** Completed receipts use frozen proof, never source markers changed by later deletions. */
-    private function assertTerminalReceipt(ManagedDocumentDeletion $operation, ManagedDocument $document, array $receipt): void
-    {
-        $this->assertLegacyOperationReceipt($operation, $document, $receipt);
-        // Completion can precede the start acknowledgement. Its stored final
-        // run and sink results are durable proof even without a pending-run entry.
-        if (($receipt['status'] ?? null) !== 'completed'
-            || ! is_array($operation->attempts['source_states'] ?? null)
-            || ! is_array($operation->workflow_input['targets'] ?? null)
-            || ! is_array($operation->results) || ! is_array($receipt['results'] ?? null)
-            || $this->canonicalJson($operation->results) !== $this->canonicalJson($receipt['results'])) {
-            throw ManagedDeletionException::conflict('Deletion replay does not match the stored terminal receipt.');
-        }
-        $this->assertSinkEvidence($operation, $operation->results);
-    }
-
     private function assertLegacyDrainReceipt(ManagedDocumentDeletion $operation, ManagedDocument $document, array $receipt): void
     {
-        $this->assertLegacyOperationReceipt($operation, $document, $receipt);
+        $this->receipts->assertOperationReceipt($operation, $document, $receipt);
         if (! is_array($operation->attempts['runs'][$operation->run_id] ?? null)) {
             throw ManagedDeletionException::conflict('Deletion drain receipt has no matching durable legacy operation and run.');
         }
@@ -474,42 +437,12 @@ readonly class ManagedDocumentOutputDeletionService
             return false;
         }
         try {
-            $this->assertSinkEvidence($previous, $previous->results);
+            $this->receipts->assertSinkEvidence($previous, $previous->results);
         } catch (ManagedDeletionException) {
             return false;
         }
 
         return true;
-    }
-
-    private function assertSinkEvidence(ManagedDocumentDeletion $operation, array $results): void
-    {
-        $targets = $operation->workflow_input['targets'];
-        if (count($results) !== count($targets)) {
-            throw ManagedDeletionException::conflict('Deletion callback has incomplete sink evidence.');
-        }
-        $byId = [];
-        foreach ($results as $result) {
-            $id = is_array($result) ? ($result['output_id'] ?? null) : null;
-            if (! is_int($id) || $id < 1 || isset($byId[$id])) {
-                throw ManagedDeletionException::conflict('Deletion callback has duplicate output evidence.');
-            }
-            $byId[$id] = $result;
-        }
-        foreach ($targets as $target) {
-            $proof = $byId[$target['output_id']] ?? [];
-            $vector = $proof['qdrant'] ?? [];
-            $graph = $proof['neo4j'] ?? [];
-            if (($vector['verified'] ?? null) !== true || ($vector['remaining_points'] ?? null) !== 0
-                || ($vector['dataset_id'] ?? null) !== $operation->dataset_id || ($vector['source_id'] ?? null) !== $target['source_id']
-                || ($vector['doc_id'] ?? null) !== $target['doc_id'] || ($vector['collection'] ?? null) !== $target['collection']
-                || ($graph['verified'] ?? null) !== true || ($graph['remaining_contributions'] ?? null) !== 0
-                || ($graph['required'] ?? null) !== ($target['neo4j_namespace'] !== null)
-                || ($target['neo4j_namespace'] !== null && (($graph['dataset_id'] ?? null) !== $operation->dataset_id || ($graph['namespace'] ?? null) !== $target['neo4j_namespace']
-                    || ($graph['doc_id'] ?? null) !== $target['doc_id']))) {
-                throw ManagedDeletionException::conflict('Deletion callback has no verified scoped sink evidence.');
-            }
-        }
     }
 
     private function writersReleased(ManagedDocumentDeletion $operation): bool

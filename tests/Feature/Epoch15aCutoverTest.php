@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Mcp\Servers\HawkiRagServer;
-use App\Mcp\Tools\HawkiRagSearchTool;
+use App\Mcp\Tools\WebSearchTool;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Graph\GraphOpsBackend;
@@ -99,7 +99,7 @@ class Epoch15aCutoverTest extends TestCase
         foreach (['worker-events', 'managed-writers', 'managed-deletion-events'] as $callback) {
             $this->assertContains('api/internal/pipeline/'.$callback, $uris);
         }
-        $this->assertNotContains(HawkiRagSearchTool::class, (new \ReflectionClass(HawkiRagServer::class))->getDefaultProperties()['tools']);
+        $this->assertSame([WebSearchTool::class], (new \ReflectionClass(HawkiRagServer::class))->getDefaultProperties()['tools']);
     }
 
     public function test_unknown_and_cancelled_statuses_are_not_drained_and_command_performs_no_writes(): void

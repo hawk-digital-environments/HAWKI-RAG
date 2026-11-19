@@ -12,7 +12,8 @@ use Illuminate\Database\DatabaseManager;
 use Psr\Log\LoggerInterface;
 
 /**
- * A read-only preflight over Laravel's frozen legacy dataset state.
+ * Compatibility/drain-only preflight over Laravel's legacy physical ownership.
+ * This is a removal gate, never a source of Python grants or new authority.
  *
  * Python never reads Laravel's `public` schema. Before the BFF asks the Python
  * authority to delete a dataset, Laravel alone checks whether non-terminal

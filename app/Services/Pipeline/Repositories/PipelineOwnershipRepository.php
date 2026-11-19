@@ -7,12 +7,13 @@ namespace App\Services\Pipeline\Repositories;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Values\LegacyDrainState;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class PipelineOwnershipRepository
 {
-    public function __construct(private PipelineSchemaInspector $schema) {}
+    public function __construct(private LegacyDrainRepository $drain) {}
 
     /** Durable legacy task/job/source agreement. No identity-prefix inference. */
     public function owns(string $field, string $identity): bool
@@ -53,17 +54,11 @@ readonly class PipelineOwnershipRepository
 
     public function drainCounts(): array
     {
-        if (! $this->schema->hasTables(['pipeline_tasks', 'pipeline_jobs'])) {
-            return ['active_legacy_task_count' => null, 'active_legacy_job_count' => null,
-                'legacy_drain_complete' => false];
-        }
-        $tasks = PipelineTask::query()->where(fn ($q) => $q->whereNull('status')
-            ->orWhereNotIn('status', LegacyDrainRepository::TASK_TERMINAL))->count();
-        $jobs = PipelineJob::query()->where(fn ($q) => $q->whereNull('status')
-            ->orWhereNotIn('status', LegacyDrainRepository::JOB_TERMINAL))->count();
+        $counts = $this->drain->counts();
 
-        return ['active_legacy_task_count' => $tasks, 'active_legacy_job_count' => $jobs,
-            'legacy_drain_complete' => $tasks === 0 && $jobs === 0];
+        return ['active_legacy_task_count' => $counts['nonterminal_pipeline_tasks'],
+            'active_legacy_job_count' => $counts['nonterminal_pipeline_jobs'],
+            'legacy_drain_complete' => (new LegacyDrainState($counts))->workDrained()];
     }
 
     /** All candidates are authorized and ordered before the global limit. */
