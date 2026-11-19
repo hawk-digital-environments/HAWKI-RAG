@@ -15,6 +15,8 @@ readonly class LegacyDrainRepository
 
     public const JOB_TERMINAL = ['completed', 'failed', 'skipped'];
 
+    public const INDEX_TERMINAL = ['ready', 'failed', 'cancelled', 'deleted'];
+
     public function __construct(private DatabaseManager $database) {}
 
     /** @return array<string, int|null> Missing schema is unknown, never zero. */
@@ -25,6 +27,7 @@ readonly class LegacyDrainRepository
         return [
             'nonterminal_pipeline_tasks' => $this->count('pipeline_tasks', 'status', self::TASK_TERMINAL),
             'nonterminal_pipeline_jobs' => $this->count('pipeline_jobs', 'status', self::JOB_TERMINAL),
+            'nonterminal_job_index_states' => $this->count('pipeline_jobs', 'index_status', self::INDEX_TERMINAL),
             'nonterminal_stage_states' => $this->count('pipeline_stage_states', 'status', self::JOB_TERMINAL),
             'active_ingestion_sources' => $this->count('ingestion_sources', 'index_status', ['ready', 'failed', 'cancelled', 'deleted']),
             'deleting_ingestion_sources' => $this->hasColumns('ingestion_sources', ['index_status'])

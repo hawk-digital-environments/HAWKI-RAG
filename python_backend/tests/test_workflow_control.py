@@ -8,7 +8,7 @@ import time
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -432,6 +432,84 @@ def test_cancellation_and_specific_run_status_use_python_port(control, operation
     method.assert_awaited_once_with(
         workflow_id="ingest-source-source-a", run_id="run-a"
     )
+
+
+def test_specific_run_status_preserves_explicit_not_found_evidence(control):
+    _, port, app, _ = control
+    evidence = {
+        "workflow_id": "ingest-source-source-a",
+        "run_id": "run-a",
+        "status": "NOT_FOUND",
+        "error": None,
+    }
+    port.workflow_status.return_value = evidence
+    result = request(
+        app,
+        "execution/status",
+        {"workflow_id": "ingest-source-source-a", "run_id": "run-a"},
+    )
+    assert result.status_code == 200
+    assert result.json() == evidence
+
+
+@pytest.mark.parametrize(
+    "failure", ["execution", "namespace", "untyped", "deadline", "connection"]
+)
+def test_sdk_absence_classification_survives_workflow_control_api(control, failure):
+    from google.protobuf.any_pb2 import Any
+    from temporalio.api.common.v1 import GrpcStatus
+    from temporalio.api.errordetails.v1 import NamespaceNotFoundFailure, NotFoundFailure
+    from temporalio.service import RPCError, RPCStatusCode
+    from hawki_workflow_control.settings import WorkflowControlSettings
+    from hawki_workflow_control.temporal_client import TemporalControlClient
+
+    service, _, app, _ = control
+    details = []
+    if failure in {"execution", "namespace"}:
+        detail = Any()
+        detail.Pack(
+            NotFoundFailure()
+            if failure == "execution"
+            else NamespaceNotFoundFailure(namespace="wrong")
+        )
+        details.append(detail)
+    code = (
+        RPCStatusCode.DEADLINE_EXCEEDED
+        if failure == "deadline"
+        else RPCStatusCode.NOT_FOUND
+    )
+    error = RPCError(
+        "private error",
+        code,
+        GrpcStatus(code=code.value, details=details).SerializeToString(),
+    )
+    adapter = TemporalControlClient(WorkflowControlSettings())
+    adapter.connect_temporal = AsyncMock(
+        side_effect=TemporalUnavailable() if failure == "connection" else None,
+        return_value=SimpleNamespace(
+            get_workflow_handle=Mock(
+                return_value=SimpleNamespace(describe=AsyncMock(side_effect=error))
+            )
+        ),
+    )
+    service.port = adapter
+    result = request(
+        app,
+        "execution/status",
+        {"workflow_id": "ingest-source-source-a", "run_id": "run-a"},
+    )
+    if failure == "execution":
+        assert result.status_code == 200
+        assert result.json() == {
+            "workflow_id": "ingest-source-source-a",
+            "run_id": "run-a",
+            "status": "NOT_FOUND",
+            "error": None,
+        }
+    else:
+        assert result.status_code in {502, 503}
+        assert "NOT_FOUND" not in result.text
+        assert "private error" not in result.text
 
 
 def test_historical_deletion_scope_and_writers_reach_same_workflow(control):

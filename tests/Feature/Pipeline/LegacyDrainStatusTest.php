@@ -45,8 +45,9 @@ class LegacyDrainStatusTest extends TestCase
             $row['task_id'] = 'task-status';
         } elseif ($table === 'pipeline_jobs') {
             $row['job_id'] = 'job-status';
+            $row['index_status'] = 'ready';
         } else {
-            $job = DB::table('pipeline_jobs')->insertGetId(['job_id' => 'stage-job', 'status' => 'completed']);
+            $job = DB::table('pipeline_jobs')->insertGetId(['job_id' => 'stage-job', 'status' => 'completed', 'index_status' => 'ready']);
             $row += ['pipeline_job_id' => $job, 'job_id' => 'stage-job', 'stage' => 'ingest'];
         }
         DB::table($table)->insert($row);
@@ -58,6 +59,36 @@ class LegacyDrainStatusTest extends TestCase
         $report = $this->report();
         $this->assertSame($expected, $report['counts'][$key]);
         $this->assertSame($expected === 0, $report['legacy_work_drained']);
+        $this->assertHealthAgrees($report);
+    }
+
+    #[TestWith(['completed', 'ready', 0])]
+    #[TestWith(['failed', 'cancelled', 0])]
+    #[TestWith(['failed', 'failed', 0])]
+    #[TestWith(['skipped', 'deleted', 0])]
+    #[TestWith(['completed', 'running', 1])]
+    #[TestWith(['failed', 'pending', 1])]
+    #[TestWith(['failed', 'unknown', 1])]
+    #[TestWith(['completed', null, 1])]
+    public function test_terminal_job_cannot_hide_nonterminal_or_unknown_index_status(string $status, ?string $index, int $expected): void
+    {
+        DB::table('pipeline_jobs')->insert(['job_id' => 'index-audit', 'status' => $status, 'index_status' => $index]);
+        $report = $this->report();
+        $this->assertSame(0, $report['counts']['nonterminal_pipeline_jobs']);
+        $this->assertSame($expected, $report['counts']['nonterminal_job_index_states']);
+        $this->assertSame($expected === 0, $report['legacy_work_drained']);
+        $this->assertHealthAgrees($report);
+    }
+
+    public function test_missing_job_index_column_fails_closed(): void
+    {
+        Schema::table('pipeline_jobs', function (Blueprint $table): void {
+            $table->dropIndex(['index_status']);
+            $table->dropColumn('index_status');
+        });
+        $report = $this->report();
+        $this->assertNull($report['counts']['nonterminal_job_index_states']);
+        $this->assertFalse($report['legacy_work_drained']);
         $this->assertHealthAgrees($report);
     }
 
@@ -135,7 +166,7 @@ class LegacyDrainStatusTest extends TestCase
     #[TestWith([['state' => 'confirmed'], 0])]
     public function test_terminal_job_status_cannot_hide_pending_recovery(mixed $pending, int $expected): void
     {
-        DB::table('pipeline_jobs')->insert(['job_id' => 'recovery', 'status' => 'failed',
+        DB::table('pipeline_jobs')->insert(['job_id' => 'recovery', 'status' => 'failed', 'index_status' => 'cancelled',
             'metadata' => json_encode(['pending_recovery' => $pending], JSON_THROW_ON_ERROR)]);
         $report = $this->report();
         $this->assertSame($expected, $report['counts']['unresolved_recovery_jobs']);
@@ -191,7 +222,7 @@ class LegacyDrainStatusTest extends TestCase
 
     public function test_unprocessed_terminal_worker_event_is_still_pending_work(): void
     {
-        $job = DB::table('pipeline_jobs')->insertGetId(['job_id' => 'event-job', 'status' => 'completed']);
+        $job = DB::table('pipeline_jobs')->insertGetId(['job_id' => 'event-job', 'status' => 'completed', 'index_status' => 'ready']);
         DB::table('pipeline_worker_events')->insert(['pipeline_job_id' => $job, 'event_id' => 'pending', 'job_id' => 'event-job',
             'source_id' => 'source', 'workflow_id' => 'workflow', 'run_id' => 'run', 'activity_id' => 'activity',
             'attempt' => 1, 'event_type' => 'index', 'producer' => 'indexer', 'stage' => 'ingest', 'phase' => 'finished',

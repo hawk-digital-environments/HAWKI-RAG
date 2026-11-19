@@ -28,6 +28,8 @@ from temporalio.common import (
     WorkflowIDReusePolicy,
 )
 from temporalio.api.failure.v1 import Failure
+from temporalio.api.errordetails.v1 import NotFoundFailure
+from google.protobuf.message import DecodeError
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_workflow_control.settings import WorkflowControlSettings
@@ -95,7 +97,35 @@ class TemporalControlClient:
         """Read a specific execution; never wait for a running workflow's result."""
         client = await self.connect_temporal()
         handle = client.get_workflow_handle(workflow_id, run_id=run_id)
-        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        try:
+            description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        except RPCError as error:
+            if error.status != RPCStatusCode.NOT_FOUND:
+                raise
+            # DescribeWorkflowExecution may also fail for a missing namespace.
+            # Only an explicit execution NotFoundFailure is absence evidence;
+            # untyped, malformed, or conflicting details remain unavailable.
+            try:
+                status = error.grpc_status
+                details = status.details
+                execution_missing = (
+                    status.code == RPCStatusCode.NOT_FOUND.value
+                    and len(details) == 1
+                    and details[0].Is(NotFoundFailure.DESCRIPTOR)
+                    and details[0].Unpack(NotFoundFailure())
+                )
+            except DecodeError:
+                execution_missing = False
+            if not execution_missing:
+                raise TemporalUnavailable() from None
+            # Absence can mean expired retention. It is never terminal proof;
+            # callers must require independent, approved quiescence evidence.
+            return {
+                "workflow_id": workflow_id,
+                "run_id": run_id,
+                "status": "NOT_FOUND",
+                "error": None,
+            }
         status = description.status.name if description.status else "UNKNOWN"
         error = None
         if status == "FAILED":

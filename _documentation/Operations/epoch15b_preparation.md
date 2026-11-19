@@ -19,6 +19,8 @@ These are unresolved records, not proof that a process is running. This code
 change does not alter or resolve them. Do not edit statuses, clear active flags,
 release writers manually, or delete rows to manufacture a passing report.
 
+The supported stage-only repair is documented in [terminal projection reconciliation](terminal_projection_reconciliation.md). It requires separate operational approval and does not resolve writer or output ownership blockers.
+
 ## Read-only reporting
 
 Run the existing command against the intended deployment:
@@ -29,7 +31,7 @@ php artisan rag:legacy-drain-status --json
 
 The repository performs schema inspection and SELECTs only. It reports:
 
-- Nonterminal task, job and stage counts, plus active/deleting sources.
+- Nonterminal task, job, job index and stage counts, plus active/deleting sources.
 - Nonempty recurring schedule IDs and open managed deletions.
 - Active managed outputs, unreleased registered writers, and sources whose
   writer registry completeness cannot be established.

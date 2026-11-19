@@ -12,6 +12,11 @@ use Illuminate\Support\Carbon;
 #[Singleton]
 readonly class PipelineJobStateMutationRepository
 {
+    public function __construct(
+        private PipelineTransactionRepository $transactions,
+        private PipelineStageStateRepository $stages,
+    ) {}
+
     public function markFailed(PipelineJob $job, string $message, Carbon $failedAt): PipelineJob
     {
         $job->forceFill([
@@ -120,15 +125,29 @@ readonly class PipelineJobStateMutationRepository
      */
     public function markTemporalCancellationRequested(PipelineJob $job, Carbon $cancelledAt, array $metadata): PipelineJob
     {
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_FAILED,
-            'current_stage' => 'temporal.cancel_requested',
-            'index_status' => 'cancelled',
-            'error_message' => 'Temporal workflow cancellation requested.',
-            'finished_at' => $cancelledAt,
-            'metadata' => $metadata,
-        ])->save();
+        return $this->transactions->run(function () use ($job, $cancelledAt, $metadata): PipelineJob {
+            $current = PipelineJob::query()->whereKey($job->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($current->status, PipelineJob::ACTIVE_STATUSES, true)
+                || $current->temporal_workflow_id !== $job->temporal_workflow_id
+                || $current->temporal_run_id !== $job->temporal_run_id) {
+                return $current;
+            }
+            $current->forceFill([
+                'status' => PipelineJob::STATUS_FAILED,
+                'current_stage' => 'temporal.cancel_requested',
+                'index_status' => 'cancelled',
+                'error_message' => 'Temporal workflow cancellation requested.',
+                'finished_at' => $cancelledAt,
+                'metadata' => $metadata,
+            ])->save();
+            $this->stages->closeRunningForJob($current, $cancelledAt, [
+                'reason' => 'parent_pipeline_cancellation',
+                'recorded_at' => $cancelledAt->toAtomString(),
+                'workflow_id' => $current->temporal_workflow_id,
+                'run_id' => $current->temporal_run_id,
+            ]);
 
-        return $job->refresh();
+            return $current->refresh();
+        });
     }
 }
