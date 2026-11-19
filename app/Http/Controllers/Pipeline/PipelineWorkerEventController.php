@@ -25,7 +25,7 @@ class PipelineWorkerEventController extends Controller
         CrawlerCallbackBoundary $managed,
     ): JsonResponse {
         $event = $request->event();
-        if ($config->get('config.crawler_ingestion_backend', 'laravel') !== 'laravel') {
+        if ($config->get('config.crawler_ingestion_backend', 'python') !== 'laravel') {
             $result = $managed->relay($event->workflowId, (string) $request->getContent(), 'events');
 
             return $result !== null ? response()->json($result['payload'], $result['status']) : $this->record($events, $event);
@@ -37,7 +37,7 @@ class PipelineWorkerEventController extends Controller
             }
         }
 
-        return match ($config->get('config.text_ingestion_backend', 'laravel')) {
+        return match ($config->get('config.text_ingestion_backend', 'python')) {
             'laravel' => $this->record($events, $event),
             'python' => str_starts_with($event->workflowId, 'ingest-text-')
                 ? $this->relay($request, $python)

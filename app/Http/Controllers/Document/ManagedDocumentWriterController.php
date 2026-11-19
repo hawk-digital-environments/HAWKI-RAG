@@ -17,7 +17,7 @@ final class ManagedDocumentWriterController extends Controller
 {
     public function __invoke(ManagedDocumentWriterRequest $request, ManagedDocumentWriterService $writers, PythonTextIngestionClient $python, ConfigRepository $config, CrawlerCallbackBoundary $managed): JsonResponse
     {
-        if ($config->get('config.crawler_ingestion_backend', 'laravel') !== 'laravel') {
+        if ($config->get('config.crawler_ingestion_backend', 'python') !== 'laravel') {
             $result = $managed->relay((string) $request->validated('workflow_id'), (string) $request->getContent(), 'writers');
             if ($result !== null) {
                 return response()->json($result['payload'], $result['status']);
@@ -31,7 +31,7 @@ final class ManagedDocumentWriterController extends Controller
         // Signature middleware already verified these exact bytes. The Python
         // owner alone records migrated text writer/fence state.
         if (str_starts_with((string) $request->validated('workflow_id'), 'ingest-text-')) {
-            $backend = $config->get('config.text_ingestion_backend', 'laravel');
+            $backend = $config->get('config.text_ingestion_backend', 'python');
             if ($backend === 'python') {
                 $result = $python->relayWriter((string) $request->getContent());
 

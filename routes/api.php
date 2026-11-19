@@ -179,28 +179,12 @@ Route::prefix('documents')->group(function (): void {
 |----------------------------------------------------------------------
 | Scraper Domain
 |----------------------------------------------------------------------
-| Proxies crawler task discovery and job lifecycle operations used by the
+| Provides the read-only crawler catalog used by the
 | pipeline UI. These integration-specific contracts remain hidden from
 | OpenAPI until the external crawler protocol is treated as stable.
 */
 Route::prefix('scraper')->group(function (): void {
-    Route::get('/jobs', [ScrapeController::class, 'getCrawlerJobs'])
-        ->defaults('openapi', false);
     Route::get('/tasks', [ScrapeController::class, 'getCrawlerTasks'])
-        ->defaults('openapi', false);
-    Route::post('/tasks/start', [ScrapeController::class, 'startCrawlerTask'])
-        ->middleware(CrawlerIngestionBoundary::class)
-        ->defaults('openapi', false);
-    Route::get('/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus'])
-        ->defaults('openapi', false);
-    Route::post('/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob'])
-        ->middleware(CrawlerIngestionBoundary::class)
-        ->defaults('openapi', false);
-    Route::post('/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob'])
-        ->middleware(CrawlerIngestionBoundary::class)
-        ->defaults('openapi', false);
-    Route::post('/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob'])
-        ->middleware(CrawlerIngestionBoundary::class)
         ->defaults('openapi', false);
 });
 
@@ -273,10 +257,9 @@ Route::get('/health/system-gate', [HawkiRagSystemGateController::class, 'show'])
 |----------------------------------------------------------------------
 | Vector Storage Domain
 |----------------------------------------------------------------------
-| Reports RAG/Qdrant statistics and allows explicit collection cleanup.
+| Reports RAG/Qdrant statistics. Storage deletion uses the dataset API.
 */
 Route::get('/rag/stats', [RagStatsController::class, 'show'])->middleware(['auth:sanctum', RequireDatasetManager::class]);
-Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection']);
 
 /*
 |----------------------------------------------------------------------

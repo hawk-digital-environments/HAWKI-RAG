@@ -22,6 +22,12 @@ queues, timeouts, schedules, and callback protocol belong in
 
 :::
 
+Epoch 15A defaults query, text, managed-document, crawler, pipeline, dataset and
+graph selectors to Python. Query-all defaults off and dataset scopes use the
+Python database. Explicit deployment overrides remain effective. Complete the
+[activation and rollback procedure](epoch15a_cutover.md) before changing an
+existing deployment; Laravel auth/BFF/frontend and HMAC callbacks remain.
+
 ## Find the setting you need
 
 <div className="grid-cards">

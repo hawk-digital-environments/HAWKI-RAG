@@ -202,6 +202,7 @@ def clear_receipt(request: Request, principal: Manager, body: ClearReceipt):
 
 @router.get("/stats")
 def stats(request: Request, principal: Manager):
+    """Report owned stores; missing canonical collections return 503, empty ones are healthy."""
     return execute(lambda: service(request).stats(principal))
 
 

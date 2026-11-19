@@ -62,8 +62,8 @@ readonly class SettingsService
 
     public function deploymentManaged(): bool
     {
-        foreach (['query_backend', 'graph_ops_backend', 'pipeline_execution_backend', 'text_ingestion_backend', 'managed_document_backend', 'crawler_ingestion_backend'] as $selector) {
-            if ($this->config->get('config.'.$selector, 'laravel') !== 'laravel') {
+        foreach (['dataset_backend', 'query_backend', 'graph_ops_backend', 'pipeline_execution_backend', 'text_ingestion_backend', 'managed_document_backend', 'crawler_ingestion_backend'] as $selector) {
+            if ($this->config->get('config.'.$selector, 'python') !== 'laravel') {
                 return true;
             }
         }

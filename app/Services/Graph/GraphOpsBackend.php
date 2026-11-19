@@ -16,7 +16,7 @@ final readonly class GraphOpsBackend
 
     public function value(): string
     {
-        $value = $this->config->get('config.graph_ops_backend', 'laravel');
+        $value = $this->config->get('config.graph_ops_backend', 'python');
 
         return is_string($value) ? $value : '';
     }
@@ -29,7 +29,7 @@ final readonly class GraphOpsBackend
         try {
             return $this->value() === 'python'
                 && $this->datasets->selected() === DatasetBackend::PYTHON
-                && $this->config->get('config.pipeline_execution_backend', 'laravel') === 'python'
+                && $this->config->get('config.pipeline_execution_backend', 'python') === 'python'
                 && $this->pipelines->valid()
                 && $this->config->get('config.python_query_dataset_source') === 'database'
                 && self::validUrl($this->config->get('config.python_graph_ops_url'))

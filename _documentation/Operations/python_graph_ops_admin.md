@@ -1,7 +1,9 @@
 # Epoch 14: Python graph and operations authority
 
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
 `GRAPH_OPS_BACKEND=laravel|python` selects graph/ops authority. It defaults to
-`laravel`. Unknown values fail closed. No production cutover is performed by
+`python`. Unknown values fail closed. No production cutover is performed by
 this change, and `.env` is not edited.
 
 ## Activation and rollback
@@ -143,8 +145,7 @@ legacy telemetry; no Python mirrors are created.
 System readiness remains advisory (`advisory=true`, `enforce=false`), based on
 selected health and tenant/dataset-aware statistics. It is not authorization.
 
-`DELETE /api/rag/qdrant/collections/{collection}` always returns 410 without
-resolving or deleting the supplied name. Use the existing manager-authorized
+The former raw collection DELETE route is unregistered in Epoch 15A. Use the existing manager-authorized
 `DELETE /api/datasets/{id}/storage` flow for authoritative storage deletion.
 
 ## Browser scene and snapshots
@@ -167,10 +168,10 @@ trusted process. `allow_legacy=true` does not bypass this boundary.
 
 ## Remaining non-blocking reviewer findings
 
-The F1–F4 fix pass intentionally leaves F5 (Laravel graph reads do not consistently
-reject graph-disabled datasets) and F6 (missing owned Qdrant collections may appear
-healthy/empty) unchanged. They require a separate non-blocking cleanup; neither is
-part of the authorization, snapshot ownership or clear acknowledgement fixes.
+Epoch 15A leaves F5 in the explicitly selected Laravel graph implementation;
+that runtime is no longer the default. F6 is fixed on the surviving Python
+stats/system-gate path: any missing canonical collection returns 503 instead
+of a healthy zero count. Existing empty collections still report zero.
 
 ## Validation and Epoch 15 boundary
 

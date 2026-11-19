@@ -1,9 +1,11 @@
 # Query cutover: Epoch 7C operator runbook
 
-Implementation does not activate traffic. The checked-in selector remains
-`HAWKI_QUERY_BACKEND=laravel`. Only `POST /api/query` changes execution backend;
-dataset discovery, MCP, graph APIs, ingestion, Temporal and admin APIs retain
-their current owners. There is no automatic fallback or dual execution.
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+The checked-in selector is now `HAWKI_QUERY_BACKEND=python`. Existing explicit
+environment values remain effective. This guide retains the Epoch 7C data and
+query verification steps; use the Epoch 15A runbook for the coordinated switch
+of all RAG authorities. There is no automatic fallback or dual execution.
 
 ## Safety and identity
 

@@ -489,7 +489,7 @@ def test_backend_runtime_has_no_worker_dependency():
     assert "hawki-workflow-control" in metadata
     assert "hawki-workflow-worker" not in metadata
     assert "hawki-indexer-worker" not in metadata
-    assert "HAWKI_QUERY_BACKEND=laravel" in (root.parent / ".env.example").read_text()
+    assert "HAWKI_QUERY_BACKEND=python" in (root.parent / ".env.example").read_text()
 
 
 @pytest.mark.parametrize("count", [1, 1728])

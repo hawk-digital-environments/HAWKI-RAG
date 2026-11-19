@@ -148,7 +148,7 @@ final class PythonUrlIngestionBffTest extends TestCase
     {
         $this->user();
         foreach (['/api/scraper/tasks/start', '/api/scraper/jobs/raw/resume', '/api/scraper/jobs/raw/pause', '/api/scraper/jobs/raw/cancel'] as $path) {
-            $this->postJson($path, [])->assertStatus(409);
+            $this->postJson($path, [])->assertNotFound();
         }
         Http::assertNothingSent();
         $this->noLegacyWrites();
@@ -320,7 +320,7 @@ final class PythonUrlIngestionBffTest extends TestCase
         $this->assertDatabaseMissing('pipeline_tasks', ['task_id' => 'python-task']);
     }
 
-    public function test_pipeline_selector_defaults_to_laravel_and_invalid_values_fail_closed(): void
+    public function test_explicit_laravel_rollback_is_preserved_and_invalid_values_fail_closed(): void
     {
         $defaults = require base_path('config/config.php');
         $this->assertSame('laravel', $defaults['pipeline_execution_backend']);
@@ -442,7 +442,7 @@ final class PythonUrlIngestionBffTest extends TestCase
         Http::assertSentCount(2);
         Http::assertNotSent(fn ($request): bool => str_ends_with($request->url(), '/tasks') && ! str_contains($request->url(), '/ui/api/'));
         $this->user();
-        $this->postJson('/api/scraper/tasks/start', ['taskId' => 'one'])->assertStatus(409);
+        $this->postJson('/api/scraper/tasks/start', ['taskId' => 'one'])->assertNotFound();
     }
 
     public function test_pipeline_health_reports_python_readiness_and_drain_counts(): void

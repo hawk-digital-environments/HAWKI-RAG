@@ -15,11 +15,9 @@ final class ManagedDocumentDeletionEventController extends Controller
 {
     public function __invoke(ManagedDocumentDeletionEventRequest $request, ManagedDocumentOutputDeletionService $deletions, ConfigRepository $config): JsonResponse
     {
-        $backend = $config->get('config.managed_document_backend', 'laravel');
-        if ($backend !== 'laravel') {
-            // Python performs its own durable sink cleanup. A callback from an
-            // old Laravel deletion workflow must be reconciled before cutover.
-            return response()->json(['success' => false, 'message' => 'Legacy managed deletion ownership requires reconciliation.'], $backend === 'python' ? 409 : 503);
+        $backend = $config->get('config.managed_document_backend', 'python');
+        if (! in_array($backend, ['laravel', 'python'], true)) {
+            return response()->json(['success' => false, 'message' => 'Managed document backend configuration is invalid.'], 503);
         }
         $receipt = $request->validated();
         try {

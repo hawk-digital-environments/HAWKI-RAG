@@ -25,7 +25,7 @@ readonly class RagQueryService
      */
     public function query(User $user, array $data): array
     {
-        return match ($this->config->get('config.query_backend', 'laravel')) {
+        return match ($this->config->get('config.query_backend', 'python')) {
             'laravel' => $this->legacy->query($user, $data),
             'python' => $this->browserResponse($this->python->query($user, $data)),
             default => $this->invalidBackend(),

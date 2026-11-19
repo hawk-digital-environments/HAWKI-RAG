@@ -29,6 +29,7 @@
     }
 
     interface QueryHit {
+        documentId: string;
         score: number | null;
         title: string;
         url: string;
@@ -341,6 +342,7 @@
 
         return {
             score: nullableNumber(hit.score),
+            documentId: textValue(payload.managed_document_id),
             title,
             url,
             sourceUrl,
@@ -636,9 +638,12 @@
         return /^https?:\/\//i.test(value.trim());
     }
 
-    function uploadSourceDownloadUrl(sourceUrl: string, contentHash: string): string {
+    function uploadSourceDownloadUrl(sourceUrl: string, contentHash: string, documentId: string): string {
         const url = new URL(uploadDownloadEndpoint, window.location.href);
         url.searchParams.set('source_url', sourceUrl);
+        if (documentId) {
+            url.searchParams.set('document_id', documentId);
+        }
         if (contentHash) {
             url.searchParams.set('content_hash', contentHash);
         }
@@ -660,7 +665,7 @@
     function hitSourceHref(hit: QueryHit): string {
         const source = hitPrimarySource(hit);
         if (isUploadSource(source)) {
-            return uploadSourceDownloadUrl(source, hit.contentHash);
+            return uploadSourceDownloadUrl(source, hit.contentHash, hit.documentId);
         }
         if (isHttpSource(source)) {
             return source;

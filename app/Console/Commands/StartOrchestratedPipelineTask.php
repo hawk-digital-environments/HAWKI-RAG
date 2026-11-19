@@ -46,7 +46,7 @@ class StartOrchestratedPipelineTask extends Command
             return self::FAILURE;
         }
         $key = $this->option('idempotency-key');
-        if ($config->get('config.crawler_ingestion_backend', 'laravel') === 'python' && is_string($key) && $key !== '' && $backend === 'laravel') {
+        if ($config->get('config.crawler_ingestion_backend', 'python') === 'python' && is_string($key) && $key !== '' && $backend === 'laravel') {
             $user = $principals->resolve(Request::create('/api/pipeline/tasks/start', 'POST'));
             if ($user === null) {
                 $this->error('A concrete principal is required.');
@@ -63,7 +63,7 @@ class StartOrchestratedPipelineTask extends Command
                 $backend = 'python';
             }
         }
-        if ($config->get('config.crawler_ingestion_backend', 'laravel') === 'python' && is_string($input['task_id']) && trim($input['task_id']) !== '') {
+        if ($config->get('config.crawler_ingestion_backend', 'python') === 'python' && is_string($input['task_id']) && trim($input['task_id']) !== '') {
             $owner = $ownership->classify('task_id', trim($input['task_id']), allowAbsent: true);
             if ($owner['status'] !== 200 || ! in_array($owner['payload']['owner'] ?? null, ['url', 'absent'], true)) {
                 $this->error('Task identity belongs to existing or conflicting work; use its recovery API.');

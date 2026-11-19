@@ -23,7 +23,7 @@ readonly class CrawlerCallbackBoundary
 
     public function relay(string $workflowId, string $raw, string $kind): ?array
     {
-        $backend = $this->config->get('config.crawler_ingestion_backend', 'laravel');
+        $backend = $this->config->get('config.crawler_ingestion_backend', 'python');
         if ($backend === 'laravel') {
             $body = json_decode($raw, true);
             if (($body['owner'] ?? null) === 'url' || isset($body['url_ingestion_operation_id'])) {
@@ -50,10 +50,10 @@ readonly class CrawlerCallbackBoundary
 
         return match ($owner) {
             'url' => $this->python->relay($raw, $kind),
-            'managed' => $this->config->get('config.managed_document_backend', 'laravel') === 'python'
+            'managed' => $this->config->get('config.managed_document_backend', 'python') === 'python'
                 ? $this->managed->relay($workflowId, $raw, $kind)
                 : ['status' => 409, 'payload' => ['success' => false, 'message' => 'Managed callback ownership requires the Python managed backend.']],
-            'text' => $this->config->get('config.text_ingestion_backend', 'laravel') === 'python'
+            'text' => $this->config->get('config.text_ingestion_backend', 'python') === 'python'
                 ? ($kind === 'events' ? $this->text->relayEvent($raw) : $this->text->relayWriter($raw))
                 : ['status' => 409, 'payload' => ['success' => false, 'message' => 'Text callback ownership requires the Python text backend.']],
             'laravel' => null,

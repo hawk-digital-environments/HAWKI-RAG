@@ -177,7 +177,7 @@ services:
       start_period: 20s
 
   # -------------------------------------------------
-  # Read-only FastAPI bridge (query, configuration, health, and Temporal control)
+  # Legacy FastAPI bridge retained for the Epoch 15A rollback/drain window
   # -------------------------------------------------
   hawki_rag_bridge:
     <<: *service_env
@@ -209,10 +209,11 @@ services:
   # -------------------------------------------------
   # Authenticated public query backend
   #
-  # Not on the query traffic path yet: nothing routes to it. The service joins
-  # both networks so a future Laravel BFF can reach it as `http://hawki_backend`
-  # but publishes no host port. Configuration arrives through the shared
-  # env_file; add the HAWKI_BACKEND_* keys there (see python_backend/.env.example).
+  # Epoch 15A: Python owns new RAG runtime operations behind the Laravel BFF.
+  # Shared env_file preserves explicit rollback overrides; no inline selectors
+  # override deployment settings. Provision DB/imports/JWT keys and complete
+  # _documentation/Operations/epoch15a_cutover.md before sending traffic.
+  # No host port is published. Keep hawki_rag_bridge deployed until Epoch 15B.
   # -------------------------------------------------
   hawki_backend:
     <<: *service_env
@@ -222,7 +223,13 @@ services:
     image: hawki-backend:local
     pull_policy: never
     container_name: hawki_backend
+    volumes:
+      - shared_storage:/shared
+    group_add:
+      - "${PGID}"
     depends_on:
+      hawki_rag_app:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       qdrant:
@@ -244,7 +251,8 @@ services:
       start_period: 20s
 
   # -------------------------------------------------
-  # Python Temporal workers
+  # Python Temporal workers: callback targets stay on Laravel throughout 15A.
+  # Do not retarget worker-events, managed-writers or managed-deletion-events.
   # -------------------------------------------------
   hawki-rag-temporal-workflow-worker:
     <<: *service_env

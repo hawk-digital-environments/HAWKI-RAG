@@ -31,7 +31,7 @@ def test_real_owned_stats_and_graph_clear(pg, monkeypatch):  # noqa: F811 - impo
     pg.ops.catalog = QdrantCatalog(qdrant)
     graphs = []
     with httpx.Client(base_url=qdrant, timeout=10) as client:
-        for dataset in ["one", "two", "foreign"]:
+        for dataset in ["one", "two", "foreign", "disabled"]:
             name = "physical-vector-" + dataset
             assert client.put(
                 "/collections/" + name,
@@ -116,7 +116,7 @@ def test_real_owned_stats_and_graph_clear(pg, monkeypatch):  # noqa: F811 - impo
             assert graphs[2].graph_counts()["entities"] == 2
             assert pg.ops.catalog.point_count("physical-vector-one") == 1
         finally:
-            for dataset, graph in zip(["one", "two", "foreign"], graphs):
+            for dataset, graph in zip(["one", "two", "foreign", "disabled"], graphs):
                 graph.clear_dataset_graph()
                 graph.close()
                 assert client.delete(

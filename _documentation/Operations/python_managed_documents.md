@@ -1,13 +1,15 @@
 # Epoch 10 managed-document ingestion
 
-`MANAGED_DOCUMENT_BACKEND=laravel` is the default. `python` makes Laravel an
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+`MANAGED_DOCUMENT_BACKEND=python` is the default. Python makes Laravel an
 identity and compatibility BFF for managed CREATE, batch CREATE, PUT, DELETE,
 and `POST /api/pipeline/controller/files`. Invalid selectors fail closed.
 There is no fallback, dual persistence, or independent Laravel managed dispatch.
 Production activation is a separate operator action.
 
-URL and crawler ingestion remain Laravel-owned. Epoch 9 text semantics and
-Epoch 8 Temporal control continue to use their existing implementations.
+URL/crawler and direct-text selectors also default to Python in Epoch 15A.
+Legacy callbacks and read compatibility remain available during drain.
 Managed files still execute `IngestSourceWorkflow` through the Epoch 8 operation
 ledger and dispatcher, never through a second Temporal adapter.
 
@@ -90,7 +92,19 @@ matching legacy set for correct ordering at the current scale. Laravel mode
 retains its existing read path.
 Inventory legacy datasets and backfill their Python QUERY grants before cutover
 so their authorized users retain access. This does not migrate legacy mutations.
-The existing upload-download compatibility route is unchanged.
+Original-file downloads keep the Laravel `/api/documents/uploads/download`
+route. In Python mode supply `document_id` together with `source_url` and an
+optional `content_hash`. Laravel resolves the existing query principal and
+performs an authenticated Python document read; Python QUERY grants authorize
+the document before its current revision's upload metadata is returned. The
+metadata supplies the exact persisted relative path, task/source identity,
+original filename and actual SHA-256. Laravel checks that exact task path and
+checksum without reconstructing Python's Unicode slug or searching other tasks.
+Caller-provided task/source IDs are rejected, and missing identity, mismatched
+hashes, symlinks, denial or backend failure never trigger filename recovery.
+Legacy row-based download compatibility remains available; filename-only
+filesystem recovery is limited to explicit Laravel rollback selectors and
+cannot expose Python managed task directories.
 
 ## Public and internal contracts
 

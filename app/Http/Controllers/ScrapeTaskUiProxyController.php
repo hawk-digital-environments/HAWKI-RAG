@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Client\ConnectionException;
@@ -11,6 +13,12 @@ class ScrapeTaskUiProxyController extends Controller
 {
     public function __invoke(Request $request, ?string $path = null): Response
     {
+        if (! $request->isMethodSafe()
+            && (config('config.crawler_ingestion_backend', 'python') !== 'laravel'
+                || config('config.pipeline_execution_backend', 'python') !== 'laravel')) {
+            return response('Use Python-owned pipeline operations to start or control crawler work.', 409);
+        }
+
         $baseUrl = rtrim((string) config('scraper.task_ui_url'), '/');
         $targetUrl = $baseUrl.'/ui'.($path ? '/'.ltrim($path, '/') : '');
 

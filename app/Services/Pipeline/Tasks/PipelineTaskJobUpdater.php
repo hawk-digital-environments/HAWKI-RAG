@@ -35,7 +35,7 @@ readonly class PipelineTaskJobUpdater
     {
         // The drain endpoint has no editable metadata keys. Ownership and
         // recovery evidence are retained exactly as stored by legacy authority.
-        if ($this->config->get('config.pipeline_execution_backend', 'laravel') === 'python'
+        if ($this->config->get('config.pipeline_execution_backend', 'python') === 'python'
             && ! empty($input['metadata'])) {
             throw new ConflictHttpException('Legacy drain updates cannot modify job metadata.');
         }
@@ -65,7 +65,7 @@ readonly class PipelineTaskJobUpdater
                 'finished_at' => $this->input->isTerminalStatus($status) ? $this->now() : null,
                 'metadata' => $metadata,
             ],
-            existingOnly: $this->config->get('config.pipeline_execution_backend', 'laravel') === 'python',
+            existingOnly: $this->config->get('config.pipeline_execution_backend', 'python') === 'python',
         );
 
         $this->refresher->recalculate($task);

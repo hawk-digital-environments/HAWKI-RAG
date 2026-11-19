@@ -52,6 +52,7 @@ def test_tenant_stats_do_not_expose_other_tenant(env):
     assert {args.args[0] for args in env.catalog.point_count.call_args_list} == {
         "physical-vector-one",
         "physical-vector-two",
+        "physical-vector-disabled",
     }
 
 
@@ -402,3 +403,21 @@ def test_uncertain_laravel_clear_receipt_keeps_fence_until_valid_reconciliation(
     ).json() == {"ok": True}
     with env.engine.begin() as connection:
         assert lock_active_dataset(connection, "a", "one").dataset_id == "one"
+
+
+@pytest.mark.parametrize(
+    "available", [None, set(), {"physical-vector-one", "physical-vector-two"}]
+)
+def test_stats_fails_closed_when_canonical_collections_are_missing(env, available):
+    env.catalog.available_collections.return_value = available
+    response = call(env, "stats", token="manager")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "ops_unavailable"}
+
+
+def test_existing_empty_canonical_collections_are_healthy(env):
+    env.catalog.point_count.return_value = 0
+    response = call(env, "stats", token="manager")
+    assert response.status_code == 200
+    assert response.json()["qdrant"]["ok"] is True
+    assert all(row["count"] == 0 for row in response.json()["qdrant"]["collections"])

@@ -41,7 +41,61 @@ readonly class UploadedSourceDocumentService
             }
         }
 
+        if ($this->config->get('config.managed_document_backend', 'python') !== 'laravel'
+            || $this->config->get('config.crawler_ingestion_backend', 'python') !== 'laravel') {
+            return null; // Python defaults require authoritative identity, never filename recovery.
+        }
+
         return $this->fromSharedUploadStorage($sourceUrl, $contentHash);
+    }
+
+    /** $document must come from Python's authorized document read, never request data. */
+    public function resolvePython(string $sourceUrl, ?string $contentHash, array $document): ?UploadedSourceDocument
+    {
+        $upload = $document['upload'] ?? null;
+        // The original name is a matching/display value. Only the persisted
+        // relative path below selects a file or crosses the filesystem boundary.
+        if (! str_starts_with($sourceUrl, 'upload://') || ! is_array($upload)
+            || ($document['source_type'] ?? null) !== 'upload' || ($document['status'] ?? null) === 'deleted') {
+            return null;
+        }
+        foreach (['task_id', 'source_id', 'relative_path', 'filename', 'sha256'] as $field) {
+            if (! is_string($upload[$field] ?? null) || $upload[$field] === '') {
+                return null;
+            }
+        }
+        $task = $upload['task_id'];
+        $relative = $upload['relative_path'];
+        $hash = $upload['sha256'];
+        if (preg_match('/\Atask_managed_[a-f0-9]{32}\z/', $task) !== 1
+            || preg_match('/\Asource_[a-f0-9]{32}\z/', $upload['source_id']) !== 1
+            || ($document['latest_task_id'] ?? null) !== $task
+            || ($document['latest_source_id'] ?? null) !== $upload['source_id']
+            || preg_match('/\A[a-f0-9]{64}\z/', $hash) !== 1
+            || ! str_starts_with($relative, $task.'/')
+            || str_contains($relative, '..') || strpbrk($relative, "\\\0\r\n*?[]{}") !== false
+            || substr_count($relative, '/') !== 1 || basename($relative) === ''
+            || ($sourceUrl !== 'upload://'.$upload['filename'] && rawurldecode(substr($sourceUrl, strlen('upload://'))) !== $upload['filename'])
+            || ($contentHash !== null && strtolower(trim($contentHash)) !== $hash)) {
+            return null;
+        }
+
+        foreach ($this->allowedRoots() as $root) {
+            $realRoot = realpath($root);
+            if ($realRoot === false || ! is_dir($realRoot)) {
+                continue;
+            }
+            $expected = rtrim($realRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$relative;
+            $path = realpath($expected);
+            // Exact equality rejects file and directory symlinks, including
+            // links to another task inside the otherwise allowed shared root.
+            if ($path === $expected && is_file($path) && is_readable($path)
+                && $this->pathContentHash($path) === $hash) {
+                return new UploadedSourceDocument($path, $upload['filename']);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -208,7 +262,20 @@ readonly class UploadedSourceDocumentService
             return null;
         }
 
-        return $this->pathIsInsideAllowedRoot($realPath) ? $realPath : null;
+        return $this->pathIsInsideAllowedRoot($realPath) && ! $this->isPythonManagedPath($realPath) ? $realPath : null;
+    }
+
+    /** Legacy rows and scans cannot bypass Python document authorization. */
+    private function isPythonManagedPath(string $path): bool
+    {
+        foreach ($this->allowedRoots() as $root) {
+            $realRoot = realpath($root);
+            if ($realRoot !== false && preg_match('#\A'.preg_quote(rtrim($realRoot, DIRECTORY_SEPARATOR), '#').'/task_managed_[a-f0-9]{32}/#', $path) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function pathIsInsideAllowedRoot(string $path): bool
@@ -249,6 +316,10 @@ readonly class UploadedSourceDocumentService
     {
         $sourceUrl = trim($sourceUrl);
         if ($sourceUrl === '' || ! str_starts_with(strtolower($sourceUrl), 'upload://')) {
+            return null;
+        }
+        $name = rawurldecode(substr($sourceUrl, strlen('upload://')));
+        if ($name === '' || str_contains($name, '..') || strpbrk($name, "/\\\0\r\n*?[]{}") !== false) {
             return null;
         }
 

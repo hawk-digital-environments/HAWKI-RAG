@@ -11,7 +11,7 @@ use Illuminate\Contracts\Config\Repository as ConfigRepository;
 /**
  * The selected dataset authority.
  *
- * Laravel is the default authority. When Python is selected, Laravel keeps its
+ * Python is the default authority. When Python is selected, Laravel keeps its
  * public BFF routes and legacy compatibility reads but no longer writes
  * dataset metadata, grants or grant tokens. An unknown selector never falls
  * back: every dataset operation fails closed.
@@ -37,7 +37,7 @@ readonly class DatasetBackend
      */
     public function selected(): string
     {
-        $configured = $this->config->get('config.dataset_backend', self::LARAVEL);
+        $configured = $this->config->get('config.dataset_backend', self::PYTHON);
         if (! is_string($configured)) {
             throw DatasetBackendUnavailableException::configurationInvalid();
         }

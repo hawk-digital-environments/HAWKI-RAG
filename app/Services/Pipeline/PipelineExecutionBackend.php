@@ -14,7 +14,7 @@ readonly class PipelineExecutionBackend
 
     public function value(): string
     {
-        return (string) $this->config->get('config.pipeline_execution_backend', 'laravel');
+        return (string) $this->config->get('config.pipeline_execution_backend', 'python');
     }
 
     public function valid(): bool
@@ -24,7 +24,7 @@ readonly class PipelineExecutionBackend
         }
 
         return $this->value() === 'python'
-            && $this->config->get('config.crawler_ingestion_backend', 'laravel') === 'python'
+            && $this->config->get('config.crawler_ingestion_backend', 'python') === 'python'
             && $this->config->get('temporal.enabled') === true
             && is_string($this->config->get('temporal.callbacks.secret'))
             && $this->config->get('temporal.callbacks.secret') !== ''

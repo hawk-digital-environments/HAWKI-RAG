@@ -60,6 +60,12 @@ WORKDIR /var/www/html
 RUN mkdir -p /home/rawki \
     && chown www-data:www-data /home/rawki
 
+# Match worker identities and shared-group membership for persisted artifacts.
+COPY docker/python_rag/10-rawki-runtime.env /container/custom/env/10-rawki-runtime.env
+COPY docker/python_rag/80-rawki-runtime-permissions.sh /container/custom/entrypoint/80-rawki-runtime-permissions.sh
+RUN chmod 0644 /container/custom/env/10-rawki-runtime.env \
+    && chmod 0755 /container/custom/entrypoint/80-rawki-runtime-permissions.sh
+
 COPY --from=builder --chown=www-data:www-data /workspace/python_backend/.venv/lib/python3.13/site-packages/ /opt/venv/lib/python3.13/site-packages/
 
 # The runtime image serves the ASGI application with uvicorn workers behind

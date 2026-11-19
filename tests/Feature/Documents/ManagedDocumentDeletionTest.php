@@ -12,6 +12,7 @@ use App\Models\ManagedDocumentDeletion;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Authorization\DatasetIngestionAuthorizationService;
 use App\Services\Dataset\DatasetService;
+use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Profile\Values\ApiTokenAbility;
@@ -61,7 +62,7 @@ class ManagedDocumentDeletionTest extends TestCase
         $this->assertSame('historic_collection', $operation->workflow_input['targets'][0]['collection']);
         $this->sendReceipt($this->receipt($operation))->assertOk()->assertJsonPath('status', 'completed');
         $this->sendReceipt($this->receipt($operation))->assertOk();
-        $this->sendReceipt($this->receipt($operation, 'failed'))->assertOk()->assertJsonPath('status', 'completed');
+        $this->sendReceipt($this->receipt($operation, 'failed'))->assertStatus(409);
         $this->deleteJson('/api/documents/adoc_delete_test')->assertOk()->assertJsonPath('document.status', 'deleted');
         $this->assertDatabaseHas('managed_document_outputs', ['active' => false, 'status' => 'deleted']);
         Http::assertSentCount(2);
@@ -75,6 +76,308 @@ class ManagedDocumentDeletionTest extends TestCase
         $this->loseDeletionAck = false;
         $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted()->assertJsonPath('operation.operation_id', $first->json('operation.operation_id'));
         $this->assertDatabaseCount('managed_document_deletions', 1);
+    }
+
+    #[TestWith(['python'])]
+    #[TestWith(['laravel'])]
+    public function test_accepted_legacy_deletion_can_drain_and_replay_after_selector_switch(string $backend): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        config()->set('config.managed_document_backend', $backend);
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $completedAt = $operation->fresh()->updated_at;
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $this->sendReceipt($this->receipt($operation, 'failed'))->assertStatus(409);
+        $this->assertEquals($completedAt, $operation->fresh()->updated_at);
+        $this->assertDatabaseCount('managed_document_deletions', 1);
+        $this->assertDatabaseHas('managed_documents', ['document_id' => $operation->document_id, 'status' => 'deleted']);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => false, 'status' => 'deleted']);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith(['operation_id', 'delete_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'])]
+    #[TestWith(['workflow_id', 'another-workflow'])]
+    #[TestWith(['run_id', 'another-run'])]
+    #[TestWith(['results.0.output_id', 999999])]
+    #[TestWith(['results.0.qdrant.dataset_id', 'another-dataset'])]
+    #[TestWith(['results.0.qdrant.doc_id', 'another-document'])]
+    #[TestWith(['results.0.qdrant.source_id', 'another-source'])]
+    #[TestWith(['results.0.qdrant.collection', 'another-collection'])]
+    #[TestWith(['results.0.qdrant.remaining_points', 1])]
+    #[TestWith(['results.0.neo4j.namespace', 'another-namespace'])]
+    #[TestWith(['results', []])]
+    public function test_python_drain_rejects_unproven_receipt_scope(string $field, mixed $value): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        config()->set('config.managed_document_backend', 'python');
+        $receipt = $this->receipt($operation);
+        data_set($receipt, $field, $value);
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertSame('pending', $operation->fresh()->status);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith(['workflow_input.dataset_id', 'another-dataset'])]
+    #[TestWith(['workflow_input.managed_document_id', 'another-document'])]
+    #[TestWith(['workflow_input.operation_id', 'another-operation'])]
+    #[TestWith(['dataset_id', 'another-dataset'])]
+    #[TestWith(['run_id', null])]
+    #[TestWith(['attempts.runs', []])]
+    #[TestWith(['attempts.runs.delete-run.superseded', true])]
+    #[TestWith(['attempts.dispatch_sequence', 0])]
+    #[TestWith(['attempts.writer_protocol', null])]
+    #[TestWith(['attempts.effective_graph_scope', false])]
+    #[TestWith(['attempts.source_states', null])]
+    #[TestWith(['status', 'preparing'])]
+    #[TestWith(['status', 'abandoned'])]
+    public function test_python_drain_requires_durable_legacy_operation_proof(string $field, mixed $value): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $receipt = $this->receipt($operation);
+        $attributes = $operation->only(['workflow_input', 'dataset_id', 'run_id', 'attempts', 'status']);
+        data_set($attributes, $field, $value);
+        $operation->forceFill($attributes)->save();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith(['metadata.request.metadata.managed_document_id', 'another-document'])]
+    #[TestWith(['metadata.managed_deletion.operation_id', 'another-operation'])]
+    #[TestWith(['dataset_id', 'another-dataset'])]
+    #[TestWith(['metadata.managed_target_manifest_complete', false])]
+    #[TestWith(['metadata.managed_writers', ['writer' => ['status' => 'active']]])]
+    public function test_python_drain_requires_owned_sources_and_released_writers(string $field, mixed $value): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $source = IngestionSource::query()->firstOrFail();
+        $attributes = $source->only(['dataset_id', 'metadata']);
+        data_set($attributes, $field, $value);
+        $source->forceFill($attributes)->save();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation))->assertStatus(409);
+        $this->assertSame('pending', $operation->fresh()->status);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith([0, 'wrong-secret'])]
+    #[TestWith([-3600, 'managed-test-secret'])]
+    public function test_python_drain_preserves_hmac_and_timestamp_checks(int $offset, string $secret): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation), time() + $offset, $secret)->assertUnauthorized();
+        $this->assertSame('pending', $operation->fresh()->status);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+    }
+
+    public function test_python_callback_compatibility_does_not_create_new_legacy_deletions(): void
+    {
+        config()->set(['config.managed_document_backend' => 'python', 'config.python_managed_document_url' => '']);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(502);
+        $this->assertDatabaseCount('managed_document_deletions', 0);
+        $this->sendReceipt(['schema_version' => 1, 'event_id' => 'unproven', 'operation_id' => 'delete_'.str_repeat('a', 64),
+            'workflow_id' => 'managed-delete_'.str_repeat('a', 64), 'run_id' => 'invented', 'status' => 'completed', 'results' => []])->assertStatus(409);
+        $this->assertDatabaseCount('managed_document_deletions', 0);
+        $this->assertDatabaseHas('managed_documents', ['status' => 'indexed']);
+        Http::assertNothingSent();
+    }
+
+    public function test_python_drain_rejects_wrong_run_even_on_completed_receipt_replay(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        config()->set('config.managed_document_backend', 'python');
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk();
+        $receipt['run_id'] = 'another-run';
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertSame('completed', $operation->fresh()->status);
+    }
+
+    public function test_python_drain_accepts_completed_historical_source_and_current_source_then_replays(): void
+    {
+        [$previous, $operation] = $this->deletionAfterCompletedHistory();
+        $this->assertSame($previous->operation_id, IngestionSource::query()->where('source_id', 'source-old')->firstOrFail()->metadata['managed_deletion']['operation_id']);
+        $this->assertSame('deleted', $operation->attempts['source_states']['source-old']);
+        config()->set('config.managed_document_backend', 'python');
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $completedAt = $operation->fresh()->updated_at;
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertEquals($completedAt, $operation->fresh()->updated_at);
+        $this->assertDatabaseHas('managed_documents', ['document_id' => $operation->document_id, 'status' => 'deleted']);
+        $this->assertDatabaseCount('managed_document_deletions', 2);
+        Http::assertSentCount(2);
+    }
+
+    public function test_terminal_receipt_replay_survives_a_later_completed_deletion(): void
+    {
+        $previousReceipt = null;
+        [$previous, $operation] = $this->deletionAfterCompletedHistory(function (ManagedDocumentDeletion $completed) use (&$previousReceipt): void {
+            config()->set('config.managed_document_backend', 'python');
+            $previousReceipt = $this->receipt($completed);
+            $this->sendReceipt($previousReceipt)->assertOk()->assertJsonPath('status', 'completed');
+            config()->set('config.managed_document_backend', 'laravel');
+        });
+        config()->set('config.managed_document_backend', 'python');
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertSame($operation->operation_id, IngestionSource::query()->where('source_id', 'source-old')->firstOrFail()->metadata['managed_deletion']['operation_id']);
+        $previousState = $previous->fresh()->attributesToArray();
+        $currentState = $operation->fresh()->attributesToArray();
+        $documentState = ManagedDocument::query()->firstOrFail()->attributesToArray();
+        $sourceStates = IngestionSource::query()->orderBy('source_id')->get()->toArray();
+
+        $this->sendReceipt($previousReceipt)->assertOk()->assertJsonPath('status', 'continued');
+        $this->sendReceipt($receipt)->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertSame($previousState, $previous->fresh()->attributesToArray());
+        $this->assertSame($currentState, $operation->fresh()->attributesToArray());
+        $this->assertSame($documentState, ManagedDocument::query()->firstOrFail()->attributesToArray());
+        $this->assertSame($sourceStates, IngestionSource::query()->orderBy('source_id')->get()->toArray());
+        Http::assertSentCount(2);
+    }
+
+    #[TestWith(['operation_id', 'delete_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'])]
+    #[TestWith(['workflow_id', 'another-workflow'])]
+    #[TestWith(['run_id', 'another-run'])]
+    #[TestWith(['status', 'failed'])]
+    #[TestWith(['results', []])]
+    #[TestWith(['results.0.output_id', 999999])]
+    #[TestWith(['results.0.qdrant.dataset_id', 'foreign-dataset'])]
+    #[TestWith(['results.0.qdrant.doc_id', 'foreign-document'])]
+    #[TestWith(['results.0.qdrant.source_id', 'foreign-source'])]
+    #[TestWith(['results.0.qdrant.verified', false])]
+    #[TestWith(['results.0.qdrant.extra', 'different-receipt'])]
+    #[TestWith(['results.0.neo4j.namespace', 'foreign-namespace'])]
+    public function test_terminal_replay_rejects_altered_receipt_after_later_completion(string $field, mixed $value): void
+    {
+        [$previous, $operation] = $this->deletionAfterCompletedHistory();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation))->assertOk();
+        $receipt = $this->receipt($previous);
+        data_set($receipt, $field, $value);
+        $previousState = $previous->fresh()->attributesToArray();
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertSame($previousState, $previous->fresh()->attributesToArray());
+        $this->assertSame('completed', $operation->fresh()->status);
+        Http::assertSentCount(2);
+    }
+
+    public function test_terminal_receipt_cannot_be_replayed_as_another_completed_operation(): void
+    {
+        [$previous, $operation] = $this->deletionAfterCompletedHistory();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation))->assertOk();
+        $receipt = $this->receipt($previous);
+        $receipt['operation_id'] = $operation->operation_id;
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertSame('continued', $previous->fresh()->status);
+        $this->assertSame('completed', $operation->fresh()->status);
+        Http::assertSentCount(2);
+    }
+
+    #[TestWith(['workflow_input.operation_id', 'another-operation'])]
+    #[TestWith(['workflow_input.managed_document_id', 'adoc_foreign'])]
+    #[TestWith(['workflow_input.dataset_id', 'foreign-dataset'])]
+    #[TestWith(['dataset_id', 'foreign-dataset'])]
+    #[TestWith(['run_id', null])]
+    #[TestWith(['attempts.dispatch_sequence', 0])]
+    #[TestWith(['attempts.runs.delete-run.superseded', true])]
+    #[TestWith(['attempts.writer_protocol', null])]
+    #[TestWith(['attempts.effective_graph_scope', false])]
+    #[TestWith(['results', null])]
+    public function test_terminal_replay_requires_durable_operation_and_receipt_proof(string $field, mixed $value): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $receipt = $this->receipt($operation);
+        $this->sendReceipt($receipt)->assertOk();
+        $operation->refresh();
+        $attributes = $operation->attributesToArray();
+        data_set($attributes, $field, $value);
+        $operation->forceFill($attributes)->save();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($receipt)->assertStatus(409);
+        $this->assertSame('completed', $operation->fresh()->status);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith(['historical', 'dataset_id', 'foreign-dataset'])]
+    #[TestWith(['historical', 'metadata.request.metadata.managed_document_id', 'adoc_foreign'])]
+    #[TestWith(['historical', 'index_status', 'ready'])]
+    #[TestWith(['historical', 'metadata.managed_deletion.status', 'pending'])]
+    #[TestWith(['historical', 'metadata.managed_deletion.operation_id', 'delete_unknown'])]
+    #[TestWith(['previous', 'status', 'failed'])]
+    #[TestWith(['previous', 'status', 'pending'])]
+    #[TestWith(['previous', 'status', 'abandoned'])]
+    #[TestWith(['previous', 'dataset_id', 'foreign-dataset'])]
+    #[TestWith(['previous', 'document_id', 'adoc_foreign'])]
+    #[TestWith(['previous', 'workflow_input.dataset_id', 'foreign-dataset'])]
+    #[TestWith(['previous', 'workflow_input.managed_document_id', 'adoc_foreign'])]
+    #[TestWith(['previous', 'attempts.source_states', []])]
+    #[TestWith(['previous', 'results', null])]
+    #[TestWith(['previous', 'results', []])]
+    #[TestWith(['previous', 'results.0.qdrant.verified', false])]
+    #[TestWith(['previous', 'results.0.qdrant.source_id', 'source-foreign'])]
+    #[TestWith(['current', 'metadata.managed_deletion.operation_id', 'delete_foreign'])]
+    public function test_python_drain_rejects_foreign_or_incomplete_history_and_current_ownership(string $model, string $field, mixed $value): void
+    {
+        [$previous, $operation] = $this->deletionAfterCompletedHistory();
+        $row = match ($model) {
+            'previous' => $previous,
+            'historical' => IngestionSource::query()->where('source_id', 'source-old')->firstOrFail(),
+            'current' => IngestionSource::query()->where('source_id', 'source-current')->firstOrFail(),
+        };
+        $attributes = $row->attributesToArray();
+        data_set($attributes, $field, $value);
+        $row->forceFill($attributes)->save();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation))->assertStatus(409);
+        $this->assertSame('pending', $operation->fresh()->status);
+        $this->assertDatabaseHas('managed_document_outputs', ['source_id' => 'source-current', 'active' => true]);
+        Http::assertSentCount(2);
+    }
+
+    public function test_historical_tombstone_cannot_supply_current_sink_evidence(): void
+    {
+        [, $operation] = $this->deletionAfterCompletedHistory();
+        $input = $operation->workflow_input;
+        $input['targets'][0]['source_id'] = 'source-old';
+        $operation->forceFill(['workflow_input' => $input])->save();
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt($operation))->assertStatus(409);
+        $this->assertSame('pending', $operation->fresh()->status);
+    }
+
+    /** Prior cleanup uses the real signed callback; model an already-published replacement. */
+    private function deletionAfterCompletedHistory(?\Closure $afterCompletion = null): array
+    {
+        $deletions = app(ManagedDocumentOutputDeletionService::class);
+        $previous = $deletions->prepare(ManagedDocument::query()->firstOrFail(), 'update', 'historical-replacement');
+        $deletions->prepareReplacement($previous, fn (): array => ['payload' => ['success' => true]]);
+        $previous = $deletions->dispatch($previous->fresh());
+        $this->sendReceipt($this->receipt($previous))->assertOk()->assertJsonPath('status', 'completed');
+        if ($afterCompletion !== null) {
+            $afterCompletion($previous->fresh());
+        }
+        $previous->forceFill(['status' => 'continued'])->save();
+        IngestionSource::query()->create(['source_id' => 'source-current', 'dataset_id' => 'delete-test', 'source_url' => 'upload://current.pdf', 'index_status' => 'ready', 'metadata' => ['request' => ['metadata' => ['managed_document_id' => 'adoc_delete_test']], 'managed_writer_protocol' => 1, 'managed_writer_gate' => 'closed', 'managed_target_manifest_complete' => true]]);
+        ManagedDocumentOutput::query()->create(['document_id' => 'adoc_delete_test', 'bridge_document_id' => 'current-doc', 'source_id' => 'source-current', 'qdrant_collection' => 'historic_collection', 'neo4j_namespace' => 'historic_namespace', 'active' => true, 'status' => 'indexed']);
+        ManagedDocument::query()->firstOrFail()->forceFill(['status' => 'indexed', 'latest_source_id' => 'source-current'])->save();
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->where('operation_id', '!=', $previous->operation_id)->firstOrFail();
+
+        return [$previous->fresh(), $operation];
     }
 
     public function test_delete_retains_trimmed_request_key_and_unknown_mutations_return_not_found(): void
@@ -390,6 +693,8 @@ class ManagedDocumentDeletionTest extends TestCase
             $this->sendReceipt($this->receipt($operation))->assertOk();
         };
         $this->deleteJson('/api/documents/adoc_delete_test')->assertOk()->assertJsonPath('operation.status', 'completed');
+        config()->set('config.managed_document_backend', 'python');
+        $this->sendReceipt($this->receipt(ManagedDocumentDeletion::query()->firstOrFail()))->assertOk()->assertJsonPath('status', 'completed');
     }
 
     public function test_new_run_can_recover_but_a_superseded_pending_ack_cannot_replace_it(): void
@@ -543,14 +848,14 @@ class ManagedDocumentDeletionTest extends TestCase
             ], $operation->workflow_input['targets'])];
     }
 
-    private function sendReceipt(array $receipt)
+    private function sendReceipt(array $receipt, ?int $signedAt = null, string $secret = 'managed-test-secret')
     {
         $body = json_encode($receipt, JSON_THROW_ON_ERROR);
-        $timestamp = (string) time();
+        $timestamp = (string) ($signedAt ?? time());
 
         return $this->call('POST', '/api/internal/pipeline/managed-deletion-events', [], [], [], [
             'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_HAWKI_TIMESTAMP' => $timestamp,
-            'HTTP_X_HAWKI_SIGNATURE' => 'v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'managed-test-secret'),
+            'HTTP_X_HAWKI_SIGNATURE' => 'v1='.hash_hmac('sha256', $timestamp.'.'.$body, $secret),
         ], $body);
     }
 }

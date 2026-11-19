@@ -1012,25 +1012,6 @@ const startPipelineTaskFromCatalog = createPipelineStarter({
     csrfToken,
 });
 
-async function startCrawlerTaskFallback(taskId) {
-    const response = await fetch(apiUrl('scraper/tasks/start'), {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-        },
-        body: JSON.stringify({ taskId }),
-    });
-    const data = await parseResponseJson(response);
-    if (!response.ok || !data.success || !data.jobId) {
-        throw new Error(data.message || `Task start failed (${response.status})`);
-    }
-
-    return data;
-}
-
 async function startSelectedTask() {
     if (!taskSelect || !taskStartButton) return;
     const taskId = taskSelect.value;
@@ -1045,31 +1026,26 @@ async function startSelectedTask() {
         return;
     }
 
+    if (!canStartAsPipelineTask(task)) {
+        setTaskNote('This catalog entry needs a source URL or sitemap before it can start a pipeline.', 'warn');
+        return;
+    }
+
     taskStartButton.disabled = true;
-    setTaskNote(canStartAsPipelineTask(task) ? 'Starting pipeline task...' : 'Starting scraper task...');
+    setTaskNote('Starting pipeline task...');
 
     try {
-        if (canStartAsPipelineTask(task)) {
-            const data = await startPipelineTaskFromCatalog(task);
-            setActivePipelineTask(data.task_id);
-            setTaskNote(`Created pipeline task ${data.task_id}`, 'success');
-            pushActivity('Pipeline', `task ${data.task_id} created from ${taskId}`);
-            renderPipelineTask(data.task);
-            updatePipelineTaskRun(data.task);
-            await loadPipelineTaskRuns();
-            startPolling();
-            return;
-        }
-
-        const data = await startCrawlerTaskFallback(taskId);
-        setActiveJob(data.jobId);
-        setTaskNote(`Created scraper job ID ${data.jobId}`, 'success');
-        pushActivity('Pipeline', `task ${taskId} created job ${data.jobId}`);
-        renderPipeline({ job_id: data.jobId, current_stage: 'scrape', status: 'running', stages: {} });
+        const data = await startPipelineTaskFromCatalog(task);
+        setActivePipelineTask(data.task_id);
+        setTaskNote(`Created pipeline task ${data.task_id}`, 'success');
+        pushActivity('Pipeline', `task ${data.task_id} created from ${taskId}`);
+        renderPipelineTask(data.task);
+        updatePipelineTaskRun(data.task);
+        await loadPipelineTaskRuns();
         startPolling();
     } catch (error) {
-        setTaskNote(error.message || 'Scraper task start failed.', 'error');
-        pushActivity('Pipeline', error.message || 'Scraper task start failed.');
+        setTaskNote(error.message || 'Pipeline task start failed.', 'error');
+        pushActivity('Pipeline', error.message || 'Pipeline task start failed.');
     } finally {
         taskStartButton.disabled = false;
     }

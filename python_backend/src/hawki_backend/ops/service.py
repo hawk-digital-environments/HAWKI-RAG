@@ -115,11 +115,9 @@ class OpsService:
         if available is None:
             raise HTTPException(503, "ops_unavailable")
         for record in self.store.active_records(principal.tenant_id):
-            count = (
-                self.catalog.point_count(record.qdrant_collection)
-                if record.qdrant_collection in available
-                else 0
-            )
+            if record.qdrant_collection not in available:
+                raise HTTPException(503, "ops_unavailable")
+            count = self.catalog.point_count(record.qdrant_collection)
             if count is None:
                 raise HTTPException(503, "ops_unavailable")
             collections.append(

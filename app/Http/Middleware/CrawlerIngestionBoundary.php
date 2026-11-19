@@ -32,7 +32,7 @@ final readonly class CrawlerIngestionBoundary
 
     public function handle(Request $request, \Closure $next): Response
     {
-        $backend = $this->config->get('config.crawler_ingestion_backend', 'laravel');
+        $backend = $this->config->get('config.crawler_ingestion_backend', 'python');
         if (! $this->execution->valid() || ! in_array($backend, ['laravel', 'python'], true)) {
             return response()->json(['success' => false, 'message' => 'Pipeline or crawler execution backend configuration is invalid.'], 503);
         }

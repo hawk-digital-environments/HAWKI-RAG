@@ -28,7 +28,7 @@ readonly class ManagedDocumentReadBoundary
     /** Null retains the existing Laravel read contract. */
     public function read(Request $request, ?string $documentId = null, array $filters = [], int $limit = 100): ?array
     {
-        $backend = $this->config->get('config.managed_document_backend', 'laravel');
+        $backend = $this->config->get('config.managed_document_backend', 'python');
         if ($backend === 'laravel') {
             return null;
         }

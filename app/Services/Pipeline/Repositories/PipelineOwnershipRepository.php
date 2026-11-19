@@ -57,8 +57,10 @@ readonly class PipelineOwnershipRepository
             return ['active_legacy_task_count' => null, 'active_legacy_job_count' => null,
                 'legacy_drain_complete' => false];
         }
-        $tasks = PipelineTask::query()->whereIn('status', ['pending', 'queued', 'running', 'processing', 'paused', 'cancel_requested'])->count();
-        $jobs = PipelineJob::query()->whereIn('status', ['pending', 'queued', 'running', 'processing', 'received', 'paused', 'cancel_requested'])->count();
+        $tasks = PipelineTask::query()->where(fn ($q) => $q->whereNull('status')
+            ->orWhereNotIn('status', LegacyDrainRepository::TASK_TERMINAL))->count();
+        $jobs = PipelineJob::query()->where(fn ($q) => $q->whereNull('status')
+            ->orWhereNotIn('status', LegacyDrainRepository::JOB_TERMINAL))->count();
 
         return ['active_legacy_task_count' => $tasks, 'active_legacy_job_count' => $jobs,
             'legacy_drain_complete' => $tasks === 0 && $jobs === 0];

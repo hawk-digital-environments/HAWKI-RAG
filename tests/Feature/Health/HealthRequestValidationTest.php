@@ -7,10 +7,20 @@ namespace Tests\Feature\Health;
 use App\Http\Requests\Health\HealthCheckRequest;
 use App\Services\Health\HawkiRagSystemGateService;
 use App\Services\Pipeline\Health\PipelineHealthService;
+use App\Services\User\Values\UserRole;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class HealthRequestValidationTest extends TestCase
 {
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->actingAsApiUser()->forceFill(['role' => UserRole::Admin])->save();
+    }
+
     public function test_health_endpoints_reject_invalid_timeouts(): void
     {
         $this->getJson('/api/pipeline/health?timeout=0')

@@ -24,7 +24,7 @@ final class TextIngestionController extends Controller
         ConfigRepository $config,
         LoggerInterface $logger,
     ): JsonResponse {
-        return match ($config->get('config.text_ingestion_backend', 'laravel')) {
+        return match ($config->get('config.text_ingestion_backend', 'python')) {
             'laravel' => $this->legacy($request, $request->ingestionInput(), $authorization, $service),
             'python' => $this->proxied($request, $python),
             default => $this->invalidBackend($logger),

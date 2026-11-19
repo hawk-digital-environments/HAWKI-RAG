@@ -231,8 +231,8 @@ Route::get('/documents', static function (Request $request): RedirectResponse {
 | Embedded Crawler UI Transport
 |----------------------------------------------------------------------
 | This final wildcard transparently proxies the separately built crawler
-| UI and its relative assets. It is a browser transport boundary, not a
-| duplicate API; crawler actions exposed by HAWKI-RAG remain under /api.
+| UI and its relative assets. With Python crawler/pipeline authority it
+| permits reads only; new execution uses the canonical /api/pipeline surface.
 */
 Route::any('/ui/{path?}', ScrapeTaskUiProxyController::class)
     ->where('path', '.*');

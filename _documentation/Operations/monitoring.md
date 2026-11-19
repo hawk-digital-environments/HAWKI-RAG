@@ -4,19 +4,25 @@ Start with [Ingestion Recovery's authority table](./ingestion_recovery.md#choose
 Execution, projected status, indexed content, and graph facts can disagree after
 a partial failure; no single green indicator proves all four are current.
 
+Epoch 15A: follow the [cutover and legacy drain runbook](epoch15a_cutover.md).
+Python is the default runtime authority; Laravel retains callback ingress and
+legacy telemetry. Missing canonical collections block Python stats/system-gate
+readiness. `rag:legacy-drain-status --json` reports work/history counts and
+unresolved retention gates; `safe_to_drop` remains false throughout 15A.
+
 ## Choose the evidence
 
 | Surface | What it tells you | What it does not prove |
 |---|---|---|
 | `make health` | Container and selected endpoint checks | Successful ingestion or model inference; optional workers can be missing |
 | `GET /up` | Laravel liveness | Store, model, or worker readiness |
-| `GET /api/rag/health` | Bridge health report | End-to-end retrieval success |
+| `GET /api/rag/health` | Selected runtime health report | End-to-end retrieval success |
 | `GET /api/health/system-gate` | Configured combined UI gate | Every source has finished |
 | `GET /api/pipeline/health` | Database, shared storage, Temporal and configured worker checks | All task queues have live pollers |
 | `GET /api/pipeline/tasks/{taskId}` | Task, jobs, sources, and projected stage state | Storage and callback state are synchronized |
 | `GET /api/pipeline/tasks/{taskId}/events` | Recorded pipeline events | Complete Temporal execution history |
 | Temporal UI | Workflow history, pending activities, attempts, task queues | Laravel received the terminal callback |
-| `GET /api/rag/monitor` | Bridge/runtime/config report, latest summary, graph preview, document graph and recent failures | A complete per-dataset audit |
+| `GET /api/rag/monitor` | Selected runtime/config report plus labeled legacy summary, graph preview and recent failures | A complete per-dataset audit |
 
 `pipeline:workers` prints configured ownership. Workflow/indexer entries in
 `pipeline:health` include configuration-only results. Use Temporal poller/history

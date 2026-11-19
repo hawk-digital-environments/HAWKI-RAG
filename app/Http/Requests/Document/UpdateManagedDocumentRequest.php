@@ -15,7 +15,7 @@ class UpdateManagedDocumentRequest extends FormRequest
 
     public function authorize(ManagedDocumentRepository $documents): bool
     {
-        if (config('config.managed_document_backend', 'laravel') === 'laravel') {
+        if (config('config.managed_document_backend', 'python') === 'laravel') {
             abort_if($documents->find((string) $this->route('documentId')) === null, 404, 'Document was not found.');
         }
 

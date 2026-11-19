@@ -9,6 +9,13 @@ declare(strict_types=1);
  * sources before Composer or Laravel can initialize its environment repository.
  */
 $testingEnvironmentVariables = [
+    'HAWKI_QUERY_BACKEND',
+    'TEXT_INGESTION_BACKEND',
+    'MANAGED_DOCUMENT_BACKEND',
+    'CRAWLER_INGESTION_BACKEND',
+    'PIPELINE_EXECUTION_BACKEND',
+    'DATASET_BACKEND',
+    'GRAPH_OPS_BACKEND',
     'APP_ENV',
     'APP_MAINTENANCE_DRIVER',
     'BCRYPT_ROUNDS',

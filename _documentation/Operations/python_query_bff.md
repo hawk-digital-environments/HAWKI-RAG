@@ -1,10 +1,12 @@
 # Laravel to Python query trust boundary
 
-The boundary is implemented but disabled by default. `HAWKI_QUERY_BACKEND=laravel`
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+The boundary defaults to Python in Epoch 15A. An explicit `HAWKI_QUERY_BACKEND=laravel`
 keeps `POST /api/query` on the existing Laravel/bridge path. `python` selects only
 the internal Python client; any other value fails closed. There is no automatic
-fallback, retry, shadow query, or dual execution. Dataset listing and MCP do not
-use this selector.
+fallback, retry, shadow query, or dual execution. Dataset listing uses
+`DATASET_BACKEND`; MCP RAG search is unregistered in Epoch 15A.
 
 The existing session/Sanctum/sole-active-user principal resolution stays in place.
 The single-user fallback is not proof of an interactive login: continue to

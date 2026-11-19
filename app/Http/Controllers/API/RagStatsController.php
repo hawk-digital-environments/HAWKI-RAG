@@ -16,10 +16,4 @@ class RagStatsController extends Controller
 
         return response()->json($result, (int) ($result['status'] ?? 200));
     }
-
-    public function destroyQdrantCollection(
-    ): JsonResponse {
-        return response()->json(['ok' => false, 'error' => 'collection_delete_removed',
-            'message' => 'Use DELETE /api/datasets/{id}/storage for authoritative dataset storage deletion.'], 410);
-    }
 }

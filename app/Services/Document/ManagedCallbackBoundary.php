@@ -16,7 +16,7 @@ readonly class ManagedCallbackBoundary
     /** Null means proven Laravel ownership. Unknown ownership never falls back. */
     public function relay(string $workflowId, string $raw, string $kind): ?array
     {
-        $backend = $this->config->get('config.managed_document_backend', 'laravel');
+        $backend = $this->config->get('config.managed_document_backend', 'python');
         if ($backend === 'laravel') {
             return null;
         }

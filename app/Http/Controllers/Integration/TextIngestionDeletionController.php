@@ -24,7 +24,7 @@ final class TextIngestionDeletionController extends Controller
         ConfigRepository $config,
         LoggerInterface $logger,
     ): JsonResponse {
-        return match ($config->get('config.text_ingestion_backend', 'laravel')) {
+        return match ($config->get('config.text_ingestion_backend', 'python')) {
             'laravel' => $this->legacy($request, $sourceId, $authorization, $deletions),
             'python' => $this->proxied($request, $sourceId, $python),
             default => $this->invalidBackend($logger),

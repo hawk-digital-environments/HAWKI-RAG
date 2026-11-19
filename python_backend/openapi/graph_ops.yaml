@@ -318,8 +318,9 @@ paths:
           description: Selected authority unavailable; no fallback
       security:
       - BearerAuth: []
-      description: ' Existing authenticated JWT boundary. Requires rag:datasets:manage
-        and exact tenant ownership.'
+      description: 'Existing authenticated JWT boundary. Requires rag:datasets:manage
+        and exact tenant ownership. Missing canonical collections return 503;
+        existing collections with zero points are healthy.'
   /v1/ops/config:
     get:
       tags:

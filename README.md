@@ -47,3 +47,5 @@ change the default retrieval mode.
 Browse the [documentation site](https://rag.hawki.info) or the
 [source homepage](_documentation/index.md). Release history is in
 [the changelog](_changelog/README.md).
+
+Epoch 15A runtime defaults and the coordinated activation, rollback and legacy drain procedure are documented in the [cutover runbook](_documentation/Operations/epoch15a_cutover.md).

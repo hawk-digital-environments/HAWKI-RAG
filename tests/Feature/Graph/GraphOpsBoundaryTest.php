@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Graph\GraphOpsBackend;
 use App\Services\Graph\Neo4jAdmin;
 use App\Services\Graph\Neo4jGraphExplorer;
+use App\Services\Pipeline\Health\PipelineHealthService;
 use App\Services\User\Values\UserRole;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -59,10 +60,10 @@ class GraphOpsBoundaryTest extends TestCase
         return $user;
     }
 
-    public function test_selector_default_is_laravel(): void
+    public function test_missing_selector_defaults_to_python(): void
     {
         config()->set('config', array_diff_key(config('config'), ['graph_ops_backend' => true]));
-        $this->assertSame('laravel', app(GraphOpsBackend::class)->value());
+        $this->assertSame('python', app(GraphOpsBackend::class)->value());
     }
 
     public function test_invalid_selector_and_missing_python_prerequisites_fail_closed(): void
@@ -174,6 +175,24 @@ class GraphOpsBoundaryTest extends TestCase
         $this->getJson('/api/rag/health')->assertOk()->assertJsonPath('authority', 'python')
             ->assertJsonPath('status', 200)->assertJsonStructure(['ok', 'status', 'latency_ms', 'endpoint', 'data', 'authority']);
         Http::assertSentCount(1);
+    }
+
+    public function test_missing_python_collection_readiness_blocks_the_system_gate(): void
+    {
+        $this->actingAs($this->user(['role' => UserRole::Admin]));
+        config()->set(['config.health_gate.enabled' => true, 'config.health_gate.required' => ['graph'],
+            'config.python_query_url' => 'http://python.test/v1/query']);
+        $health = $this->createMock(PipelineHealthService::class);
+        $health->expects(self::once())->method('check')->willReturn([]);
+        $this->app->instance(PipelineHealthService::class, $health);
+        Http::fake([
+            'http://python.test/v1/health' => Http::response(['status' => 'ok']),
+            'http://python.test/v1/ops/stats' => Http::response(['detail' => 'ops_unavailable'], 503),
+        ]);
+        $this->getJson('/api/health/system-gate')->assertOk()
+            ->assertJsonPath('status', 'blocked')->assertJsonPath('blocking.0.key', 'graph')
+            ->assertJsonPath('blocking.0.meta.stats.status', 503);
+        Http::assertSentCount(2);
     }
 
     public function test_settings_are_non_effective_and_put_never_changes_file(): void

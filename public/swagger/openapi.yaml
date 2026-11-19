@@ -1,7 +1,14 @@
 openapi: 3.0.3
 info:
   title: HAWKI RAG API
-  description: Local API reference generated from currently registered routes.
+  description: |
+    Epoch 15A: Python owns new RAG query, ingestion, dataset, pipeline and graph operations.
+    Laravel remains the authentication/BFF/frontend and HMAC worker callback boundary.
+    Explicit deployment overrides retain rollback support; invalid activation fails closed.
+    The read-only crawler catalog remains at GET /scraper/tasks (integration API).
+    Raw scraper execution and raw Qdrant collection deletion are removed.
+    Laravel settings GET reports deployment-managed/non-effective state and PUT returns 409
+    when any Python runtime selector is active. MCP RAG search is unregistered during 15A.
   version: "1.0.0"
 servers:
   - url: ../api
@@ -22,7 +29,7 @@ tags:
   - name: Query
     description: Single-user dataset discovery and dataset-scoped retrieval, with optional bearer identity selection.
   - name: RAG
-    description: Control-plane diagnostics for the retrieval bridge and backing data stores.
+    description: Control-plane diagnostics for the selected Python runtime and backing data stores, with legacy telemetry retained.
   - name: Graph
     description: Control-plane graph exploration, snapshots, and destructive graph maintenance.
   - name: Integrations
@@ -1459,7 +1466,7 @@ paths:
       tags:
         - RAG
       summary: RAG statistics
-      description: Requires existing dataset-manager authority. Reports only active tenant-owned collections and dataset-scoped graph counts. GRAPH_OPS_BACKEND=python forwards to Python /v1/ops/stats, without fallback.
+      description: Requires existing dataset-manager authority. Reports only active tenant-owned collections and dataset-scoped graph counts. GRAPH_OPS_BACKEND=python (default) forwards to Python /v1/ops/stats, without fallback. A missing canonical collection returns 503; an existing collection with zero points is healthy.
       security:
         - BearerAuth: []
       responses:
@@ -1475,30 +1482,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RagStatsResponse"
-  /rag/qdrant/collections/{collection}:
-    parameters:
-      - in: path
-        name: collection
-        required: true
-        description: Deprecated route parameter; never resolved to a dataset or deleted.
-        schema:
-          type: string
-          maxLength: 191
-    delete:
-      tags:
-        - RAG
-      summary: Deprecated collection deletion
-      description: Always returns 410 without a Qdrant call. Use DELETE /datasets/{datasetId}/storage for authoritative storage deletion.
-      deprecated: true
-      security:
-        []
-      responses:
-        "410":
-          description: Collection deletion removed; use the authoritative dataset storage endpoint.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /rag/neo4j/graph/overview:
     get:
       tags:

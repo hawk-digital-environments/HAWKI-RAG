@@ -211,7 +211,7 @@ readonly class PipelineRecoveryWorkflowService
 
     private function verifyCrawlerAuthority(PipelineJob $job, ?IngestionSource $source): void
     {
-        if ($this->config->get('config.crawler_ingestion_backend', 'laravel') === 'laravel') {
+        if ($this->config->get('config.crawler_ingestion_backend', 'python') === 'laravel') {
             return;
         }
         $owner = $this->ownership->classify('job_id', (string) $job->job_id);

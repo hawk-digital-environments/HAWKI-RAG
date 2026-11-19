@@ -64,7 +64,7 @@ class QueryCutoverExportCommand extends Command
                 'python_query_url' => $pythonUrl,
                 'legacy_bridge_query_url' => $legacyBridgeQueryUrl,
                 'key_forbidden_paths' => [public_path(), storage_path(), config('config.shared_root')],
-                'backend' => config('config.query_backend', 'laravel'),
+                'backend' => config('config.query_backend', 'python'),
                 'query_all' => config('config.query_auth.all_datasets_by_default'),
                 'auth_default_guard' => config('auth.defaults.guard'),
                 'auth_guard_drivers' => array_map(fn ($guard) => $guard['driver'] ?? null, config('auth.guards', [])),

@@ -18,16 +18,16 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
-    'pipeline_execution_backend' => env('PIPELINE_EXECUTION_BACKEND', 'laravel'),
-    'crawler_ingestion_backend' => env('CRAWLER_INGESTION_BACKEND', 'laravel'),
+    'pipeline_execution_backend' => env('PIPELINE_EXECUTION_BACKEND', 'python'),
+    'crawler_ingestion_backend' => env('CRAWLER_INGESTION_BACKEND', 'python'),
     'python_url_ingestion_url' => env('HAWKI_PYTHON_URL_INGESTION_URL', 'http://hawki_backend'),
-    'managed_document_backend' => env('MANAGED_DOCUMENT_BACKEND', 'laravel'),
+    'managed_document_backend' => env('MANAGED_DOCUMENT_BACKEND', 'python'),
     'python_managed_document_url' => env('HAWKI_PYTHON_MANAGED_DOCUMENT_URL', 'http://hawki_backend'),
     'python_managed_document_timeout' => (int) env('HAWKI_PYTHON_MANAGED_DOCUMENT_TIMEOUT', 30),
 
-    'query_backend' => env('HAWKI_QUERY_BACKEND', 'laravel'),
+    'query_backend' => env('HAWKI_QUERY_BACKEND', 'python'),
     'python_query_url' => env('HAWKI_PYTHON_QUERY_URL', 'http://hawki_backend/v1/query'),
-    'dataset_backend' => env('DATASET_BACKEND', 'laravel'),
+    'dataset_backend' => env('DATASET_BACKEND', 'python'),
     'python_dataset_url' => env('HAWKI_PYTHON_DATASET_URL', 'http://hawki_backend/v1/datasets'),
     'python_query_datasets_url' => env(
         'HAWKI_PYTHON_QUERY_DATASETS_URL',
@@ -52,10 +52,10 @@ return [
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
     'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
     'graph_snapshot_path' => env('HAWKI_RAG_GRAPH_SNAPSHOT_PATH', storage_path('app/graph_snapshots')),
-    'graph_ops_backend' => env('GRAPH_OPS_BACKEND', 'laravel'),
+    'graph_ops_backend' => env('GRAPH_OPS_BACKEND', 'python'),
     'python_graph_ops_url' => env('HAWKI_PYTHON_GRAPH_OPS_URL', 'http://hawki_backend/v1/ops'),
     'python_graph_ops_timeout' => (int) env('HAWKI_PYTHON_GRAPH_OPS_TIMEOUT', 10),
-    'python_query_dataset_source' => env('HAWKI_BACKEND_QUERY_DATASET_SOURCE', 'environment'),
+    'python_query_dataset_source' => env('HAWKI_BACKEND_QUERY_DATASET_SOURCE', 'database'),
     'admin_settings_path' => env(
         'HAWKI_RAG_ADMIN_SETTINGS_PATH',
         env('HAWKI_RAG_OPERATOR_SETTINGS_PATH', storage_path('app/hawki-rag/settings.json')),
@@ -83,7 +83,7 @@ return [
     // The cutover flag. ``laravel`` keeps the legacy implementation; ``python``
     // proxies to the Python-owned operation. There is no fallback and no dual
     // execution: an unknown value is a configuration failure, not a retry.
-    'text_ingestion_backend' => env('TEXT_INGESTION_BACKEND', 'laravel'),
+    'text_ingestion_backend' => env('TEXT_INGESTION_BACKEND', 'python'),
     'python_text_ingestion_url' => env(
         'HAWKI_PYTHON_TEXT_INGESTION_URL',
         'http://hawki_backend/v1/text-ingestions',
@@ -135,7 +135,7 @@ return [
     ],
     'query_auth' => [
         'all_datasets_by_default' => filter_var(
-            env('HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT', true),
+            env('HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT', false),
             FILTER_VALIDATE_BOOLEAN,
         ),
     ],

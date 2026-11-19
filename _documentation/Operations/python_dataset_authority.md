@@ -1,8 +1,10 @@
 # Epoch 12 dataset authority
 
-The Python dataset authority is implemented but not activated. The checked-in
-defaults remain `DATASET_BACKEND=laravel` and
-`HAWKI_BACKEND_QUERY_DATASET_SOURCE=environment`. Deploying this code does not
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+The checked-in defaults are `DATASET_BACKEND=python` and
+`HAWKI_BACKEND_QUERY_DATASET_SOURCE=database`. Explicit environment overrides
+remain available for coordinated rollback. Deploying this code does not
 move production traffic, create datasets for you, or migrate legacy rows.
 
 This runbook covers the coordinated one-time migration from Laravel-owned
@@ -274,9 +276,9 @@ HAWKI_PYTHON_DATASET_TIMEOUT=10
 HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=false
 ```
 
-The checked-in defaults stay `laravel` for all five selectors and
-`HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=true`; this runbook changes them only
-in the reviewed activation environment.
+Epoch 15A defaults all RAG selectors to `python` and
+`HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=false`. Existing deployment overrides
+are preserved; complete the coordinated activation plan before changing them.
 
 Keep the existing `HAWKI_QUERY_BFF_*` issuer, audience, client id, tenant, key
 and timeout settings. The BFF uses the same signing key for query, ingest and

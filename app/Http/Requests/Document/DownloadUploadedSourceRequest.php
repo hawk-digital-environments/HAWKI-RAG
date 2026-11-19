@@ -23,6 +23,9 @@ class DownloadUploadedSourceRequest extends FormRequest
         return [
             'source_url' => ['required', 'string', 'max:2048', 'starts_with:upload://'],
             'content_hash' => ['nullable', 'string', 'max:128'],
+            'document_id' => ['nullable', 'string', 'max:64', 'regex:/\Aadoc[_-][A-Za-z0-9_-]+\z/'],
+            'task_id' => ['prohibited'],
+            'source_id' => ['prohibited'],
         ];
     }
 
@@ -36,6 +39,11 @@ class DownloadUploadedSourceRequest extends FormRequest
         $value = $this->query('content_hash');
 
         return is_scalar($value) && trim((string) $value) !== '' ? (string) $value : null;
+    }
+
+    public function documentId(): ?string
+    {
+        return $this->validated('document_id');
     }
 
     protected function failedValidation(Validator $validator): void

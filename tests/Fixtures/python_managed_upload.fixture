@@ -1,0 +1,93 @@
+{
+  "task_id": "task_managed_0123456789abcdef0123456789abcdef",
+  "filename": "NordVPN_Instructions_V1.pdf",
+  "suffix": "pdf",
+  "contents": "%PDF python managed upload fixture",
+  "relative_path": "task_managed_0123456789abcdef0123456789abcdef/nordvpn-instructions-v1-89abcdef.pdf",
+  "cases": [
+    {
+      "task_id": "task_managed_00000000000000000000000000000001",
+      "filename": "résumé.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 1",
+      "relative_path": "task_managed_00000000000000000000000000000001/resume-00000001.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000002",
+      "filename": "Überblick 2026.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 2",
+      "relative_path": "task_managed_00000000000000000000000000000002/uberblick-2026-00000002.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000003",
+      "filename": "naïve file.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 3",
+      "relative_path": "task_managed_00000000000000000000000000000003/naive-file-00000003.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000004",
+      "filename": "Quarterly report (final)! #1.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 4",
+      "relative_path": "task_managed_00000000000000000000000000000004/quarterly-report-final-1-00000004.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000005",
+      "filename": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 5",
+      "relative_path": "task_managed_00000000000000000000000000000005/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-00000005.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000006",
+      "filename": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 6",
+      "relative_path": "task_managed_00000000000000000000000000000006/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-00000006.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000007",
+      "filename": "报告.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 7",
+      "relative_path": "task_managed_00000000000000000000000000000007/uploaded-document-00000007.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000008",
+      "filename": "MiXeD.PDF",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 8",
+      "relative_path": "task_managed_00000000000000000000000000000008/mixed-00000008.pdf"
+    },
+    {
+      "task_id": "task_managed_00000000000000000000000000000009",
+      "filename": "report [final].pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 9",
+      "relative_path": "task_managed_00000000000000000000000000000009/report-final-00000009.pdf"
+    },
+    {
+      "task_id": "task_managed_0000000000000000000000000000000a",
+      "filename": "report (final).pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 10",
+      "relative_path": "task_managed_0000000000000000000000000000000a/report-final-0000000a.pdf"
+    },
+    {
+      "task_id": "task_managed_0000000000000000000000000000000b",
+      "filename": "report & final.pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 11",
+      "relative_path": "task_managed_0000000000000000000000000000000b/report-final-0000000b.pdf"
+    },
+    {
+      "task_id": "task_managed_0000000000000000000000000000000c",
+      "filename": "résumé [final].pdf",
+      "suffix": "pdf",
+      "contents": "%PDF Python publication case 12",
+      "relative_path": "task_managed_0000000000000000000000000000000c/resume-final-0000000c.pdf"
+    }
+  ]
+}

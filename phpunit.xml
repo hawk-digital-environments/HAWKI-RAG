@@ -21,6 +21,15 @@
         </include>
     </source>
     <php>
+        <!-- Legacy regression fixtures exercise the explicit rollback configuration.
+             Epoch15aCutoverTest separately verifies defaults with these overrides removed. -->
+        <env name="HAWKI_QUERY_BACKEND" value="laravel" force="true"/>
+        <env name="TEXT_INGESTION_BACKEND" value="laravel" force="true"/>
+        <env name="MANAGED_DOCUMENT_BACKEND" value="laravel" force="true"/>
+        <env name="CRAWLER_INGESTION_BACKEND" value="laravel" force="true"/>
+        <env name="PIPELINE_EXECUTION_BACKEND" value="laravel" force="true"/>
+        <env name="DATASET_BACKEND" value="laravel" force="true"/>
+        <env name="GRAPH_OPS_BACKEND" value="laravel" force="true"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>

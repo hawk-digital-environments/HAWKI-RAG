@@ -1,4 +1,9 @@
 ---
+
+> Epoch 15A: this document describes the retained legacy implementation.
+> HawkiRagSearchTool is unregistered from `/mcp/hawki_rag`; no bridge-backed MCP
+> RAG query path is active. See [cutover and MCP decision](../Operations/epoch15a_cutover.md).
+
 title: MCP Query Search Contract
 slug: /Operations/ragsearcher_triplets_update
 ---

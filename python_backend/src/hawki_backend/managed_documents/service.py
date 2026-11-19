@@ -105,6 +105,24 @@ class ManagedService:
         revision_id = doc["current_revision_id"] or doc["pending_revision_id"]
         revision = self.repository.revision(revision_id) if revision_id else None
         payload = self.document_payload(doc, revision, doc["attributes"])
+        if detail and revision and doc["status"] != "deleted":
+            # The authorized read carries the persisted publication identity.
+            # The BFF must never reconstruct Unicode slugs or find a file by
+            # scanning other tasks. Use the actual checksum, not a caller's
+            # optional source_checksum_sha256 attribute.
+            try:
+                relative = Path(revision["upload_path"]).relative_to(self.storage.root)
+            except ValueError:
+                raise ManagedError(
+                    503, "Managed upload storage is unavailable."
+                ) from None
+            payload["upload"] = {
+                "task_id": revision["task_id"],
+                "source_id": revision["source_id"],
+                "relative_path": relative.as_posix(),
+                "filename": revision["workflow_input"]["upload"]["original_filename"],
+                "sha256": revision["source_checksum"],
+            }
         if not detail:
             for field in (
                 "qdrant_point_count",

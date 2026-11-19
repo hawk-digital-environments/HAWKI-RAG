@@ -1,5 +1,7 @@
 # Python workflow control — Epoch 8
 
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
 Before: Laravel application services → bridge Temporal endpoints → Temporal → Python workers.
 
 After: Laravel compatibility/application boundary → signed Python backend operations

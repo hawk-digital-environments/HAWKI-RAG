@@ -32,7 +32,7 @@ final class IngestTextRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+        if (config('config.text_ingestion_backend', 'python') !== 'laravel') {
             return;
         }
 
@@ -51,7 +51,7 @@ final class IngestTextRequest extends FormRequest
 
     public function rules(): array
     {
-        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+        if (config('config.text_ingestion_backend', 'python') !== 'laravel') {
             return [];
         }
 
@@ -105,7 +105,7 @@ final class IngestTextRequest extends FormRequest
      */
     public function after(): array
     {
-        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+        if (config('config.text_ingestion_backend', 'python') !== 'laravel') {
             return [];
         }
 

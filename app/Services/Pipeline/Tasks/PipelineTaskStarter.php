@@ -48,11 +48,11 @@ readonly class PipelineTaskStarter
      */
     public function start(array $input): PipelineTask
     {
-        if ($this->config->get('config.pipeline_execution_backend', 'laravel') !== 'laravel') {
+        if ($this->config->get('config.pipeline_execution_backend', 'python') !== 'laravel') {
             throw CrawlerAuthorityException::pythonOwned();
         }
         $taskId = $this->input->nullableString($input['task_id'] ?? $input['taskId'] ?? null);
-        if ($taskId !== null && $this->config->get('config.crawler_ingestion_backend', 'laravel') === 'python') {
+        if ($taskId !== null && $this->config->get('config.crawler_ingestion_backend', 'python') === 'python') {
             $owner = $this->ownership->classify('task_id', $taskId, allowAbsent: true);
             if ($owner['status'] !== 200 || ($owner['payload']['owner'] ?? null) !== 'absent') {
                 throw CrawlerAuthorityException::pythonOwned();

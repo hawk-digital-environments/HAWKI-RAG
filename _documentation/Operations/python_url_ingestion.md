@@ -1,6 +1,8 @@
 # Epoch 11 URL ingestion operations
 
-Status: **current CustomCrawler integration enabled behind the existing opt-in
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+Status: **current CustomCrawler integration enabled behind the Python-default
 selector**. Production remains on Laravel. The adapter checks the permanent-job
 API before dispatch; the external runtime owns all connection-bound HTTP/browser,
 redirect, sitemap, asset and WebSocket enforcement. Terminal status alone never

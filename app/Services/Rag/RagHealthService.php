@@ -22,7 +22,7 @@ readonly class RagHealthService
      */
     public function show(): array
     {
-        $authority = $this->config->get('config.query_backend', 'laravel');
+        $authority = $this->config->get('config.query_backend', 'python');
         if ($authority === 'python') {
             $url = $this->config->get('config.python_query_url');
             $parts = is_string($url) ? parse_url($url) : false;

@@ -21,7 +21,7 @@ class PythonQueryBoundaryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_default_legacy_path_executes_only_the_existing_proxy(): void
+    public function test_explicit_legacy_rollback_executes_only_the_existing_proxy(): void
     {
         self::assertSame('laravel', config('config.query_backend'));
         $user = $this->actingAsApiUser();
@@ -34,17 +34,17 @@ class PythonQueryBoundaryTest extends TestCase
         $this->postJson('/api/query', ['dataset_id' => 'a', 'query' => 'Q'])->assertOk()->assertJsonPath('answer', 'Legacy');
     }
 
-    public function test_absent_selector_in_an_older_config_cache_still_defaults_to_legacy(): void
+    public function test_absent_selector_in_an_older_config_cache_uses_python_without_legacy_fallback(): void
     {
         $settings = config('config');
         unset($settings['query_backend']);
         config()->set('config', $settings);
         $this->actingAsApiUser();
-        $legacy = $this->createMock(RagProxyService::class);
-        $legacy->expects(self::once())->method('query')->willReturn(['status' => 200, 'payload' => ['answer' => 'Legacy']]);
-        $this->app->instance(RagProxyService::class, $legacy);
-        $this->prohibit(PythonQueryClient::class);
-        $this->postJson('/api/query', ['dataset_id' => 'a', 'query' => 'Q'])->assertOk();
+        $this->prohibit(RagProxyService::class);
+        $python = $this->createMock(PythonQueryClient::class);
+        $python->expects(self::once())->method('query')->willReturn(['status' => 503, 'payload' => ['detail' => 'query_unavailable']]);
+        $this->app->instance(PythonQueryClient::class, $python);
+        $this->postJson('/api/query', ['dataset_id' => 'a', 'query' => 'Q'])->assertStatus(503);
     }
 
     public function test_python_path_and_its_failure_never_execute_the_legacy_proxy(): void

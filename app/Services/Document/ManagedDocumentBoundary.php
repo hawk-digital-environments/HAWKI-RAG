@@ -17,7 +17,7 @@ readonly class ManagedDocumentBoundary
     /** Null selects the legacy authority. All other results are final. */
     public function forward(Request $request, string $purpose, array $input = [], array $files = [], ?string $documentId = null): ?array
     {
-        $backend = $this->config->get('config.managed_document_backend', 'laravel');
+        $backend = $this->config->get('config.managed_document_backend', 'python');
         if ($backend === 'laravel') {
             return null;
         }

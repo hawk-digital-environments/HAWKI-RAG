@@ -1,9 +1,11 @@
 # Epoch 13: Python pipeline execution and legacy drain
 
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
 ## Selector and activation
 
 `PIPELINE_EXECUTION_BACKEND=laravel|python` chooses the authority for **new URL
-pipeline starts**. The default remains `laravel`. Invalid values return 503;
+pipeline starts**. The checked-in default is now `python`. Invalid values return 503;
 there is no fallback. No production environment is changed by this epoch.
 
 Python activation requires:
@@ -142,7 +144,11 @@ markers must agree with durable ownership.
 When Python is selected, `python_execution` reports readiness and readiness or
 configuration failure returns 503 with `success=false`. Legacy table health
 cannot establish Python readiness. Missing legacy tables produce unknown counts
-and never report a completed drain.
+and never report a completed drain. Tasks are terminal only at `completed` or
+`failed`; jobs only at `completed`, `failed` or `skipped`. Unknown statuses count
+as unfinished. Use `rag:legacy-drain-status --json` for stage, source, deletion,
+output and retention evidence; pipeline task/job drain alone cannot authorize
+legacy schema deletion.
 
 Graph exploration, global RAG monitoring, the system gate, Neo4j/Qdrant admin and
 runtime settings remain outside this transition (Epoch 14). Retrieval, models,

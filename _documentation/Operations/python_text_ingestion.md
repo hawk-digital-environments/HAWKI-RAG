@@ -1,6 +1,8 @@
 # Epoch 9 direct-text operations
 
-The default remains `TEXT_INGESTION_BACKEND=laravel`. This guide describes an
+Epoch 15A uses Python defaults. Follow the [coordinated cutover and drain runbook](epoch15a_cutover.md) for current activation/rollback ordering; earlier epoch procedures below retain their migration-specific prerequisites.
+
+The checked-in default is `TEXT_INGESTION_BACKEND=python`. This guide describes an
 explicit, coordinated activation; deploying code alone does not activate it.
 Query (Epoch 7), workflow control (Epoch 8), managed documents, files, URL and
 crawler ingestion retain their existing ownership.

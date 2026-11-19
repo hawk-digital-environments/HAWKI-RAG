@@ -1,5 +1,12 @@
 # HAWKI backend — public API boundary
 
+Epoch 15A deployment examples select database-backed Python RAG authority.
+Complete the [coordinated cutover and legacy drain procedure](../_documentation/Operations/epoch15a_cutover.md)
+before changing an existing deployment. Keep the bridge and Laravel HMAC worker
+callback targets during the rollback/drain window. Static-scope examples below
+are retained for explicit compatibility configurations and migration tools.
+
+
 `python_backend` hosts the public API. This document describes the
 authentication boundary that protects it, the dataset authorization boundary
 behind it, and the authenticated query endpoint built on both.
@@ -184,9 +191,10 @@ Epoch 12 adds the Python-owned database registry. Select it with
 `HAWKI_BACKEND_QUERY_DATASET_SOURCE=database` and leave
 `HAWKI_BACKEND_QUERY_DATASETS` unset. In that mode the authenticated tenant's
 row in `hawki_backend.datasets` is the only source of physical scope; the
-environment registry is not consulted. The default selector stays
-`environment`, so existing deployments keep the pre-cutover behavior until an
-operator changes it.
+environment registry is not consulted. Epoch 15A deployment examples select
+`database`. The library loaders retain `environment` compatibility for offline
+migration tools and older deployments; provision the explicit deployment
+setting on every replica as required by the cutover runbook.
 
 All settings are read from `HAWKI_BACKEND_QUERY_*` variables. A present but
 incomplete or invalid configuration refuses to start; an unknown
@@ -651,7 +659,7 @@ slice: the runtime exists, but query traffic is not cut over.
 
 ### Laravel BFF trust boundary
 
-The disabled-by-default [BFF deployment guide](../_documentation/Operations/python_query_bff.md)
+The [BFF deployment guide](../_documentation/Operations/python_query_bff.md)
 documents the server-owned RS256 token profile, verifier configuration agreement,
 opt-in key/JWKS mounts, HTTPS/CA requirements, rotation and activation gates.
 No Python authentication requirement is relaxed for this integration.
@@ -911,8 +919,9 @@ selectors are already Python, exact grants are imported, and
 `HAWKI_QUERY_BACKEND=python`, `TEXT_INGESTION_BACKEND=python`,
 `MANAGED_DOCUMENT_BACKEND=python`, `CRAWLER_INGESTION_BACKEND=python` and
 `HAWKI_BACKEND_QUERY_DATASET_SOURCE=database`, and leave
-`HAWKI_BACKEND_QUERY_DATASETS` unset. The checked-in defaults remain `laravel`
-and `environment`. A half-cutover can create datasets that the active query
+`HAWKI_BACKEND_QUERY_DATASETS` unset. Epoch 15A checked-in deployment defaults
+select `python` and `database`; explicit rollback values remain supported.
+A half-cutover can create datasets that the active query
 registry cannot resolve, and Laravel fails closed rather than falling back. No
 production activation is implied by this implementation.
 

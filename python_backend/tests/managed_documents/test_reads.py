@@ -1,6 +1,7 @@
 """Public managed reads use query grants and Python lifecycle state."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -48,6 +49,24 @@ def test_completion_is_authoritative_for_reads(reader):
     detail = send(reader, path="/v1/documents/" + value["document"]["id"], method="GET")
     assert detail.json()["document"]["status"] == "indexed"
     assert detail.json()["document"]["active_output_count"] == 1
+
+
+def test_authorized_upload_metadata_uses_persisted_revision_identity(reader):
+    value = create(reader)
+    row = revision(reader, value)
+    response = send(
+        reader, path="/v1/documents/" + value["document"]["id"], method="GET"
+    )
+    assert response.status_code == 200
+    upload = response.json()["document"]["upload"]
+    assert upload == {
+        "task_id": row["task_id"],
+        "source_id": row["source_id"],
+        "relative_path": Path(row["upload_path"]).relative_to(reader.root).as_posix(),
+        "filename": row["workflow_input"]["upload"]["original_filename"],
+        "sha256": row["source_checksum"],
+    }
+    assert "upload" not in send(reader, method="GET").json()["documents"][0]
 
 
 @pytest.mark.parametrize("denial", ["grant", "tenant", "user", "scope", "inactive"])

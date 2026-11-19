@@ -23,7 +23,7 @@ final class DeleteTextIngestionRequest extends FormRequest
 
     public function rules(): array
     {
-        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+        if (config('config.text_ingestion_backend', 'python') !== 'laravel') {
             return [];
         }
 
@@ -34,7 +34,7 @@ final class DeleteTextIngestionRequest extends FormRequest
 
     public function idempotencyKey(): string
     {
-        return config('config.text_ingestion_backend', 'laravel') === 'laravel'
+        return config('config.text_ingestion_backend', 'python') === 'laravel'
             ? (string) $this->validated('idempotency_key')
             : (string) $this->header('Idempotency-Key');
     }

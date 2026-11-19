@@ -100,6 +100,7 @@ def configure(engine):
                 "physical-vector-one",
                 "physical-vector-two",
                 "physical-vector-foreign",
+                "physical-vector-disabled",
             }
         ),
         point_count=Mock(return_value=3),

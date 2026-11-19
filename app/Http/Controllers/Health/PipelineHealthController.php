@@ -30,7 +30,7 @@ class PipelineHealthController extends Controller
             'checkedAt' => now()->toAtomString(),
             'checks' => $this->health->check($request->timeout() ?? 5),
         ];
-        $backend = $this->config->get('config.crawler_ingestion_backend', 'laravel');
+        $backend = $this->config->get('config.crawler_ingestion_backend', 'python');
         if ($backend !== 'laravel') {
             $payload['url_ingestion'] = $backend === 'python' ? $this->python->readiness() : ['ready' => false, 'configuration_valid' => false];
         }
