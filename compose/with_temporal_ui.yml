@@ -1,0 +1,28 @@
+# ============================================================================
+# ADDON: Temporal workflow UI
+# ============================================================================
+# Add the Temporal Web UI at http://127.0.0.1:8081 (bind/port configurable
+# through TEMPORAL_UI_HOST_BIND / TEMPORAL_UI_HOST_PORT in .env):
+#
+#   docker compose -f docker-compose.yml -f compose/with_temporal_ui.yml up -d
+#
+# Make shortcuts: make up-monitor-workflows-tool / make down-monitor-workflows-tool
+# See compose/README.md for the full composition guide.
+x-service-env: &service_env
+  env_file:
+    - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
+
+services:
+  temporal-ui:
+    <<: *service_env
+    image: temporalio/ui:2.34.0
+    container_name: temporal_ui
+    restart: unless-stopped
+    ports:
+      - "${TEMPORAL_UI_HOST_BIND:-127.0.0.1}:${TEMPORAL_UI_HOST_PORT:-8081}:8080"
+    depends_on:
+      temporal:
+        condition: service_started
+    networks:
+      - default
+      - hawki-network

@@ -34,7 +34,7 @@ build.
 | Model providers or allowlists | [Provider configuration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/config/model_providers.php) | [Settings](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/app/Services/Settings), [model providers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/model_providers) | [Settings](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/Feature/Settings), [provider tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/model_providers/tests) |
 | MCP normalization/schema | [MCP tool](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Mcp/Tools/HawkiRagSearchTool.php) | [RagSearch](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/app/Services/RagSearch) | [Unit tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/Unit) |
 | Browser UI | [Web routes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/routes/web.php), [Svelte](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/resources/js/svelte) | [Views](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/resources/views), [Vite](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/vite.config.js) | [UI feature tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/Feature/Ui) |
-| Containers, startup, health | [Makefile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/Makefile), [Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml) | [Python Dockerfile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/python_rag.Dockerfile), [Laravel Dockerfile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/laravel.Dockerfile) | [System tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/System), live smoke tests |
+| Containers, startup, health | [Makefile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/Makefile), [Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml), [Compose addons](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/compose) | [Python Dockerfile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/python_rag.Dockerfile), [Laravel Dockerfile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/laravel.Dockerfile) | [System tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/System), live smoke tests |
 | Documentation/navigation | [Site configuration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/_documentation.build/docusaurus.config.js) | [Sidebar](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/_documentation.build/sidebars-docs.js) | [Documentation checks](../Developer/testing.md#documentation-checks) |
 
 ## Repository at a glance
@@ -107,6 +107,7 @@ flowchart TB
     Bridge["bridge"] --> Vector["vector_store"]
     Bridge --> Graph["graph_store"]
     Bridge --> Models["model_providers"]
+    Bridge --> Reranking["reranking clients"]
     Indexer["indexer"] --> Vector
     Indexer --> Graph
     Indexer --> Models
@@ -125,7 +126,7 @@ flowchart TB
 
 | Member | Direct workspace dependencies |
 |---|---|
-| bridge | contracts, graph_store, model_providers, observability, text_processing, vector_store |
+| bridge | contracts, graph_store, model_providers, observability, reranking, text_processing, vector_store |
 | workflow worker | contracts |
 | scraper worker | artifact_store, contracts, external_jobs, observability, pipeline_callbacks, worker_runtime |
 | converter worker | artifact_store, contracts, external_jobs, observability, pipeline_callbacks, text_processing, worker_runtime |
@@ -133,7 +134,7 @@ flowchart TB
 | reranker | contracts |
 | graph_store | observability |
 | vector_store | observability |
-| Other eight packages | None |
+| Other packages (including reranking) | None |
 
 | Package | Stable responsibility |
 |---|---|
@@ -144,6 +145,7 @@ flowchart TB
 | [external_jobs](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/external_jobs) | External start/status polling |
 | [observability](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/observability) | Correlation, event names, bounded/redacted logging |
 | [text_processing](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/text_processing) | Cleanup, chunking, terms, tags, safety rules |
+| [reranking](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/reranking) | Reusable local CrossEncoder and LiteLLM SDK clients; no service dependency |
 | [model_providers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/model_providers) | Provider ports and Ollama/LiteLLM adapters |
 | [vector_store](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/vector_store) | Typed Qdrant contracts and transport |
 | [graph_store](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/graph_store) | Scoped Neo4j contracts and transport |
