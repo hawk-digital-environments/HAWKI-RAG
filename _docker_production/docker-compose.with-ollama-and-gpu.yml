@@ -1,0 +1,63 @@
+# ============================================================================
+# ADDON: GPU acceleration for the local-inference stack
+# ============================================================================
+# Bundles every GPU switch in one file, replacing the former
+# docker-compose.gpu-override.yml: the reranker and the indexer worker
+# switch from the default CPU images to the published "-gpu" image variants
+# (built with TORCH_VARIANT=gpu / CUDA torch wheels), and Docker reserves
+# one NVIDIA device for them, for Ollama and for the bridge.
+#
+# REQUIRES docker-compose.with-ollama.yml - include this file after it, so
+# the ollama service this file reserves a device for exists:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml ./deploy.sh
+#
+# The NVIDIA Container Toolkit must be installed on the host. Gateway-only
+# stacks (no Ollama addon) have no supported GPU composition. This is the
+# production counterpart of compose/with_ollama_and_gpu.yml: instead of
+# building the GPU images locally like the development addon, every image is
+# pulled from the registry pinned through HAWKI_RAG_VERSION.
+services:
+    hawki_rag_rerank:
+        # pull_policy: always carries over from the base definition.
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-gpu-${HAWKI_RAG_VERSION:-latest}
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    hawki-rag-indexer-worker:
+        # pull_policy: always carries over from the base definition.
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-gpu-${HAWKI_RAG_VERSION:-latest}
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    ollama:
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    # Inert for the default bridge image (it contains no model stack); grants
+    # the CUDA device to a custom bridge image built with
+    # BRIDGE_LOCAL_RERANKER=true so the in-process CrossEncoder
+    # (RERANKER_PROVIDER=local) leaves CPU-only torch defaults.
+    hawki_rag_bridge:
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]

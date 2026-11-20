@@ -1,0 +1,52 @@
+# Configuration for the LiteLLM gateway added by
+# docker-compose.with-litellm.yml. Edit this file, not the compose override.
+#
+# One passthrough route per model, named by the full provider-prefixed
+# string the application sends (EMBED_MODEL / CHAT_MODEL / VISION_MODEL and
+# the plural allowlists in .env): the route's model_name must equal the
+# value the application configures, or its calls arrive at a gateway that
+# does not know the name. As shipped, the list is empty - the gateway boots
+# but serves no routes, so every model call fails closed until you add the
+# ones you need.
+#
+# Credentials never belong in this file: the container receives the .env
+# values, and routes reference them through os.environ/<VARIABLE> lookups
+# which the gateway resolves at load time. A route whose key is unset stays
+# listed and fails closed on use.
+model_list: []
+  # Hosted OpenAI model (credential from .env):
+  # - model_name: openai/gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: os.environ/OPENAI_API_KEY
+  #
+  # Hosted Anthropic model:
+  # - model_name: anthropic/claude-sonnet-4-5
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #
+  # Model on the local Ollama server (docker-compose.with-ollama.yml); the
+  # api_base strips OLLAMA_API_URL's trailing /api:
+  # - model_name: ollama/bge-m3
+  #   litellm_params:
+  #     model: ollama/bge-m3
+  #     api_base: http://hawki_ollama:11434
+  #
+  # Hosted model routed through a corporate proxy endpoint:
+  # - model_name: openai/text-embedding-3-small
+  #   litellm_params:
+  #     model: openai/text-embedding-3-small
+  #     api_base: os.environ/OPENAI_API_BASE
+  #     api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 240
+
+general_settings:
+  # Current LiteLLM images refuse to boot without a master key. The value
+  # resolves from .env (LITELLM_API_KEY), which the application also
+  # presents as its bearer token; generate one with
+  # generate-env-secrets.sh if it is empty.
+  master_key: os.environ/LITELLM_API_KEY
