@@ -39,7 +39,7 @@ services:
               required: false
         volumes:
             - ollama:/root/.ollama
-            - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+            - ./ollama/ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
         entrypoint: ["/usr/local/bin/ollama-entrypoint.sh"]
         command: ["serve"]
         networks:

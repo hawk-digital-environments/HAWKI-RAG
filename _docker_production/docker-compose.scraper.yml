@@ -54,7 +54,7 @@ services:
             - output_storage:/var/www/html/output
             # Hosts and URL patterns the scraper must never visit. Edit the
             # copy in this directory; empty lines and "#" comments are fine.
-            - ./forbidden_urls.txt:/var/www/html/forbidden_urls.txt
+            - ./scraper/forbidden_urls.txt:/var/www/html/forbidden_urls.txt
             # Shared memory for Playwright (prevents chromium crashes).
             - /dev/shm:/dev/shm
             # Crawl results land here. The volume is the same fixed-name

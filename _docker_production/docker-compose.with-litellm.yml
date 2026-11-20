@@ -42,7 +42,7 @@ services:
               required: false
         command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
         volumes:
-            - ./litellm-config.yml:/etc/litellm/config.yaml:ro
+            - ./litellm/litellm-config.yml:/etc/litellm/config.yaml:ro
         ports:
             - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
         networks:
