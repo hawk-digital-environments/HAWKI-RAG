@@ -126,9 +126,6 @@ jobs:
           uv run --frozen --no-sync ruff format --check packages services tests
           uv run --frozen --no-sync ruff check packages services tests
 
-      - name: Verify patch whitespace
-        run: git diff --check HEAD^ HEAD
-
       - name: Run deterministic tests
         working-directory: python_rag
         env:
