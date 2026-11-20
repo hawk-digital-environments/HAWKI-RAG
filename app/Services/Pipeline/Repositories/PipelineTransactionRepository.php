@@ -10,17 +10,25 @@ use Illuminate\Database\DatabaseManager;
 #[Singleton]
 readonly class PipelineTransactionRepository
 {
-    public function __construct(private DatabaseManager $database)
-    {
-    }
+    public function __construct(private DatabaseManager $database) {}
 
     /**
      * @template TReturn
-     * @param callable(): TReturn $callback
+     *
+     * @param  callable(): TReturn  $callback
      * @return TReturn
      */
     public function run(callable $callback): mixed
     {
         return $this->database->transaction($callback);
+    }
+
+    public function afterCommit(callable $callback): void
+    {
+        if ($this->database->connection()->transactionLevel() > 0) {
+            $this->database->connection()->afterCommit($callback);
+        } else {
+            $callback();
+        }
     }
 }

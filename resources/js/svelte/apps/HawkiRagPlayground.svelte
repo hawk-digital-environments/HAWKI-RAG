@@ -4,6 +4,7 @@
 <script lang="ts">
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
+    import {answerCitationLabel, parseAnswerCitations} from '../../playground/citations.js';
     import DashboardHeader from '../components/DashboardHeader.svelte';
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
@@ -131,7 +132,7 @@
     let datasets = $state<DatasetOption[]>([]);
     let selectedDatasetId = $state('');
     let topK = $state(5);
-    let retrievalMode = $state<RetrievalMode>('deep');
+    let retrievalMode = $state<RetrievalMode>('fast');
     let includeAnswer = $state(false);
     let busy = $state(false);
     let status = $state('Ready for retrieval.');
@@ -190,7 +191,7 @@
         },
         {
             label: 'Mode',
-            value: retrievalMode === 'deep' ? 'deep vector' : 'fast vector',
+            value: retrievalMode === 'deep' ? 'deep retrieval' : 'fast vector',
             tone: retrievalMode === 'deep' ? 'active' : 'ready',
         },
     ]);
@@ -200,20 +201,21 @@
             : 'No retrieval run yet.',
     );
     const rawJson = $derived(rawPayload ? JSON.stringify(rawPayload, null, 2) : '');
+    const answerParts = $derived(parseAnswerCitations(answer));
     const graphEmptyTitle = $derived(
         graphEnabled === false
-            ? 'Dataset graph retrieval is disabled.'
+            ? 'Graph retrieval was not used.'
             : 'No scoped graph facts matched.',
     );
     const graphEmptyMessage = $derived.by(() => {
+        if (resultFastMode) {
+            return 'Fast vector mode skips graph retrieval. Choose Deep retrieval to use available dataset graph facts.';
+        }
+
         if (graphEnabled === false) {
             return graphDisabledReason === 'dataset_scope_not_enforced'
                 ? 'The server kept Neo4j retrieval off because this dataset does not yet have enforceable graph isolation.'
-                : 'The server did not authorize graph retrieval for this dataset.';
-        }
-
-        if (resultFastMode) {
-            return 'Fast vector mode skips graph retrieval. Run the query in Deep vector mode to include scoped graph facts.';
+                : 'This dataset has no ready graph-enabled ingestion. Deep retrieval continues with vector search.';
         }
 
         return 'Neo4j was searched only inside the selected dataset, but no matching facts were found.';
@@ -770,7 +772,7 @@
                                 aria-pressed={retrievalMode === 'deep'}
                                 onclick={() => { retrievalMode = 'deep'; }}
                             >
-                                Deep vector
+                                Deep retrieval
                             </button>
                             <button
                                 type="button"
@@ -860,7 +862,34 @@
                 {#if answer}
                     <article class="answer-panel">
                         <span>Answer draft</span>
-                        <p>{answer}</p>
+                        <p>
+                            {#each answerParts as part}
+                                {#if part.kind === 'text'}
+                                    {part.text}
+                                {:else if hits[part.sourceIndex]}
+                                    {@const citationHit = hits[part.sourceIndex]}
+                                    {#if hitSourceHref(citationHit)}
+                                        <a
+                                            class="answer-citation"
+                                            href={hitSourceHref(citationHit)}
+                                            target={hitSourceTarget(citationHit)}
+                                            rel={hitSourceRel(citationHit)}
+                                            download={isUploadSource(hitPrimarySource(citationHit)) ? true : undefined}
+                                            title={`Open reference ${part.sourceNumber}`}
+                                        >{answerCitationLabel(part.sourceNumber)}</a>
+                                    {:else}
+                                        <button
+                                            type="button"
+                                            class="answer-citation"
+                                            title={`Show reference ${part.sourceNumber}`}
+                                            onclick={() => { resultTab = 'sources'; }}
+                                        >{answerCitationLabel(part.sourceNumber)}</button>
+                                    {/if}
+                                {:else}
+                                    <span class="answer-citation answer-citation--missing">[Reference {part.sourceNumber} unavailable]</span>
+                                {/if}
+                            {/each}
+                        </p>
                     </article>
                 {/if}
 
@@ -1464,6 +1493,25 @@
         color: var(--pg-text);
         line-height: 1.58;
         white-space: pre-wrap;
+    }
+
+    .answer-citation {
+        display: inline;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--pg-cyan);
+        font: inherit;
+        font-weight: 700;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+        cursor: pointer;
+    }
+
+    .answer-citation--missing {
+        color: var(--pg-amber);
+        cursor: default;
     }
 
     .source-layout {

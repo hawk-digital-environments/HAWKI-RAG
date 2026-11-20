@@ -10,7 +10,7 @@
 
 ### Bugfix
 
-[//]: # (- Bug fixes included in this version.)
+[//]: # (- List of bugs that have been fixed in this version.)
 
 ### Internals
 

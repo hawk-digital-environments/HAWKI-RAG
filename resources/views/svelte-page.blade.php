@@ -10,6 +10,7 @@
         $apiBasePath = '/' . trim((string) $apiBasePath, '/') . '/';
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
+    <link rel="icon" href="{{ $apiBasePath }}favicon.svg" type="image/svg+xml" />
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
     @foreach(($meta ?? []) as $name => $content)
         <meta name="{{ $name }}" content="{{ $content }}" />

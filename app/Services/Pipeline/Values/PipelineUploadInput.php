@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\Values;
@@ -15,17 +16,16 @@ readonly class PipelineUploadInput
         public ?string $customConverterToken,
         public string $customConverterStartPath,
         public array $requestMetadata,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      */
     public static function fromValidated(array $validated, array $customConverterDefaults = []): self
     {
         $datasetId = self::stringValue($validated['dataset_id'] ?? $validated['datasetId'] ?? null)
             ?? 'controller-uploads';
-        $graph = filter_var($validated['graph'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $graph = filter_var($validated['graph'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $converterMode = self::stringValue($validated['converter_mode'] ?? $validated['converterMode'] ?? null);
         $converterMode = $converterMode === 'custom' ? 'custom' : 'native';
         $defaultUrl = self::stringValue($customConverterDefaults['api_url'] ?? null);
@@ -33,7 +33,7 @@ readonly class PipelineUploadInput
 
         return new self(
             $datasetId,
-            $graph ?? true,
+            $graph ?? false,
             $converterMode,
             self::stringValue($validated['converter_url'] ?? $validated['converterUrl'] ?? null) ?? $defaultUrl,
             self::stringValue($validated['converter_token'] ?? $validated['converterToken'] ?? null),
@@ -45,6 +45,19 @@ readonly class PipelineUploadInput
     public function usesCustomConverter(): bool
     {
         return $this->converterMode === 'custom';
+    }
+
+    public function withManagedDocumentId(ManagedDocumentId $managedDocumentId): self
+    {
+        return new self(
+            datasetId: $this->datasetId,
+            graph: $this->graph,
+            converterMode: $this->converterMode,
+            customConverterUrl: $this->customConverterUrl,
+            customConverterToken: $this->customConverterToken,
+            customConverterStartPath: $this->customConverterStartPath,
+            requestMetadata: array_merge($this->requestMetadata, $managedDocumentId->toRequestMetadata()),
+        );
     }
 
     /**

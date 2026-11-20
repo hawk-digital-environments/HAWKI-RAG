@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers;
@@ -12,8 +13,7 @@ class DatasetController extends Controller
 {
     public function __construct(
         private readonly DatasetService $datasets,
-    ) {
-    }
+    ) {}
 
     public function index(ListDatasetsRequest $request): JsonResponse
     {
@@ -25,19 +25,27 @@ class DatasetController extends Controller
 
     public function store(CreateDatasetRequest $request): JsonResponse
     {
-        $dataset = $this->datasets->create($request->validated());
+        $creation = $this->datasets->create($request->validated());
 
-        return response()->json([
+        $payload = [
             'success' => true,
-            'dataset_id' => $dataset->dataset_id,
-            'dataset' => $this->datasets->show($dataset->dataset_id),
-        ], 201);
+            'dataset_id' => $creation->dataset->dataset_id,
+            'dataset' => $this->datasets->show($creation->dataset->dataset_id),
+        ];
+
+        if ($creation->grantToken !== null) {
+            // One-time bootstrap capability for the creator: redeem it via
+            // POST /datasets/{id}/ingest-grants/self. Shown exactly once.
+            $payload['grant_token'] = $creation->grantToken;
+        }
+
+        return response()->json($payload, $creation->created ? 201 : 200);
     }
 
     public function show(string $datasetId): JsonResponse
     {
         $dataset = $this->datasets->show($datasetId);
-        if (!$dataset) {
+        if (! $dataset) {
             return response()->json([
                 'success' => false,
                 'message' => "Dataset {$datasetId} was not found.",
@@ -53,21 +61,19 @@ class DatasetController extends Controller
     public function destroyStorage(string $datasetId): JsonResponse
     {
         $result = $this->datasets->delete($datasetId);
-        if (!$result) {
+        if (! $result) {
             return response()->json([
                 'success' => false,
                 'message' => "Dataset {$datasetId} was not found.",
             ], 404);
         }
 
-        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false) && ($result['dataset_deleted'] ?? false);
-
         return response()->json([
-            'success' => $ok,
-            'message' => $ok
-                ? "Deleted dataset {$datasetId}."
-                : "Dataset delete failed for {$datasetId}.",
+            'success' => true,
+            'message' => $result['cleanup_pending']
+                ? "Dataset {$datasetId} is hidden. Scoped cleanup will continue automatically in the background."
+                : "Dataset {$datasetId} cleanup is complete.",
             'cleanup' => $result,
-        ], $ok ? 200 : 502);
+        ], $result['cleanup_pending'] ? 202 : 200);
     }
 }

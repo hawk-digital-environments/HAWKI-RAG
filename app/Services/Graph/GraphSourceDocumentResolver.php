@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace App\Services\Graph;
 
-use App\Models\Document;
-use App\Services\Document\DocumentMarkdownPreviewReader;
-use App\Services\Document\DocumentRepository;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
+use App\Services\Document\ManagedDocumentPayloadBuilder;
+use App\Services\Document\Repositories\ManagedDocumentRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class GraphSourceDocumentResolver
 {
     public function __construct(
-        private DocumentRepository $documents,
-        private DocumentMarkdownPreviewReader $previews,
+        private ManagedDocumentRepository $documents,
+        private ManagedDocumentPayloadBuilder $payloads,
     ) {}
 
     /**
@@ -30,18 +32,16 @@ readonly class GraphSourceDocumentResolver
             }
         }
 
-        $documents = $this->documents->findByExternalIds($docIds)
-            ->keyBy(fn (Document $document): string => (string) $document->external_id);
+        $documents = $this->documentsByBridgeId($docIds);
 
         foreach ($nodes as &$node) {
             $label = $this->stringValue($node['label'] ?? null);
             $node['source_documents'] = array_map(
                 function (string $docId) use ($documents, $label): array {
-                    /** @var Document|null $document */
                     $document = $documents->get($docId);
 
-                    return $document
-                        ? $this->sourceDocument($document, $docId, $label)
+                    return is_array($document)
+                        ? $this->sourceDocument($document['model'], $document['payload'], $docId, $label)
                         : [
                             'docId' => $docId,
                             'label' => $docId,
@@ -59,31 +59,67 @@ readonly class GraphSourceDocumentResolver
     /**
      * @return array<string, mixed>
      */
-    private function sourceDocument(Document $document, string $docId, ?string $entityLabel): array
+    private function sourceDocument(ManagedDocument $document, array $payload, string $docId, ?string $entityLabel): array
     {
-        $preview = $this->previews->preview($document->storage_path);
+        $preview = $this->stringValue($payload['markdown_preview'] ?? null) ?? '';
 
         return [
             'docId' => $docId,
-            'documentId' => $document->id,
+            'documentId' => $document->documentId()->value,
             'datasetId' => $document->dataset_id,
-            'label' => $this->displayLabel($document, $docId),
-            'title' => $document->title,
+            'label' => $this->displayLabel($document, $payload, $docId),
+            'title' => $this->stringValue($payload['title'] ?? null),
             'sourceType' => $document->source_type,
             'sourceUrl' => $document->source_url,
-            'originalFilename' => $document->original_filename,
-            'localPath' => $document->storage_path,
-            'markdownPreviewPath' => $preview['path'],
-            'markdownSnippet' => $this->markdownSnippet($preview['content'], $entityLabel),
+            'originalFilename' => $this->stringValue($payload['original_filename'] ?? null),
+            'localPath' => $this->stringValue($payload['local_path'] ?? null),
+            'markdownPreviewPath' => $this->stringValue($payload['markdown_preview_path'] ?? null),
+            'markdownSnippet' => $this->markdownSnippet($preview, $entityLabel),
         ];
     }
 
-    private function displayLabel(Document $document, string $docId): string
+    /**
+     * @param  list<string>  $docIds
+     * @return Collection<string, array{model:ManagedDocument,payload:array<string,mixed>}>
+     */
+    private function documentsByBridgeId(array $docIds): Collection
     {
-        return $this->stringValue($document->original_filename)
-            ?? $this->stringValue($document->title)
+        $wanted = array_fill_keys($docIds, true);
+        $resolved = collect();
+
+        foreach ($this->documents->forActiveBridgeDocumentIds($docIds) as $document) {
+            $payload = $this->payloads->build($document, includeDetails: true);
+
+            foreach ($document->outputs as $output) {
+                if (! $output instanceof ManagedDocumentOutput || ! $output->active) {
+                    continue;
+                }
+
+                $bridgeDocumentId = $this->stringValue($output->bridge_document_id);
+                if ($bridgeDocumentId === null || ! isset($wanted[$bridgeDocumentId])) {
+                    continue;
+                }
+
+                $resolved->put($bridgeDocumentId, [
+                    'model' => $document,
+                    'payload' => $payload,
+                ]);
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function displayLabel(ManagedDocument $document, array $payload, string $docId): string
+    {
+        return $this->stringValue($payload['original_filename'] ?? null)
+            ?? $this->stringValue($payload['title'] ?? null)
+            ?? $this->stringValue($document->display_name)
             ?? $this->stringValue($document->source_url)
-            ?? $this->stringValue($document->storage_path)
+            ?? $this->stringValue($payload['local_path'] ?? null)
             ?? $docId;
     }
 

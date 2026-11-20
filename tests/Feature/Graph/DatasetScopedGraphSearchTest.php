@@ -6,6 +6,7 @@ namespace Tests\Feature\Graph;
 
 use App\Models\Dataset;
 use App\Models\DatasetGrant;
+use App\Models\IngestionSource;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -52,6 +53,14 @@ class DatasetScopedGraphSearchTest extends TestCase
             'principal_type' => DatasetGrant::PRINCIPAL_USER,
             'principal_id' => (string) $user->getAuthIdentifier(),
             'permission' => DatasetGrant::PERMISSION_QUERY,
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-scoped-graph',
+            'source_url' => 'https://example.test/graph',
+            'dataset_id' => $dataset->dataset_id,
+            'index_status' => IngestionSource::STATUS_READY,
+            'metadata' => ['graph' => true],
         ]);
 
         Http::fake([

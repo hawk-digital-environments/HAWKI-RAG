@@ -9,3 +9,6 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# Always treat shell scripts running in docker as text and enforce LF 
+*.sh text eol=lf

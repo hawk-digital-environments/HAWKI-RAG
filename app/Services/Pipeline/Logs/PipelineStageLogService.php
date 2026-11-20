@@ -257,7 +257,7 @@ readonly class PipelineStageLogService
         }
 
         $this->appendRagAnythingRuntimeLogSection($lines, $task, $jobs, $stage);
-        $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Temporal ingestion worker log entries');
+        $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Indexer worker log entries');
     }
 
     /**

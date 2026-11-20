@@ -41,7 +41,8 @@ class PipelineOperationsCommandTest extends TestCase
         $this->assertStringContainsString('hawki-rag-temporal-workflow-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-scraper-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-converter-worker', $output);
-        $this->assertStringContainsString('hawki-rag-temporal-ingestion-worker', $output);
+        $this->assertStringContainsString('hawki-rag-indexer-worker', $output);
+        $this->assertStringNotContainsString('hawki-rag-temporal-ingestion-worker', $output);
         $this->assertStringContainsString('rag-workflow-task-queue', $output);
         $this->assertStringContainsString('rag-scraper-task-queue', $output);
         $this->assertStringContainsString('rag-converter-task-queue', $output);

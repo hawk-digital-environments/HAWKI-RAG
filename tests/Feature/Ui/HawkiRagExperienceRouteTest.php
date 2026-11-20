@@ -32,6 +32,8 @@ class HawkiRagExperienceRouteTest extends TestCase
         $this->get('/admin')
             ->assertOk()
             ->assertSee('HAWKI-RAG Admin')
+            ->assertSee('rel="icon"', false)
+            ->assertSee('href="/favicon.svg"', false)
             ->assertSee('data-hawki-rag-experience', false)
             ->assertSee('"adminRoutes"', false)
             ->assertSee('"key":"pipeline"', false)

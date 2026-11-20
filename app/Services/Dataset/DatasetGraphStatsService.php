@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -13,11 +14,10 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 readonly class DatasetGraphStatsService
 {
     public function __construct(
-        private DatasetRepository $datasets,
+        private ManagedDocumentOutputRepository $documentOutputs,
         private ConfigRepository $config,
         private HttpFactory $http,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -27,7 +27,7 @@ readonly class DatasetGraphStatsService
         $baseUrl = rtrim((string) $this->config->get('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
         $database = trim((string) $this->config->get('config.neo4j_database', 'neo4j')) ?: 'neo4j';
         $endpoint = $baseUrl.'/db/'.rawurlencode($database).'/tx/commit';
-        $documentJobIds = $this->datasets->documentExternalIds($dataset);
+        $documentJobIds = $this->documentOutputs->activeBridgeDocumentIdsForDataset($dataset->dataset_id);
 
         try {
             $response = $this->http->timeout(4)

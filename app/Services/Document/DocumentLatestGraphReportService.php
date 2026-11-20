@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
-use App\Models\Document;
 use App\Models\ManagedDocument;
+use App\Models\RagIngestionArtifact;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
+use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -16,9 +17,8 @@ readonly class DocumentLatestGraphReportService
         private ManagedDocumentRepository $managedDocuments,
         private ManagedDocumentSyncService $managedSync,
         private ManagedDocumentPayloadBuilder $managedPayloads,
-        private DocumentRepository $documents,
-    ) {
-    }
+        private ManagedIngestionMetadataRepository $ingestionMetadata,
+    ) {}
 
     /**
      * @return array<string, mixed>|null
@@ -33,6 +33,7 @@ readonly class DocumentLatestGraphReportService
             if ($managedDocument->status === ManagedDocument::STATUS_INDEXED) {
                 $report = $this->managedReport(
                     $this->managedPayloads->build($managedDocument, includeDetails: false),
+                    $this->latestArtifact($managedDocument),
                 );
 
                 if ($report !== null) {
@@ -41,26 +42,24 @@ readonly class DocumentLatestGraphReportService
             }
         }
 
-        $document = $this->documents->latestCompleted();
-
-        return $document ? $this->legacyReport($document) : null;
+        return null;
     }
 
     /**
-     * @param array<string, mixed> $document
+     * @param  array<string, mixed>  $document
      * @return array<string, mixed>|null
      */
-    private function managedReport(array $document): ?array
+    private function managedReport(array $document, ?RagIngestionArtifact $artifact): ?array
     {
         $documentId = $this->stringValue($document['document_id'] ?? $document['id'] ?? null);
         if ($documentId === null) {
             return null;
         }
 
-        $metadata = $this->arrayValue($document['metadata'] ?? null);
-        $bridgeResponse = $this->arrayValue($metadata['bridge_response'] ?? null);
-        $summary = $this->arrayValue($bridgeResponse['summary'] ?? null);
-        $graphPreview = $this->arrayValue($summary['graph_preview'] ?? null);
+        $summary = is_array($artifact?->summary) ? $artifact->summary : [];
+        $graphPreview = is_array($artifact?->graph_preview)
+            ? $artifact->graph_preview
+            : $this->arrayValue($summary['graph_preview'] ?? null);
         $graphConfig = $this->arrayValue($summary['graph'] ?? null);
         $primaryOutput = $this->primaryOutput($document['outputs'] ?? null);
 
@@ -73,7 +72,9 @@ readonly class DocumentLatestGraphReportService
             'title' => $this->stringValue($document['title'] ?? null),
             'source_url' => $this->stringValue($document['source_url'] ?? null),
             'updated_at' => $this->stringValue($document['updated_at'] ?? $document['indexed_at'] ?? null),
-            'qdrant_points' => $bridgeResponse['points'] ?? null,
+            'qdrant_points' => $this->intValue(data_get($summary, 'qdrant_preview.planned_points'))
+                ?? $this->intValue($summary['planned_points'] ?? null)
+                ?? $this->intValue(data_get($summary, 'documents.total_chunks')),
             'graph_enabled' => $this->boolValue(
                 $document['graph_enabled'] ?? $graphConfig['enabled'] ?? ($graphPreview !== []),
             ),
@@ -82,33 +83,11 @@ readonly class DocumentLatestGraphReportService
         ];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function legacyReport(Document $document): array
+    private function latestArtifact(ManagedDocument $document): ?RagIngestionArtifact
     {
-        $metadata = is_array($document->metadata_json) ? $document->metadata_json : [];
-        $summary = $metadata['bridge_response']['summary'] ?? null;
-        $graphPreview = is_array($summary) && is_array($summary['graph_preview'] ?? null)
-            ? $summary['graph_preview']
-            : null;
-        $graphConfig = is_array($summary) && is_array($summary['graph'] ?? null)
-            ? $summary['graph']
-            : [];
+        $sourceId = $this->stringValue($document->latest_source_id);
 
-        return [
-            'document_id' => $document->id,
-            'external_id' => $document->external_id,
-            'dataset_id' => $document->dataset_id,
-            'collection' => $document->collection,
-            'title' => $document->title,
-            'source_url' => $document->source_url,
-            'updated_at' => $document->updated_at?->toIso8601String(),
-            'qdrant_points' => $metadata['bridge_response']['points'] ?? null,
-            'graph_enabled' => (bool) ($graphConfig['enabled'] ?? $graphPreview),
-            'graph_triplets' => $graphPreview['total_triplets'] ?? null,
-            'docs_with_triplets' => $graphPreview['docs_with_triplets'] ?? null,
-        ];
+        return $sourceId === null ? null : $this->ingestionMetadata->latestArtifactForSource($sourceId);
     }
 
     /**
@@ -141,5 +120,10 @@ readonly class DocumentLatestGraphReportService
     private function boolValue(mixed $value): bool
     {
         return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function intValue(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
     }
 }

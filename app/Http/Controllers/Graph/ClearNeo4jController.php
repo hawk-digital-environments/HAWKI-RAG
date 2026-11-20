@@ -16,7 +16,6 @@ class ClearNeo4jController extends GraphController
         $status = ($result['ok'] ?? false) ? 200 : 502;
         if (($result['ok'] ?? false)) {
             $result['graph_cache'] = $cache->clearBridgeCache();
-            $cache->writeEmptyVisualizationSnapshot();
         }
 
         return $this->noStore(response()->json($result, $status));

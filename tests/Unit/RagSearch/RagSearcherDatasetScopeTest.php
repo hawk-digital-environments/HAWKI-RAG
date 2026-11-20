@@ -56,7 +56,8 @@ class RagSearcherDatasetScopeTest extends TestCase
             && data_get($request->data(), 'authorized_scope.embedding_provider') === 'ollama'
             && data_get($request->data(), 'authorized_scope.embedding_model') === 'bge-m3'
             && data_get($request->data(), 'provider') === 'ollama'
-            && data_get($request->data(), 'authorized_scope.graph_enabled') === true
+            && data_get($request->data(), 'authorized_scope.graph_enabled') === false
+            && data_get($request->data(), 'fast_mode') === true
         );
     }
 

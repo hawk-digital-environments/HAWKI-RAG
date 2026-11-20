@@ -3,30 +3,30 @@
 namespace Tests\Feature\Pipeline;
 
 use App\Models\Dataset;
-use App\Models\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 use Tests\TestCase;
 
 class PipelineControllerDashboardTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->actingAsApiUser();
+        config()->set('temporal.callbacks.secret', 'managed-test-secret');
     }
 
     public function test_pipeline_controller_has_its_own_page_and_is_removed_from_playground(): void
@@ -47,15 +47,15 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertDontSee('pipeline-task-select', false);
     }
 
-    public function test_uploading_file_starts_temporal_ingest_workflow(): void
+    public function test_uploading_file_defaults_to_vector_only_temporal_ingest(): void
     {
         $root = storage_path('framework/testing/pipeline-controller');
         File::deleteDirectory($root);
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-upload-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-run-1',
             ]),
         ]);
@@ -64,7 +64,6 @@ class PipelineControllerDashboardTest extends TestCase
 
         $response = $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'controller-test',
-            'graph' => 'false',
             'file' => UploadedFile::fake()->create('sample.pdf', 12, 'application/pdf'),
         ], [
             'Accept' => 'application/json',
@@ -80,6 +79,11 @@ class PipelineControllerDashboardTest extends TestCase
 
         $taskId = $response->json('task_id');
         $jobId = $response->json('job_id');
+        $documentId = $response->json('document_id');
+
+        $this->assertIsString($documentId);
+        $this->assertStringStartsWith('adoc_', $documentId);
+        $response->assertJsonPath('document.document_id', $documentId);
 
         $this->assertDatabaseHas('datasets', [
             'dataset_id' => 'controller-test',
@@ -96,7 +100,7 @@ class PipelineControllerDashboardTest extends TestCase
             'source_url' => 'upload://sample.pdf',
             'status' => PipelineJob::STATUS_RUNNING,
             'current_stage' => 'temporal.workflow_started',
-            'temporal_workflow_id' => 'ingest-source-upload-workflow',
+            'temporal_workflow_id' => 'ingest-source-'.$response->json('source_id'),
             'temporal_run_id' => 'upload-run-1',
         ]);
         $this->assertDatabaseHas('ingestion_sources', [
@@ -104,11 +108,30 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => $taskId,
             'dataset_id' => 'controller-test',
             'index_status' => 'running',
-            'temporal_workflow_id' => 'ingest-source-upload-workflow',
+            'temporal_workflow_id' => 'ingest-source-'.$response->json('source_id'),
         ]);
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => $documentId,
+            'dataset_id' => 'controller-test',
+            'display_name' => 'sample.pdf',
+            'source_url' => 'upload://sample.pdf',
+            'graph_enabled' => false,
+            'status' => ManagedDocument::STATUS_PROCESSING,
+            'latest_task_id' => $taskId,
+            'latest_job_id' => $jobId,
+        ]);
+        $this->getJson('/api/documents?dataset_id=controller-test')
+            ->assertOk()
+            ->assertJsonCount(1, 'documents')
+            ->assertJsonPath('documents.0.document_id', $documentId)
+            ->assertJsonPath('documents.0.title', 'sample.pdf');
+        $this->getJson('/api/datasets/controller-test')
+            ->assertOk()
+            ->assertJsonPath('dataset.document_count', 1);
         Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.pdf'
             && data_get($request->data(), 'workflow_input.upload.local_path') !== null
+            && data_get($request->data(), 'workflow_input.managed_document_id') === $documentId
             && data_get($request->data(), 'workflow_input.converter_mode') === 'native'
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
@@ -239,30 +262,6 @@ class PipelineControllerDashboardTest extends TestCase
             'indexed_at' => now(),
         ]);
 
-        Document::query()->create([
-            'id' => (string) Str::uuid(),
-            'external_id' => 'doc-managed-read-1',
-            'dataset_id' => 'managed-read',
-            'collection' => 'hawki_managed_read',
-            'source_type' => 'upload',
-            'source_url' => 'upload://managed-read.pdf',
-            'original_filename' => 'managed-read.pdf',
-            'storage_path' => '/tmp/managed-read/managed-read.md',
-            'mime_type' => 'text/markdown',
-            'file_size' => 123,
-            'checksum_sha256' => hash('sha256', 'managed-read'),
-            'title' => 'managed-read',
-            'metadata_json' => [
-                'source_id' => 'source-managed-read',
-                'task_id' => $task->task_id,
-                'job_id' => $job->job_id,
-                'document_id' => 'doc-managed-read-1',
-                'qdrant_collection' => 'hawki_managed_read',
-                'neo4j_namespace' => 'hawki_managed_read',
-            ],
-            'status' => Document::STATUS_COMPLETED,
-        ]);
-
         $this->getJson("/api/pipeline/tasks/{$task->task_id}")
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -363,8 +362,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         config()->set('file_converter.custom_converter_status_path', '/jobs/{job_id}');
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-custom-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-custom-run-1',
             ]),
         ]);
@@ -386,8 +385,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('dataset_id', 'custom-converter-test');
 
-        $profilePath = null;
-        Http::assertSent(function ($request) use (&$profilePath): bool {
+        Http::assertSent(function ($request): bool {
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
@@ -398,6 +396,9 @@ class PipelineControllerDashboardTest extends TestCase
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'secret-user-api-key');
         });
 
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        )->first()[0];
+        $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
         $this->assertFileExists($profilePath);
         $profile = json_decode(File::get($profilePath), true);
@@ -424,8 +425,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-settings-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-settings-run-1',
             ]),
         ]);
@@ -461,8 +462,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('dataset_id', 'saved-converter-test');
 
-        $profilePath = null;
-        Http::assertSent(function ($request) use (&$profilePath): bool {
+        Http::assertSent(function ($request): bool {
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
@@ -476,6 +476,9 @@ class PipelineControllerDashboardTest extends TestCase
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
         });
 
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        )->first()[0];
+        $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
         $profile = json_decode(File::get($profilePath), true);
         $this->assertSame('https://converter.example.test', $profile['converter_url']);
@@ -587,6 +590,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
         $this->assertDatabaseCount('pipeline_tasks', 0);
         $this->assertDatabaseCount('pipeline_jobs', 0);
+        $this->assertDatabaseCount('managed_documents', 0);
 
         File::delete($root);
     }
@@ -720,6 +724,214 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDirectoryDoesNotExist($sourceRoot);
 
         File::deleteDirectory($root);
+    }
+
+    public function test_pipeline_task_history_is_retained_when_source_storage_cleanup_fails(): void
+    {
+        $root = storage_path('framework/testing/pipeline-task-delete-failure');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+
+        $sourceId = 'source-cache-delete-failure';
+        $sourceRoot = $root.'/sources/'.$sourceId;
+        File::ensureDirectoryExists(dirname($sourceRoot));
+        File::put($sourceRoot, 'not a directory');
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-failure',
+            'dataset_id' => 'cache-delete-failure-dataset',
+            'status' => PipelineTask::STATUS_FAILED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_failed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-failure',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_FAILED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://failed.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $sourceRoot.'/raw/',
+            'markdown_storage_path' => $sourceRoot.'/markdown/',
+            'index_status' => IngestionSource::STATUS_FAILED,
+        ]);
+
+        $logger = \Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('error')
+            ->once()
+            ->with('Pipeline task storage cleanup failed.', [
+                'task_id' => 'task-cache-delete-failure',
+                'failed_paths' => [$sourceRoot],
+            ]);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-failure', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonPath('storage_cleanup.ok', false)
+                ->assertJsonPath('storage_cleanup.failed.0.path', $sourceRoot)
+                ->assertJsonPath('storage_cleanup.failed.0.message', 'expected a directory');
+
+            $this->assertDatabaseHas('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-failure',
+            ]);
+            $this->assertDatabaseHas('pipeline_jobs', [
+                'job_id' => 'job-cache-delete-failure',
+            ]);
+            $this->assertDatabaseHas('ingestion_sources', [
+                'source_id' => $sourceId,
+                'task_id' => 'task-cache-delete-failure',
+            ]);
+            $this->assertFileExists($sourceRoot);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_pipeline_task_and_source_metadata_are_deleted_when_source_storage_is_missing(): void
+    {
+        $root = storage_path('framework/testing/pipeline-task-delete-missing-storage');
+        File::deleteDirectory($root);
+        File::ensureDirectoryExists($root);
+        config()->set('temporal.storage.shared_root', $root);
+
+        $sourceId = 'source-cache-delete-missing';
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-missing',
+            'dataset_id' => 'cache-delete-missing-dataset',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_completed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-missing',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://missing.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $root.'/sources/'.$sourceId.'/raw/',
+            'markdown_storage_path' => $root.'/sources/'.$sourceId.'/markdown/',
+            'index_status' => IngestionSource::STATUS_READY,
+        ]);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-missing', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonPath('storage_cleanup.ok', true);
+
+            $this->assertDatabaseMissing('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-missing',
+            ]);
+            $this->assertDatabaseMissing('pipeline_jobs', [
+                'job_id' => 'job-cache-delete-missing',
+            ]);
+            $this->assertDatabaseMissing('ingestion_sources', [
+                'source_id' => $sourceId,
+            ]);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_pipeline_task_history_is_retained_when_persisted_source_root_differs_from_current_config(): void
+    {
+        $oldRoot = storage_path('framework/testing/pipeline-task-delete-old-root');
+        $currentRoot = storage_path('framework/testing/pipeline-task-delete-current-root');
+        File::deleteDirectory($oldRoot);
+        File::deleteDirectory($currentRoot);
+        File::ensureDirectoryExists($currentRoot);
+        config()->set('temporal.storage.shared_root', $currentRoot);
+
+        $sourceId = 'source-cache-delete-old-root';
+        $sourceRoot = $oldRoot.'/sources/'.$sourceId;
+        File::ensureDirectoryExists($sourceRoot.'/raw');
+        File::put($sourceRoot.'/raw/upload.pdf', 'must survive');
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-old-root',
+            'dataset_id' => 'cache-delete-old-root-dataset',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_completed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-old-root',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://old-root.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $sourceRoot.'/raw/',
+            'markdown_storage_path' => $sourceRoot.'/markdown/',
+            'index_status' => IngestionSource::STATUS_READY,
+        ]);
+
+        $logger = \Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('error')
+            ->once()
+            ->with('Pipeline task storage cleanup failed.', [
+                'task_id' => 'task-cache-delete-old-root',
+                'failed_paths' => [$sourceRoot],
+            ]);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-old-root', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertStatus(500)
+                ->assertJsonPath('storage_cleanup.ok', false)
+                ->assertJsonPath('storage_cleanup.failed.0.path', $sourceRoot)
+                ->assertJsonPath(
+                    'storage_cleanup.failed.0.message',
+                    'refusing to delete a path outside configured shared storage',
+                );
+
+            $this->assertDatabaseHas('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-old-root',
+            ]);
+            $this->assertDatabaseHas('ingestion_sources', [
+                'source_id' => $sourceId,
+            ]);
+            $this->assertFileExists($sourceRoot.'/raw/upload.pdf');
+        } finally {
+            File::deleteDirectory($oldRoot);
+            File::deleteDirectory($currentRoot);
+        }
     }
 
     public function test_pipeline_stage_logs_can_be_viewed_and_downloaded(): void
@@ -889,7 +1101,7 @@ class PipelineControllerDashboardTest extends TestCase
     public function test_ingest_stage_log_excludes_old_worker_entries_for_same_source(): void
     {
         $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-ingest');
-        $runtimeLogPath = $runtimeRoot.'/ingestion_worker.log';
+        $runtimeLogPath = $runtimeRoot.'/indexer_worker.log';
         File::ensureDirectoryExists($runtimeRoot);
         File::put($runtimeLogPath, implode(PHP_EOL, [
             "2026-06-28 08:34:59,723 INFO temporal_rag.activities ingest_markdown_files:start {'source_id': 'source_repeat_upload', 'markdown_dir': '/shared/sources/source_repeat_upload/markdown', 'task_queue': 'rag-ingestion-task-queue'}",
@@ -924,7 +1136,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $text = (string) $response->json('log.text');
-        $this->assertStringContainsString('Temporal ingestion worker log entries', $text);
+        $this->assertStringContainsString('Indexer worker log entries', $text);
         $this->assertStringContainsString('2026-06-28 23:45:40,165', $text);
         $this->assertStringNotContainsString('2026-06-28 08:34:59,723', $text);
         $this->assertStringNotContainsString('source_other_upload', $text);

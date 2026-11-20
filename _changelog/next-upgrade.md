@@ -1,3 +1,16 @@
-# Upgrade to v%%VERSION%%
+# Upgrading to version %%VERSION%%
 
-[//]: # (Add administrator actions only when an upgrade requires manual migration, configuration, environment, or operational changes.)
+## Overview
+
+[//]: # (Briefly describe what makes this upgrade different from a routine update)
+[//]: # (and why manual intervention is required.)
+
+## Steps
+
+### 1. Example step
+
+[//]: # (Describe what the user needs to do.)
+
+## Notes
+
+[//]: # (Any additional warnings or tips for administrators performing the upgrade.)

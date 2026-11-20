@@ -806,6 +806,7 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     cursor: default;
     color: #94a3b8;
 }
+.pipeline-run-retry,
 .pipeline-run-cancel,
 .pipeline-run-delete {
     align-self: stretch;
@@ -814,6 +815,11 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     padding: 0 0.7rem;
     font-size: 0.76rem;
     font-weight: 800;
+}
+.pipeline-run-retry {
+    border: 1px solid rgba(45, 212, 191, 0.46);
+    background: rgba(20, 184, 166, 0.12);
+    color: #99f6e4;
 }
 .pipeline-run-cancel {
     border: 1px solid rgba(251, 113, 133, 0.44);
@@ -825,6 +831,7 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     background: rgba(69, 10, 10, 0.34);
     color: #fecaca;
 }
+.pipeline-run-retry:disabled,
 .pipeline-run-cancel:disabled,
 .pipeline-run-delete:disabled {
     opacity: 0.55;
@@ -1295,6 +1302,7 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     .pipeline-run-actions {
         grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
     }
+    .pipeline-run-retry,
     .pipeline-run-cancel,
     .pipeline-run-delete {
         min-height: 36px;

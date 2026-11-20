@@ -8,10 +8,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class IngestionSource extends Model
 {
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_RUNNING = 'running';
+
     public const STATUS_READY = 'ready';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_DELETING = 'deleting';
+
+    public const STATUS_DELETED = 'deleted';
 
     protected $fillable = [
         'source_id',

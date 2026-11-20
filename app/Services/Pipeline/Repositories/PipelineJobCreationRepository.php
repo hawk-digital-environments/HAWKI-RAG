@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 readonly class PipelineJobCreationRepository
 {
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createUploadConvertJob(
         string $jobId,
@@ -40,7 +40,7 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createUploadIngestJob(
         string $jobId,
@@ -68,7 +68,38 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
+     */
+    public function createTextIngestJob(
+        string $jobId,
+        PipelineTask $task,
+        string $sourceId,
+        string $sourceUrl,
+        string $markdownPath,
+        string $contentHash,
+        string $workflowId,
+        Carbon $startedAt,
+        array $metadata,
+    ): PipelineJob {
+        return PipelineJob::query()->create([
+            'job_id' => $jobId,
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'source_url' => $sourceUrl,
+            'local_path' => $markdownPath,
+            'content_hash' => $contentHash,
+            'temporal_workflow_id' => $workflowId,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'temporal.workflow_starting',
+            'index_status' => 'running',
+            'started_at' => $startedAt,
+            'metadata' => $metadata,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
      */
     public function createScrapeJob(
         string $jobId,
@@ -94,7 +125,7 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function createTemporalSourceJob(
         string $jobId,
@@ -121,7 +152,7 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function ensureStateJob(
         string $jobId,
@@ -157,7 +188,7 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function upsertForTask(string $jobId, PipelineTask $task, array $attributes): PipelineJob
     {
@@ -168,5 +199,4 @@ readonly class PipelineJobCreationRepository
             ]),
         );
     }
-
 }

@@ -19,6 +19,9 @@ return new class extends Migration
                 $table->string('status', 64)->default('active');
                 $table->string('qdrant_collection', 191)->unique();
                 $table->string('neo4j_namespace', 191)->unique();
+                [$embeddingProvider, $embeddingModel] = $this->embeddingDefaults();
+                $table->string('embedding_provider', 80)->default($embeddingProvider)->after('neo4j_namespace');
+                $table->string('embedding_model', 160)->default($embeddingModel)->after('embedding_provider');
                 $table->timestamp('created_at')->useCurrent();
 
                 $table->index('status');
@@ -58,6 +61,8 @@ return new class extends Migration
             }
         }
 
+        [$embeddingProvider, $embeddingModel] = $this->embeddingDefaults();
+
         foreach (array_values(array_unique(array_filter($datasetIds))) as $datasetId) {
             $safe = $this->safeName($datasetId);
             DB::table('datasets')->updateOrInsert(
@@ -68,6 +73,8 @@ return new class extends Migration
                     'status' => 'active',
                     'qdrant_collection' => 'hawki_' . $safe,
                     'neo4j_namespace' => 'hawki_' . $safe,
+                    'embedding_provider' => $embeddingProvider,
+                    'embedding_model' => $embeddingModel,
                     'created_at' => now(),
                 ],
             );
@@ -84,6 +91,32 @@ return new class extends Migration
         }
 
         Schema::dropIfExists('datasets');
+    }
+
+    /**
+     * Datasets pin the embedding route they were created with. Fresh installs
+     * follow the configured default provider; only an explicit litellm default
+     * keeps the gateway embedding alias.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function embeddingDefaults(): array
+    {
+        $provider = strtolower(trim((string) config(
+            'temporal.ingestion.provider',
+            config('config.graph_provider', 'ollama'),
+        )));
+
+        if ($provider === 'litellm') {
+            return [
+                'litellm',
+                (string) config('model_providers.providers.litellm.models.embedding', 'hawki-ollama-embedding'),
+            ];
+        }
+
+        $model = trim((string) config('config.embedding_default', 'bge-m3'));
+
+        return ['ollama', $model !== '' ? $model : 'bge-m3'];
     }
 
     private function safeName(string $value): string

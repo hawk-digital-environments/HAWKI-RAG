@@ -12,8 +12,8 @@ use Illuminate\Support\Carbon;
 readonly class PipelineJobRollupRepository
 {
     /**
-     * @param array{total:int,processed:int,failed:int,skipped:int} $counts
-     * @param array<string, mixed> $attributes
+     * @param  array{total:int,processed:int,failed:int,skipped:int}  $counts
+     * @param  array<string, mixed>  $attributes
      */
     public function updateStageRollup(
         PipelineJob $job,
@@ -34,6 +34,15 @@ readonly class PipelineJobRollupRepository
         }
         if (isset($attributes['label'])) {
             $job->label = $attributes['label'];
+        }
+        if (array_key_exists('index_status', $attributes)) {
+            $job->index_status = $attributes['index_status'];
+        }
+        if (array_key_exists('error_message', $attributes)) {
+            $job->error_message = $attributes['error_message'];
+        }
+        if (array_key_exists('finished_at', $attributes)) {
+            $job->finished_at = $attributes['finished_at'];
         }
 
         $job->total_documents = $counts['total'];

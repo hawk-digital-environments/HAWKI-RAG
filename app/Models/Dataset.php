@@ -11,6 +11,8 @@ class Dataset extends Model
 
     public const STATUS_ARCHIVED = 'archived';
 
+    public const STATUS_DELETED = 'deleted';
+
     public $timestamps = false;
 
     protected $attributes = [
@@ -37,11 +39,6 @@ class Dataset extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(PipelineTask::class, 'dataset_id', 'dataset_id');
-    }
-
-    public function documents(): HasMany
-    {
-        return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
     }
 
     public function grants(): HasMany

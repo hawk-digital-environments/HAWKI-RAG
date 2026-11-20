@@ -1,194 +1,153 @@
-# 4. Installation
+# Installation
 
-## Prerequisites
-- **Docker + Docker Compose v2**: runs every service in containers.
-- **Git**: downloads the project.
-- **Make**: runs scripted commands easily.
-- **curl**: tests HTTP endpoints.
-- **OpenSSL**: generates local application secrets; it is preinstalled on most Linux and macOS systems.
+This is the first-install procedure. Check [Requirements](./1_requirements.md)
+before starting. For an existing installation, use [Run HAWKI RAG](./2_setup.md).
 
-## Step 1 - Create the environment file
-
-From the repository root, create your local configuration:
+## 1. Obtain the checkout and create configuration
 
 ```bash
-cp .env.example .env
+git clone https://github.com/hawk-digital-environments/HAWKI-RAG.git
+cd HAWKI-RAG
+test -f .env || cp .env.example .env
 ```
 
-`.env.example` contains working defaults for the provided Docker stack. You do
-not need to fill every empty variable or replace every service URL. Your
-personal `.env` can contain passwords and API keys, so never commit it to Git.
+If you already have a checkout, run only the last command from its root.
+Keep `.env` private. It is both the Compose interpolation source and the
+environment file supplied to configured containers.
 
-## Step 2 - Configure `.env`
+## 2. Set the installation secrets
 
-### Change these values before the first start
+| Variable | Action before first startup |
+|---|---|
+| `APP_KEY` | Generate a Laravel encryption key as described below; retain it across restarts. |
+| `DB_PASSWORD` | Replace `change_me` with a unique password. |
+| `NEO4J_PASSWORD` | Replace `change_me` with a different unique password. |
+| `HAWKI_RAG_WORKER_CALLBACK_SECRET` | Set one non-empty secret shared by Laravel and all activity workers. |
 
-Only three values must be created for a normal local installation:
-
-| Variable | What it controls | What you should do |
-|---|---|---|
-| `APP_KEY` | Laravel encryption for sessions and protected application data | Generate it once and keep it private and stable. |
-| `DB_PASSWORD` | Authentication for the PostgreSQL database | Replace `change_me` with a unique password before PostgreSQL is initialized. |
-| `NEO4J_PASSWORD` | Authentication for the Neo4j graph database | Replace `change_me` with a different unique password before Neo4j is initialized. |
-
-Generate a 32-byte Laravel key:
+Generate the Laravel key material:
 
 ```bash
 openssl rand -base64 32
 ```
 
-Copy the output after the `base64:` prefix:
+OpenSSL prints **only the encoded value**. Add the literal `base64:` prefix
+yourself when pasting it into `.env`:
 
 ```env
-APP_KEY=base64:PASTE_THE_GENERATED_VALUE_HERE
+APP_KEY=base64:<generated-value>
 ```
 
-Generate each database password separately:
+Generate each database password separately with `openssl rand -hex 24`.
+Generate the callback secret with `openssl rand -hex 32`.
+
+<details>
+<summary>Using Laravel's key generator instead</summary>
+
+If the local Composer dependencies and PHP runtime are already installed,
+`php artisan key:generate` is Laravel's native way to write a correctly prefixed
+key into the checkout's `.env`. `php artisan key:generate --show` prints one.
+
+The Composer create-project hook invokes that command, but cloning this
+repository and starting Docker does not run that hook. Generating a key only
+inside a built container does not reliably update the host environment file
+that Compose injects. Set the host `.env` before starting the stack.
+
+</details>
+
+:::warning Persistent credentials
+
+Changing `.env` does not rotate users in existing PostgreSQL or Neo4j volumes.
+Changing `APP_KEY` can make encrypted sessions and stored values unreadable.
+See [configuration change impact](../Operations/5_environment_db_queue.md#before-changing-a-value).
+
+:::
+
+Keep the internal endpoints from the template for the supplied stack. The
+[Configuration Reference](../Operations/5_environment_db_queue.md) owns provider,
+storage, external-tool, and URL settings.
+
+For a server deployment, set `APP_ENV=production`, `APP_DEBUG=false`,
+`APP_URL` to the public HTTPS URL, and `SESSION_SECURE_COOKIE=true`.
+The Make target does not override these values. Review the
+[actual access boundaries](../Core%20Concepts/authorization_dataset_scope.md#access-boundaries)
+before exposing the management application. These instructions build from
+source; [Production Deployment](./5_production_deployment.md) covers a full
+production setup from the published Docker Hub images instead.
+
+## 3. Start the core stack
+
+Start Docker, then run:
 
 ```bash
-openssl rand -hex 24
+docker ps
+make up-core
 ```
 
-Your edited values should have this shape:
+This creates the external Docker networks, builds images, stops existing
+Compose services, starts PostgreSQL/Temporal/Laravel, runs Laravel migrations,
+and starts the remaining services. Laravel startup initializes shared storage;
+there is no separate migration container.
 
-```env
-APP_KEY=base64:YOUR_GENERATED_APP_KEY
-DB_PASSWORD=YOUR_FIRST_GENERATED_PASSWORD
-NEO4J_PASSWORD=YOUR_SECOND_GENERATED_PASSWORD
-```
+Startup also attempts to pull the local models. Pull failures are suppressed
+by the Make target, so successful command completion does not prove the models
+are available.
 
-:::warning Keep persistent credentials stable
+Open [http://localhost:8080](http://localhost:8080).
+For source-mounted development or a reverse proxy, use the
+[startup mode table](./2_setup.md#choose-a-startup-mode).
 
-Set these values before the first `make up-core`. Changing a password in
-`.env` later does not automatically change the matching user inside an existing
-PostgreSQL or Neo4j volume. Changing `APP_KEY` can also invalidate encrypted
-sessions and stored encrypted values.
-
-:::
-
-### Understand Docker service addresses
-
-The values below are addresses on Docker networks. Keep their defaults when you
-use the provided Compose stack:
-
-| Variable | Default | Used for |
-|---|---|---|
-| `DB_HOST` | `postgres` | Laravel's PostgreSQL connection |
-| `TEMPORAL_ADDRESS` | `temporal:7233` | Workflow orchestration |
-| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge:8000` | Ingestion and retrieval API |
-| `QDRANT_HTTP_URL` | `http://qdrant:6333` | Vector storage and search |
-| `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Graph storage |
-| `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Local embeddings and language models |
-
-### Configure source ingestion
-
-Website and file ingestion uses a crawler and converter that run outside the
-core HAWKI-RAG Compose stack. The standard internal addresses are already in
-`.env.example`:
-
-```env
-CUSTOM_CRAWLER_URL=http://crawl4ai-service
-CUSTOM_CRAWLER_TASK_UI_URL=http://crawl4ai-service
-EXTERNAL_SCRAPER_URL=http://crawl4ai-service
-
-FILE_CONVERTER_BASE_URL=http://hawki-toolkit-file-converter-file-converter-1
-EXTERNAL_CONVERTER_URL=http://hawki-toolkit-file-converter-file-converter-1
-```
-
-Keep these values when the external containers use the expected names. Change
-them only when your crawler or converter has a different Docker service name.
-Do not add host-only ports such as `localhost:8000`.
-
-:::warning Setting a URL does not start the service
-
-The crawler and converter must already be running. A supported
-`make up-core*` command connects the containers to `hawki-network` when it can
-find them, but it does not install or start them. HAWKI-RAG can perform queries
-without these services, but new website and file ingestion will be unavailable.
-
-:::
-
-Use authentication tokens only when the corresponding external service
-requires them:
-
-| Preferred variable | Fallback variable | Purpose |
-|---|---|---|
-| `EXTERNAL_SCRAPER_TOKEN` | `CUSTOM_CRAWLER_API_KEY` | Token sent to the crawler |
-| `EXTERNAL_CONVERTER_TOKEN` | `FILE_CONVERTER_TOKEN` | Token sent to the file converter |
-
-The configured token must match the external service. For production, replace
-sample values such as `file-converter-key` in both systems.
-
-### Optional providers
-
-The default installation uses local Ollama models and the local reranker. No
-OpenAI, Anthropic, Jina, Tavily, or Brave key is required for local document
-ingestion and retrieval.
-
-| Feature | Configuration | What an empty key means |
-|---|---|---|
-| Tavily web search | `WEB_SEARCH_PROVIDER=tavily` and `TAVILY_SEARCH_API_KEY` | Tavily-backed web search is unavailable; local RAG still works. |
-| Brave web search | `WEB_SEARCH_PROVIDER=brave` and `BRAVE_SEARCH_API_KEY` | Brave-backed web search is unavailable; local RAG still works. |
-| Jina reranking | `RERANKER_MODE=jina` and `JINA_API_KEY` | Jina cannot be used. The default `external` mode uses the local reranker and needs no Jina key. |
-| OpenAI through LiteLLM | `OPENAI_API_KEY` | OpenAI aliases remain unavailable. |
-| Anthropic through LiteLLM | `ANTHROPIC_API_KEY` | Claude aliases remain unavailable. |
-
-`RERANKER_PROVIDER=cohere` describes the local reranker's compatible API
-format; it does not mean that the default installation calls Cohere's cloud
-service.
-
-:::tip LiteLLM keys are optional
-
-OpenAI and Anthropic keys are read only when the optional LiteLLM profile is
-running and one of their aliases is selected.
-
-:::
-
-### Local URL versus server URL
-
-For normal local usage, keep:
-
-```env
-APP_URL=http://localhost:8080
-SESSION_SECURE_COOKIE=false
-```
-
-For a real HTTPS deployment, set `APP_URL` to the public HAWKI-RAG address and
-set `SESSION_SECURE_COOKIE=true`. `MCP_BASE_URL` follows `APP_URL` by default.
-
-The supported Make targets control Laravel's runtime mode. You normally do not
-need to edit `APP_ENV`, `APP_DEBUG`, `HAWKI_RAG_APP_ENV`, or
-`HAWKI_RAG_APP_DEBUG`.
-
-## Step 3 - Docker networks
-
-No separate command is required when you use one of the `make up-core*`
-commands in Step 4. The startup command creates the external `hawki-network`
-and `hosting_network` networks automatically.
-
-:::tip "Manual network recovery"
-    If you run `docker compose` directly, or Docker networks were pruned, run `make network` first. It is safe to rerun and prints whether each network was created or already existed.
-:::
-
-## Step 4 - Start services
-- Production-mode command with UI at `http://localhost:8080`: `make up-core`
-- Reverse-proxy production command without a host port: `make up-core-server`
-- Source-mounted development command: `make up-core-local`
-
-:::tip "Database setup is automatic"
-    The startup command creates the PostgreSQL container and persistent volume, waits for PostgreSQL to become healthy, and runs all Laravel migrations before writable services start. You do not need to create the database or run `php artisan migrate` yourself.
-:::
-
-## Step 5 - Health check everything
-- Commands: `make health` and `make test-services`
-- You should be able to see `OK` for all components.
-
-Optionally start LiteLLM and confirm that its aliases loaded:
+## 4. Verify health and create a query identity
 
 ```bash
-CORE_PROFILES_BASE=litellm make up-core
-curl -fsS http://127.0.0.1:4000/v1/models
+make health
+curl -fsS http://localhost:8080/up
+curl -fsS http://localhost:8080/api/ping
+docker exec hawki_ollama ollama list
+docker exec hawki_rag_app php artisan pipeline:workers
 ```
 
-## Step 6 - Connect HAWKI-RAG to HAWKI (MCP Tool)
-Plug HAWKI-RAG into HAWKI as an MCP tool by following the [official HAWKI AI Models & Tools guide](https://docs.hawki.info/architecture/10.2-AI%20Models%20and%20Tools).
+Expect the liveness/API requests to succeed, the template's models to appear
+in Ollama, and configured worker/queue ownership to be listed. The listing
+does not prove live workers are polling. Inspect every `WARN` and `SKIPPED`
+line from `make health`: some essential RAG components are classified as
+optional by that target. [Monitoring](../Operations/monitoring.md) explains
+what these probes do and do not establish.
+
+Create a local user if this is a fresh installation:
+
+```bash
+docker exec -it hawki_rag_app php artisan user:create
+```
+
+Keep the printed user ID. The single-user browser flow resolves the sole active
+local user; API tokens select an explicit user. See
+[Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md).
+
+## 5. Prove ingestion and retrieval
+
+Run the [direct-text smoke test](./2_setup.md#direct-text-smoke-test).
+It writes a small document, waits for the source to become ready, and queries
+the resulting evidence. This does not require the crawler or converter.
+
+If you need websites or uploads, prepare the
+[external tools](./2_setup.md#external-tools) and run the
+[full-ingestion smoke test](./2_setup.md#full-ingestion-smoke-test) too.
+Core startup alone does not start the external projects.
+
+## 6. Optional: connect an MCP client
+
+After the smoke test succeeds, create a `query` token for the user:
+
+```bash
+docker exec -it hawki_rag_app php artisan user:token --abilities=query
+docker exec hawki_rag_app php artisan route:list --path=hawki_rag
+```
+
+Use the listed MCP route with bearer authentication. With the supplied
+`MCP_SERVER=hawki_rag`, the route is `/hawki_rag`; `MCP_BASE_URL` does not
+register a different transport route. Give the user access to the target dataset
+if explicit grants are enabled.
+
+The [MCP query-search contract](../Reference/mcp_query_search_contract.md)
+documents tool input, output, and the verified output-schema mismatch.
+

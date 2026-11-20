@@ -171,6 +171,7 @@ class PipelineTaskController extends Controller
             'success' => true,
             'task_id' => $taskId,
             'deleted' => true,
+            'history_hidden' => $result['history_hidden'] ?? false,
             'storage_cleanup' => $result['storageCleanup'] ?? null,
         ]);
     }

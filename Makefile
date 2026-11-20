@@ -29,8 +29,14 @@ GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
-COMMA := ,
-PYTHON_MINERU_WHEEL_ROOT ?= /tmp/rawki-mineru-compat
+PYTHON_UV_CACHE ?= /tmp/rawki-uv-cache
+PYTHON_RERANKER_ENV ?= .venv-reranker
+PYTHON_DATA_PLANE_PACKAGES := \
+	--package hawki-bridge \
+	--package hawki-workflow-worker \
+	--package hawki-scraper-worker \
+	--package hawki-converter-worker \
+	--package hawki-indexer-worker
 
 # Ollama acceleration policy: auto (default), 1 (force GPU), or 0 (force CPU).
 USE_OLLAMA_GPU ?= auto
@@ -49,16 +55,22 @@ OLLAMA_CONTAINER ?= hawki_ollama
 CRAWLER_CONTAINER ?= crawl4ai-service
 FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
+# Sibling checkouts started by the external tool targets (up-*-tool/down-*-tool).
+CRAWLER_DIR ?= ../CustomCrawler
+FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
+FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
+
 # Derived Compose suffixes and profiles.
 CORE_GPU_COMPOSE_SUFFIX :=
 CORE_PROFILES := $(CORE_PROFILES_BASE)
 
 ifeq ($(USE_OLLAMA_GPU),1)
 	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	CORE_PROFILES := gpu$(if $(strip $(CORE_PROFILES_BASE)),$(COMMA)$(CORE_PROFILES_BASE),)
-	GPU_MESSAGE := Ollama GPU override enabled.
+	PYTHON_TORCH_EXTRA := gpu
+	GPU_MESSAGE := Ollama and reranker GPU acceleration enabled.
 else
-	GPU_MESSAGE := Ollama CPU mode.
+	PYTHON_TORCH_EXTRA := cpu
+	GPU_MESSAGE := CPU mode; NVIDIA Python packages are excluded.
 endif
 
 CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)
@@ -105,14 +117,16 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps python-test python-integration provider-test system-test migration-test
+.PHONY: clean python-lock python-deps system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
-.PHONY: migrate-core _migrate-core-before-start
+.PHONY: migrate-core
 .PHONY: _up-core up-core up-core-local up-core-server
-.PHONY: health test-services
+.PHONY: health
 .PHONY: pull-models logs-core
-.PHONY: down-core down-rag restart-core
+.PHONY: down-core down-rag restart-core teardown
 .PHONY: neo4j-fresh
+.PHONY: up-crawler-tool down-crawler-tool up-file-converter-tool down-file-converter-tool
+.PHONY: up-monitor-workflows-tool down-monitor-workflows-tool up-tools down-tools
 
 ##@ General
 help: ## Show the available commands grouped by module.
@@ -130,30 +144,27 @@ clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 	@find . -type f -name "*.pyc" -delete
 	@find . -type f -name "*.pyo" -delete
 	@find . -type f -name "*.log" -delete
-	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv dist build
+	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv python_rag/.venv python_rag/.venv-reranker dist build
 
-python-lock: ## Resolve and lock all Python runtime dependencies for Python 3.11.
-	@command -v uv >/dev/null 2>&1 || { echo "uv is required to regenerate python_rag/requirements.lock.txt"; exit 1; }
-	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@uv run --python 3.11 --with pip python -m pip download --no-deps \
-		--dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
-	@uv run --python 3.11 python python_rag/scripts/build_mineru_transformers5_wheel.py \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
-		--python-version 3.11 --universal \
-		--find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
-		--output-file python_rag/requirements.lock.txt
+python-lock: ## Resolve the Python 3.13 workspace and verify CPU and CUDA variants.
+	@command -v uv >/dev/null 2>&1 || { echo "uv is required to resolve the Python workspace"; exit 1; }
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv lock
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv lock --check
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-reranker --extra cpu --no-dev --output-file /tmp/hawki-reranker.cpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-reranker --extra gpu --no-dev --output-file /tmp/hawki-reranker.gpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-indexer-worker --extra cpu --no-dev --output-file /tmp/hawki-indexer.cpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-indexer-worker --extra gpu --no-dev --output-file /tmp/hawki-indexer.gpu.txt
+	@! grep -Eq '^(cuda-|nvidia-)' /tmp/hawki-reranker.cpu.txt /tmp/hawki-indexer.cpu.txt || \
+		{ echo "CPU dependency resolution unexpectedly contains CUDA packages"; exit 1; }
+	@grep -q 'torch==2.13.0' /tmp/hawki-reranker.cpu.txt /tmp/hawki-reranker.gpu.txt /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
+	@grep -q 'numpy==2.5.1' /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
+	@grep -q 'av==13.1.0' /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
 
-python-deps: ## Install locked Python runtime and test dependencies.
-	@python3 -m pip install --upgrade pip setuptools wheel
-	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@python3 -m pip download --no-deps --dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
-	@python3 python_rag/scripts/build_mineru_transformers5_wheel.py \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@python3 -m pip install --find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
-		-r python_rag/requirements.lock.txt -r python_rag/requirements-test.txt
+python-deps: ## Sync the data plane and isolated reranker uv environments.
+	@command -v uv >/dev/null 2>&1 || { echo "uv is required to sync the Python workspace"; exit 1; }
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv sync --frozen --group test --extra "$(PYTHON_TORCH_EXTRA)" $(PYTHON_DATA_PLANE_PACKAGES)
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv sync --frozen --only-group lint --inexact
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" UV_PROJECT_ENVIRONMENT="$(PYTHON_RERANKER_ENV)" uv sync --frozen --group test --package hawki-reranker --extra "$(PYTHON_TORCH_EXTRA)"
 
 # ==============================================================================
 # Docker foundation and application images
@@ -173,7 +184,7 @@ network: ## Create the external Docker networks when they do not exist.
 	done
 
 pull-core: ## Pull third-party runtime images used directly by the core stack.
-	@$(COMPOSE_CMD) pull postgres temporal hawki_rag_neo4j $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE)
 
 build-app: ## Build the Laravel HAWKI RAG application image.
 	@$(COMPOSE_CMD) build hawki_rag_app
@@ -209,6 +220,8 @@ publish-ui: build-ui ## Publish freshly built frontend assets into the app conta
 ##@ Database
 
 migrate-core: network ## Run Laravel migrations with startup retry handling.
+	@echo "Starting the Laravel app for database migrations..."
+	@$(COMPOSE_CMD) up -d postgres temporal hawki_rag_app
 	@echo "Running Laravel migrations..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
@@ -223,22 +236,6 @@ migrate-core: network ## Run Laravel migrations with startup retry handling.
 	done; \
 	echo "Laravel migrations failed after 30 attempts."; \
 	exit 1
-
-_migrate-core-before-start: network
-	@echo "Running Laravel migrations before writable services start..."
-	@attempt=1; \
-	while [ "$$attempt" -le 30 ]; do \
-		if $(COMPOSE_CMD) run --rm --no-deps hawki_rag_app php artisan migrate --force; then \
-			echo "Laravel migrations are up to date."; \
-			exit 0; \
-		fi; \
-		echo "Migration attempt $$attempt failed; retrying in 2s..."; \
-		attempt=$$((attempt + 1)); \
-		sleep 2; \
-	done; \
-	echo "Laravel migrations failed after 30 attempts; writable services remain stopped."; \
-	exit 1
-
 # ==============================================================================
 # Stack startup profiles
 # ==============================================================================
@@ -246,7 +243,7 @@ _migrate-core-before-start: network
 ##@ Stack startup
 
 _up-core: network
-	@echo $(PROFILE_MESSAGE)
+	@echo "$(PROFILE_MESSAGE)"
 	@if [ "$(BUILD_STACK)" = "1" ]; then \
 		echo "Building stack images (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."; \
 		$(COMPOSE_CMD) build; \
@@ -255,12 +252,9 @@ _up-core: network
 	fi
 	@echo "Quiescing application writers before database migration..."
 	@$(COMPOSE_CMD) down --remove-orphans
-	@$(COMPOSE_CMD) up -d --wait postgres
-	@$(COMPOSE_CMD) run --rm --no-deps hawki-rag-shared-storage-init
-	@$(MAKE) --no-print-directory _migrate-core-before-start COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
+	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 	@echo "Launching the migrated stack..."
 	@$(COMPOSE_CMD) up -d --remove-orphans
-	@$(COMPOSE_CMD) rm -f hawki-rag-shared-storage-init >/dev/null
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \
@@ -277,14 +271,14 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Production mode enabled with loopback UI.
-up-core: _up-core ## Start the production-mode stack at http://localhost:8080.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Runtime mode loaded from $(ENV_FILE), with loopback UI.
+up-core: _up-core ## Start the stack at http://localhost:8080 using ENV_FILE.
 
 up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-local: BUILD_STACK = 0
-up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Local development override enabled.
-up-core-local: _up-core ## Reuse images, start source-mounted development, and publish the UI.
+up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Source-mounted development using $(ENV_FILE).
+up-core-local: _up-core ## Reuse images, source-mount the app, and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
@@ -293,8 +287,8 @@ up-core-local: _up-core ## Reuse images, start source-mounted development, and p
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Production reverse-proxy mode enabled.
-up-core-server: _up-core ## Start production mode without publishing a host UI port.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Reverse-proxy mode loaded from $(ENV_FILE).
+up-core-server: _up-core ## Start without a host UI port, using ENV_FILE.
 
 # ==============================================================================
 # Health and service diagnostics
@@ -362,16 +356,16 @@ health: ## Check required and optional containers plus service endpoints.
 	check_running hawki_rag_temporal_workflow_worker 0; \
 	check_running hawki_rag_temporal_scraper_worker 0; \
 	check_running hawki_rag_temporal_converter_worker 0; \
-	check_running hawki_rag_temporal_ingestion_worker 0; \
+	check_running hawki_rag_indexer_worker 0; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
 	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
-	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
+	check_exec "Qdrant readyz" hawki_qdrant "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.0\r\n\r\n\" >&3 && grep -q \" 200 \" <&3'" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
-	check_exec "Ingestion bridge" hawki_rag_bridge "curl -fsS http://localhost:8000/health" 0; \
-	check_exec "Local reranker" hawki_rag_rerank "curl -fsS http://localhost:8000/health" 0; \
+	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \
+	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
 	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
@@ -381,47 +375,11 @@ health: ## Check required and optional containers plus service endpoints.
 		exit 1; \
 	fi
 
-test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
-	@set -e; \
-	printf "qdrant: "; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_qdrant; then \
-		code=$$(docker exec hawki_qdrant sh -lc "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:6333/readyz" || echo 000); \
-		if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
-	else \
-		echo "skipped (container not running)"; \
-	fi; \
-	printf "neo4j: "; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_neo4j; then \
-		docker exec hawki_rag_neo4j sh -lc "wget --spider -q http://localhost:7474/browser" >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
-	else \
-		echo "skipped (container not running)"; \
-	fi; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
-	else \
-		printf "hawki_rag_bridge: skipped (container not running)\n"; \
-	fi; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
-	else \
-		printf "hawki_rag_rerank: skipped (container not running)\n"; \
-	fi; \
-	echo "Service checks completed."
-
 # ==============================================================================
-# Automated tests
+# Laravel automated tests
 # ==============================================================================
 
 ##@ Tests
-
-python-test: ## Run deterministic Python contract and API tests.
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
-
-python-integration: ## Run live storage and Temporal integration tests (unavailable services skip).
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and not model" python_rag/tests/integration
-
-provider-test: ## Run live Ollama and LiteLLM compatibility tests (unavailable services skip).
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and model" python_rag/tests/integration
 
 system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
 	@php artisan test --testsuite=System
@@ -456,7 +414,7 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 ##@ Logs
 
 logs-core: ## Follow logs for the complete core stack.
-	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
 
 # ==============================================================================
 # Stack shutdown and restart
@@ -464,14 +422,116 @@ logs-core: ## Follow logs for the complete core stack.
 
 ##@ Stack lifecycle
 
+KEEP_OLLAMA_MODELS ?= 0
+TEARDOWN_DATA_VOLUMES ?= hawki-rag_hawki_postgres_data hawki-rag_qdrant_data hawki-rag_neo4j_data rawki_shared_storage
+
 down-core: ## Stop and remove the active HAWKI RAG Compose stack.
 	@$(COMPOSE_CMD) down
 
 down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 
 restart-core: network ## Recreate all core services and Temporal workers.
-	@echo $(PROFILE_MESSAGE)
+	@echo "$(PROFILE_MESSAGE)"
 	@$(COMPOSE_CMD) up -d --force-recreate
+
+teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
+	@set -e; \
+	echo "Tearing down the HAWKI RAG stack ($(if $(filter 1 true yes on,$(KEEP_OLLAMA_MODELS)),keeping,removing)) Ollama model cache..."; \
+	$(MAKE) --no-print-directory down-tools >/dev/null 2>&1 \
+		|| echo "External tools are not running or sibling checkouts are missing; continuing."; \
+	if [ "$(KEEP_OLLAMA_MODELS)" = "1" ]; then \
+		$(COMPOSE_CMD) down --remove-orphans; \
+		for volume in $(TEARDOWN_DATA_VOLUMES); do \
+			if docker volume inspect "$$volume" >/dev/null 2>&1; then \
+				if docker volume rm "$$volume" >/dev/null 2>&1; then \
+					echo "Removed volume $$volume"; \
+				else \
+					echo "WARNING: volume $$volume is still in use and was not removed."; \
+				fi; \
+			else \
+				echo "Volume $$volume already absent; skipping."; \
+			fi; \
+		done; \
+		echo "Kept volume hawki-rag_ollama (KEEP_OLLAMA_MODELS=1)."; \
+	else \
+		$(COMPOSE_CMD) down --volumes --remove-orphans; \
+		echo "Removed all project volumes including hawki-rag_ollama."; \
+	fi; \
+	echo "Teardown complete. Recreate everything with: make up-core"
+
+# ==============================================================================
+# External crawler and file-converter tools, plus Temporal workflow monitor
+# ==============================================================================
+
+##@ External tools
+
+up-crawler-tool: network ## Start the sibling crawler container (UI on port 8041).
+	@set -e; \
+	if [ ! -d "$(CRAWLER_DIR)" ]; then \
+		echo "Missing sibling checkout: $(CRAWLER_DIR) (override with CRAWLER_DIR)."; \
+		exit 1; \
+	fi; \
+	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
+		echo "Creating the external rawki_shared_storage volume..."; \
+		docker volume create rawki_shared_storage; \
+	fi; \
+	echo "Starting the crawler from $(CRAWLER_DIR)..."; \
+	$(MAKE) -C "$(CRAWLER_DIR)" up; \
+	echo "Crawler UI: http://localhost:8041/ui/"
+
+down-crawler-tool: ## Stop the sibling crawler container.
+	@$(MAKE) -C "$(CRAWLER_DIR)" down
+
+up-file-converter-tool: network ## Start the sibling file-converter container (health on port 8004).
+	@set -e; \
+	if [ ! -d "$(FILE_CONVERTER_DIR)" ]; then \
+		echo "Missing sibling checkout: $(FILE_CONVERTER_DIR) (override with FILE_CONVERTER_DIR)."; \
+		exit 1; \
+	fi; \
+	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
+		echo "Creating the external rawki_shared_storage volume..."; \
+		docker volume create rawki_shared_storage; \
+	fi; \
+	echo "Starting the file converter from $(FILE_CONVERTER_DIR)..."; \
+	converter_token=$$(grep -m1 '^EXTERNAL_CONVERTER_TOKEN=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$converter_token" ]; then \
+		converter_token=$$(grep -m1 '^FILE_CONVERTER_TOKEN=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	fi; \
+	if [ -n "$$converter_token" ]; then \
+		export F_API_KEY="$$converter_token"; \
+	fi; \
+	cd "$(FILE_CONVERTER_DIR)" && \
+		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml up -d --build; \
+	echo "Converter health: http://localhost:8004/health"
+
+down-file-converter-tool: ## Stop the sibling file-converter container.
+	@cd "$(FILE_CONVERTER_DIR)" && \
+		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
+
+up-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
+up-monitor-workflows-tool: network ## Start the Temporal workflow UI (compose profile temporal-ui).
+	@echo "Starting the Temporal workflow UI (profile temporal-ui)..."
+	@$(COMPOSE_CMD) up -d temporal-ui
+	@set -e; \
+	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	echo "Temporal workflow UI: http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
+
+down-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
+down-monitor-workflows-tool: ## Stop the Temporal workflow UI without touching the core stack.
+	@$(COMPOSE_CMD) rm --stop --force temporal-ui
+
+up-tools: up-crawler-tool up-file-converter-tool up-monitor-workflows-tool ## Start all external tools.
+	@set -e; \
+	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	echo ""; \
+	echo "External tools are starting:"; \
+	echo "  crawler UI:        http://localhost:8041/ui/"; \
+	echo "  converter health:  http://localhost:8004/health"; \
+	echo "  temporal UI:       http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
+
+down-tools: down-crawler-tool down-file-converter-tool down-monitor-workflows-tool ## Stop all external tools.
 
 # ==============================================================================
 # Destructive data maintenance

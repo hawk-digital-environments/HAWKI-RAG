@@ -6,6 +6,8 @@ namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Document\ManagedDocumentRecoveryGuard;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -13,7 +15,7 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
-use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\TextIngestion\TextIngestionRecoveryService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -34,10 +36,11 @@ readonly class PipelineRecoveryAttemptService
         private PipelineTaskRepository $taskRepository,
         private PipelineTransactionRepository $transactions,
         private PythonTemporalBridgeClient $temporalBridge,
+        private TextIngestionRecoveryService $textIngestionRecovery,
+        private ManagedDocumentRecoveryGuard $managedRecovery,
         private LoggerInterface $logger,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -130,6 +133,20 @@ readonly class PipelineRecoveryAttemptService
                 ];
             }
 
+            $source = $this->ingestionSources->lockBySourceId($locked->source_id);
+            if (
+                $source
+                && $this->textIngestionRecovery->supports($locked, $source)
+                && $this->textIngestionRecovery->isDeletionTombstone($source)
+            ) {
+                return [
+                    'result' => 'skipped',
+                    'jobId' => $locked->job_id,
+                    'taskId' => $locked->task_id,
+                    'message' => 'Deleted direct-text ingestions cannot be recovered.',
+                ];
+            }
+
             $metadata = is_array($locked->metadata) ? $locked->metadata : [];
             $retryCount = (int) ($metadata['retry_count'] ?? 0) + 1;
             $recoveryEvent = $this->metadata->recoveryEvent($locked, $scope, $scopeId, $retryCount);
@@ -150,7 +167,7 @@ readonly class PipelineRecoveryAttemptService
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function startTemporalRetry(PipelineTask $task, PipelineJob $job, array $metadata): PipelineJob
     {
@@ -159,7 +176,18 @@ readonly class PipelineRecoveryAttemptService
             throw new \RuntimeException("Ingestion source {$job->source_id} was not found.");
         }
 
-        $source = $this->ingestionSources->upsertStarting($source->source_id, [
+        if (
+            $this->textIngestionRecovery->supports($job, $source)
+            && $this->textIngestionRecovery->isDeletionTombstone($source)
+        ) {
+            throw new \RuntimeException('Deleted direct-text ingestions cannot be recovered.');
+        }
+
+        $directText = $this->textIngestionRecovery->supports($job, $source);
+        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
+        $this->managedRecovery->verify($source);
+
+        $startingAttributes = [
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
             'dataset_id' => $task->dataset_id,
@@ -169,13 +197,28 @@ readonly class PipelineRecoveryAttemptService
             'metadata' => array_merge($source->metadata ?? [], [
                 'retried_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
             ]),
-        ]);
+        ];
+        if (! isset($source->metadata['managed_dispatch'])) {
+            $source = $this->ingestionSources->upsertStarting($source->source_id, $startingAttributes);
+        }
 
-        $workflowId = $this->retryWorkflowId($job, $source->source_id, (int) ($metadata['retry_count'] ?? 1));
-        $execution = $this->temporalBridge->startIngestWorkflow(
-            $this->workflowPayloads->input($task, $job, $source),
-            $workflowId,
-        );
+        if ($directText) {
+            $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
+        } else {
+            $workflowId = $this->retryWorkflowId(
+                $job,
+                $source->source_id,
+                (int) ($metadata['retry_count'] ?? 1),
+            );
+            if (isset($source->metadata['managed_dispatch'])) {
+                $source = $this->ingestionSources->reserveManagedRecovery($source, $job, $workflowId, $workflowInput, $startingAttributes);
+                $workflowInput = $source->metadata['managed_dispatch']['input'];
+            }
+            $execution = $this->temporalBridge->startIngestWorkflow(
+                $workflowInput,
+                $workflowId,
+            );
+        }
         $scheduleId = is_string($job->temporal_schedule_id) ? $job->temporal_schedule_id : null;
         $metadata['temporal'] = array_filter([
             'workflow_id' => $execution->workflowId,

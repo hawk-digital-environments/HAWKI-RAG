@@ -4,10 +4,22 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Document;
 
+use App\Http\Requests\Concerns\InteractsWithManagedDocumentInput;
+use App\Services\Document\Repositories\ManagedDocumentRepository;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateManagedDocumentRequest extends ManagedDocumentRequest
+class UpdateManagedDocumentRequest extends FormRequest
 {
+    use InteractsWithManagedDocumentInput;
+
+    public function authorize(ManagedDocumentRepository $documents): bool
+    {
+        abort_if($documents->find((string) $this->route('documentId')) === null, 404, 'Document was not found.');
+
+        return true;
+    }
+
     public function rules(): array
     {
         return [

@@ -57,7 +57,7 @@ class DatasetScopedQueryTest extends TestCase
                     'neo4j_namespace' => 'graph_authorized',
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
-                    'graph_enabled' => true,
+                    'graph_enabled' => false,
                 ]
                 && ! array_key_exists('dataset_id', $payload);
         });

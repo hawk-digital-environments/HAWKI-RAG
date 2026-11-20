@@ -4,9 +4,13 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Repositories;
 
 use App\Models\Dataset;
+use App\Models\IngestionSource;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
+use App\Services\Document\Values\ManagedDocumentId;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Carbon;
@@ -41,6 +45,9 @@ readonly class PipelineTaskRepository
         $limit = max(1, min(250, $limit));
 
         return PipelineTask::query()
+            ->where(function ($query): void {
+                $query->whereNull('metadata->history_hidden')->orWhere('metadata->history_hidden', false);
+            })
             ->orderByDesc('started_at')
             ->orderByDesc('id')
             ->limit($limit)
@@ -65,6 +72,32 @@ readonly class PipelineTaskRepository
                     ->orWhereNull('task_id');
             })
             ->exists();
+    }
+
+    /** Keep managed ownership evidence; removing history only hides the task list entry. */
+    public function hideManagedHistory(PipelineTask $task): bool
+    {
+        $request = $task->metadata['request'] ?? [];
+        $managed = ManagedDocumentId::fromRequestMetadata($request['metadata'] ?? $request) !== null
+            || ManagedDocument::query()->where('latest_task_id', $task->task_id)->exists()
+            || ManagedDocumentOutput::query()->where('task_id', $task->task_id)->exists()
+            || IngestionSource::query()->where(function ($query) use ($task): void {
+                $query->where('task_id', $task->task_id)->orWhereIn('source_id', $task->jobs->pluck('source_id')->filter());
+            })->get()->contains(function (IngestionSource $source): bool {
+                $request = $source->metadata['request'] ?? [];
+
+                return isset($source->metadata['managed_dispatch'])
+                    || ManagedDocumentId::fromRequestMetadata($request['metadata'] ?? $request) !== null;
+            });
+        if (! $managed) {
+            return false;
+        }
+        $this->database->transaction(function () use ($task): void {
+            $current = PipelineTask::query()->whereKey($task->getKey())->lockForUpdate()->firstOrFail();
+            $current->forceFill(['metadata' => [...($current->metadata ?? []), 'history_hidden' => true]])->save();
+        });
+
+        return true;
     }
 
     /**
@@ -125,13 +158,19 @@ readonly class PipelineTaskRepository
      */
     public function markRecoveryRunning(PipelineTask $task, array $metadata): PipelineTask
     {
-        $task->forceFill([
-            'status' => PipelineTask::STATUS_RUNNING,
-            'finished_at' => null,
-            'metadata' => $metadata,
-        ])->save();
+        return $this->database->transaction(function () use ($task, $metadata): PipelineTask {
+            $current = PipelineTask::query()->whereKey($task->getKey())->lockForUpdate()->firstOrFail();
+            if (($current->metadata['history_hidden'] ?? false) === true) {
+                $metadata['history_hidden'] = true;
+            }
+            $current->forceFill([
+                'status' => PipelineTask::STATUS_RUNNING,
+                'finished_at' => null,
+                'metadata' => $metadata,
+            ])->save();
 
-        return $task->refresh();
+            return $task->refresh();
+        });
     }
 
     /**

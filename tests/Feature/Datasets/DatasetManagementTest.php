@@ -3,9 +3,11 @@
 namespace Tests\Feature\Datasets;
 
 use App\Models\Dataset;
-use App\Models\Document;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Dataset\DatasetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
@@ -27,6 +29,54 @@ class DatasetManagementTest extends TestCase
         config()->set('config.graph_provider', 'ollama');
     }
 
+    public function test_dataset_creation_is_retry_safe_for_compatible_metadata(): void
+    {
+        $this->actingAsApiUser();
+        $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
+        $payload = [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+            'description' => 'Knowledge for Assistant 42',
+        ];
+
+        $this->postJson('/api/datasets', $payload)
+            ->assertCreated()
+            ->assertJsonPath('dataset_id', 'assistant_42')
+            ->assertJsonPath('dataset.qdrant_collection', 'hawki_assistant_42');
+
+        $this->postJson('/api/datasets', $payload)
+            ->assertOk()
+            ->assertJsonPath('dataset_id', 'assistant_42');
+
+        $this->assertSame(
+            1,
+            Dataset::query()->where('dataset_id', 'assistant_42')->count(),
+        );
+    }
+
+    public function test_dataset_creation_rejects_conflicting_metadata(): void
+    {
+        $this->actingAsApiUser();
+        $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
+
+        $this->postJson('/api/datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+        ])->assertCreated();
+
+        $this->postJson('/api/datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Different assistant',
+        ])
+            ->assertConflict()
+            ->assertJsonPath('error', 'dataset_creation_conflict');
+
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+        ]);
+    }
+
     public function test_datasets_are_visible_with_counts_last_ingestion_and_graph_stats(): void
     {
         $this->withoutVite();
@@ -42,14 +92,25 @@ class DatasetManagementTest extends TestCase
             'created_at' => now()->subHour(),
         ]);
 
-        Document::query()->create([
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_dataset_ui_1',
             'dataset_id' => 'dataset-ui',
-            'collection' => 'hawki_dataset_ui',
-            'source_type' => Document::SOURCE_SCRAPE,
+            'display_name' => 'page.md',
+            'source_type' => 'scrape',
             'source_url' => 'https://example.test/page',
-            'storage_path' => '/app/shared/dataset-ui/page.md',
-            'checksum_sha256' => hash('sha256', 'dataset-ui-doc'),
-            'status' => Document::STATUS_COMPLETED,
+            'source_checksum_sha256' => hash('sha256', 'dataset-ui-doc'),
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+
+        ManagedDocumentOutput::query()->create([
+            'document_id' => 'adoc_dataset_ui_1',
+            'bridge_document_id' => 'doc-dataset-ui-1',
+            'qdrant_collection' => 'hawki_dataset_ui',
+            'neo4j_namespace' => 'hawki_dataset_ui',
+            'chunk_count' => 7,
+            'status' => 'indexed',
+            'active' => true,
         ]);
 
         PipelineTask::query()->create([
@@ -109,7 +170,7 @@ class DatasetManagementTest extends TestCase
             ->assertJsonPath('dataset.embedding_provider', 'ollama')
             ->assertJsonPath('dataset.embedding_model', 'bge-m3')
             ->assertJsonPath('dataset.tasks.0.task_id', 'task-dataset-ui')
-            ->assertJsonPath('dataset.documents.0.dataset_id', 'dataset-ui')
+            ->assertJsonMissingPath('dataset.documents')
             ->assertJsonPath('dataset.ingestion_history.0.job_id', 'ingest-dataset-ui');
     }
 
@@ -194,7 +255,7 @@ class DatasetManagementTest extends TestCase
             ->assertJsonPath('dataset.graph_stats.qdrant.message', 'Collection not created yet');
     }
 
-    public function test_deleting_dataset_removes_neo4j_nodes_by_single_doc_id_and_attached_relationships(): void
+    public function test_dataset_deletion_retains_ambiguous_legacy_output_evidence(): void
     {
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
         config()->set('config.neo4j_http_url', 'http://neo4j.test');
@@ -221,41 +282,71 @@ class DatasetManagementTest extends TestCase
             'neo4j_namespace' => 'hawki_delete_dataset',
         ]);
 
-        Document::query()->create([
-            'external_id' => 'ingest-delete-dataset',
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_delete_dataset_1',
             'dataset_id' => 'delete-dataset',
-            'collection' => 'hawki_delete_dataset',
-            'source_type' => Document::SOURCE_UPLOAD,
+            'display_name' => 'delete-dataset.pdf',
+            'source_type' => 'upload',
             'source_url' => 'file:///delete-dataset.pdf',
-            'storage_path' => '/app/shared/delete-dataset/content.md',
-            'checksum_sha256' => hash('sha256', 'delete-dataset-doc'),
-            'status' => Document::STATUS_COMPLETED,
+            'source_checksum_sha256' => hash('sha256', 'delete-dataset-doc'),
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+
+        ManagedDocumentOutput::query()->create([
+            'document_id' => 'adoc_delete_dataset_1',
+            'bridge_document_id' => 'ingest-delete-dataset',
+            'qdrant_collection' => 'hawki_delete_dataset',
+            'neo4j_namespace' => 'hawki_delete_dataset',
+            'chunk_count' => 1,
+            'status' => 'indexed',
+            'active' => true,
         ]);
 
         $this->actingAsApiUser();
 
         $this->deleteJson('/api/datasets/delete-dataset/storage')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('cleanup.neo4j.document_job_ids', 1)
-            ->assertJsonPath('cleanup.neo4j.nodes', 4)
-            ->assertJsonPath('cleanup.neo4j.relationships', 6);
+            ->assertAccepted()
+            ->assertJsonPath('success', true);
+        $this->assertSame(409, app(DatasetService::class)->cleanup('delete-dataset')['status']);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-dataset', 'status' => Dataset::STATUS_ARCHIVED]);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::assertNothingSent();
+    }
 
-        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'delete-dataset']);
+    public function test_dataset_final_verification_preserves_shared_storage_and_requires_zero_owned_data(): void
+    {
+        $dataset = Dataset::query()->create(['dataset_id' => 'scoped-delete', 'name' => 'Scoped delete',
+            'qdrant_collection' => 'shared_collection', 'neo4j_namespace' => 'owned_namespace']);
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+        $remaining = 1;
+        Http::preventStrayRequests();
+        Http::fake(function (Request $request) use (&$remaining) {
+            if (str_starts_with($request->url(), 'http://qdrant.test')) {
+                $this->assertSame('POST', $request->method());
+                $this->assertSame(['must' => [['key' => 'dataset_id', 'match' => ['value' => 'scoped-delete']]]], $request['filter']);
+                $this->assertTrue($request['exact']);
 
-        Http::assertSent(function (Request $request): bool {
-            if (! str_starts_with($request->url(), 'http://neo4j.test/')) {
-                return false;
+                return Http::response(['result' => ['count' => $remaining]]);
+            }
+            foreach ($request['statements'] as $statement) {
+                $this->assertStringContainsString('dataset_id = $dataset_id AND', $statement['statement']);
+                $this->assertStringNotContainsString(' OR ', $statement['statement']);
+                $this->assertStringNotContainsString('DELETE', $statement['statement']);
+                $this->assertSame(['dataset_id' => 'scoped-delete', 'namespace' => 'owned_namespace'], $statement['parameters']);
             }
 
-            $statements = $request['statements'];
-            $nodeCleanup = (string) ($statements[1]['statement'] ?? '');
-
-            return ($statements[1]['parameters']['document_job_ids'] ?? []) === ['ingest-delete-dataset']
-                && str_contains($nodeCleanup, 'OR n.doc_id IN $document_job_ids')
-                && str_contains($nodeCleanup, 'OPTIONAL MATCH (node)-[attached]-()')
-                && str_contains($nodeCleanup, 'FOREACH (node IN nodes | DELETE node)');
+            return Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]);
         });
+        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertAccepted();
+        Http::assertNothingSent();
+        $this->artisan('schedule:run')->assertExitCode(0);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_ARCHIVED]);
+        $remaining = 0;
+        $this->artisan('schedule:run')->assertExitCode(0);
+        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertOk()->assertJsonPath('success', true);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_DELETED]);
     }
 
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void

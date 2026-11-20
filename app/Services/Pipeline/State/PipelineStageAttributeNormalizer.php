@@ -38,7 +38,7 @@ readonly class PipelineStageAttributeNormalizer
      */
     public function stageAttributes(array $attributes): array
     {
-        return array_filter([
+        $normalized = [
             'status' => $attributes['status'] ?? null,
             'counts' => $attributes['counts'] ?? null,
             'metadata' => $attributes['metadata'] ?? null,
@@ -49,7 +49,15 @@ readonly class PipelineStageAttributeNormalizer
             'started_at' => $attributes['started_at'] ?? null,
             'completed_at' => $attributes['completed_at'] ?? null,
             'failed_at' => $attributes['failed_at'] ?? null,
-        ], static fn ($value) => $value !== null);
+        ];
+
+        return array_filter(
+            $normalized,
+            static fn (mixed $value, string $key): bool => $value !== null
+                || (in_array($key, ['started_at', 'completed_at', 'failed_at'], true)
+                    && array_key_exists($key, $attributes)),
+            ARRAY_FILTER_USE_BOTH,
+        );
     }
 
     /**

@@ -17,11 +17,10 @@ readonly class PipelineStageRollupService
     public function __construct(
         private PipelineJobRollupRepository $jobs,
         private PipelineStageStateRepository $stageStates,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function refresh(PipelineJob $job, string $currentStage, array $attributes): void
     {
@@ -29,7 +28,9 @@ readonly class PipelineStageRollupService
 
         $statuses = $stages->pluck('status')->all();
         $counts = $this->counts($stages);
-        $status = $this->overallStatus($statuses);
+        $status = isset($attributes['job_status'])
+            ? (string) $attributes['job_status']
+            : $this->overallStatus($statuses);
 
         $this->jobs->updateStageRollup(
             $job,
@@ -42,14 +43,20 @@ readonly class PipelineStageRollupService
     }
 
     /**
-     * @param list<string> $statuses
+     * @param  list<string>  $statuses
      */
     public function overallStatus(array $statuses): string
     {
         if ($statuses === []) {
             return PipelineJob::STATUS_PENDING;
         }
-        if (array_intersect($statuses, [PipelineJob::STATUS_RUNNING, 'processing', 'received'])) {
+        if (array_intersect($statuses, [
+            PipelineJob::STATUS_PENDING,
+            PipelineJob::STATUS_RUNNING,
+            'pending',
+            'processing',
+            'received',
+        ])) {
             return PipelineJob::STATUS_RUNNING;
         }
         if (in_array(PipelineJob::STATUS_FAILED, $statuses, true)) {
@@ -69,7 +76,7 @@ readonly class PipelineStageRollupService
     }
 
     /**
-     * @param iterable<PipelineStageState> $stages
+     * @param  iterable<PipelineStageState>  $stages
      * @return array{total:int,processed:int,failed:int,skipped:int}
      */
     public function counts(iterable $stages): array
@@ -87,7 +94,7 @@ readonly class PipelineStageRollupService
     }
 
     /**
-     * @param iterable<PipelineStageState> $stages
+     * @param  iterable<PipelineStageState>  $stages
      */
     public function latestCompletedAt(iterable $stages): ?Carbon
     {

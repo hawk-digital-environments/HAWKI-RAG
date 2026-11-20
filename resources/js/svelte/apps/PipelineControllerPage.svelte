@@ -150,7 +150,7 @@
                     <a class="pipeline-new-task-link" href="/ui/tasks/new">+ New Task</a>
                 </div>
                 <label class="controller-toggle pipeline-task-graph-toggle" for="pipeline-task-graph">
-                    <input id="pipeline-task-graph" type="checkbox" checked />
+                    <input id="pipeline-task-graph" type="checkbox" />
                     <span>Neo4j Graph</span>
                 </label>
                 <div id="pipeline-task-note" class="pipeline-task-note"></div>

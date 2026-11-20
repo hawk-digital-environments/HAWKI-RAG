@@ -7,6 +7,7 @@ namespace App\Services\Document;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
+use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -14,9 +15,9 @@ readonly class ManagedDocumentPayloadBuilder
 {
     public function __construct(
         private ManagedIngestionMetadataRepository $metadata,
-        private DocumentPayloadBuilder $documents,
-    ) {
-    }
+        private PipelineStageStateRepository $stageStates,
+        private DocumentMarkdownPreviewReader $previews,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -32,7 +33,7 @@ readonly class ManagedDocumentPayloadBuilder
             ->where('active', true)
             ->values();
         $primaryOutput = $activeOutputs->first();
-        $backing = $this->backingDocumentPayload($document, $includeDetails);
+        $backing = $this->pipelineArtifactPayload($document, $includeDetails);
         $managedMetadata = is_array($document->metadata_json) ? $document->metadata_json : [];
         $contentType = $this->stringValue($backing['content_type'] ?? null);
         $qdrantCollection = $this->stringValue($backing['qdrant_collection'] ?? null)
@@ -102,7 +103,6 @@ readonly class ManagedDocumentPayloadBuilder
             ?? ($payload['markdown_preview'] === '' ? 'No extracted Markdown preview is available.' : null);
         $payload['markdown_preview_truncated'] = (bool) ($backing['markdown_preview_truncated'] ?? false);
         $payload['related_jobs'] = is_array($backing['related_jobs'] ?? null) ? $backing['related_jobs'] : [];
-        $payload['indexed_document_id'] = $this->stringValue($backing['id'] ?? null);
 
         return $payload;
     }
@@ -110,19 +110,102 @@ readonly class ManagedDocumentPayloadBuilder
     /**
      * @return array<string, mixed>
      */
-    private function backingDocumentPayload(ManagedDocument $document, bool $includeDetails): array
+    private function pipelineArtifactPayload(ManagedDocument $document, bool $includeDetails): array
+    {
+        $payload = $this->ingestionArtifactPayload($document);
+        $jobId = $this->stringValue($document->latest_job_id);
+        if ($jobId === null) {
+            return $payload;
+        }
+
+        $state = $this->stageStates->findForJobStage($jobId, 'convert');
+        $metadata = is_array($state?->metadata) ? $state->metadata : [];
+        $artifacts = is_array($metadata['artifacts'] ?? null) ? $metadata['artifacts'] : [];
+        $artifact = $this->preferredMarkdownArtifact($artifacts);
+        if ($artifact === null) {
+            return $payload;
+        }
+
+        $path = $this->stringValue($artifact['uri'] ?? null);
+        $payload = array_merge($payload, [
+            'content_type' => $this->stringValue($artifact['media_type'] ?? null) ?? 'text/markdown',
+            'local_path' => $path,
+            'file_size' => $this->intValue($artifact['size_bytes'] ?? null),
+        ]);
+
+        if (! $includeDetails) {
+            return $payload;
+        }
+
+        $preview = $this->previews->preview($path);
+        $payload['markdown_preview'] = $preview['content'];
+        $payload['markdown_preview_path'] = $preview['path'];
+        $payload['markdown_preview_error'] = $preview['error'];
+        $payload['markdown_preview_truncated'] = $preview['truncated'];
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ingestionArtifactPayload(ManagedDocument $document): array
     {
         $sourceId = $this->stringValue($document->latest_source_id);
         if ($sourceId === null) {
             return [];
         }
 
-        $indexedDocument = $this->metadata->documentsForSource($sourceId)->first();
-        if (! $indexedDocument instanceof \App\Models\Document) {
+        $artifact = $this->metadata->latestArtifactForSource($sourceId);
+        if ($artifact === null) {
             return [];
         }
 
-        return $this->documents->payload($indexedDocument, includeDetails: $includeDetails);
+        $summary = is_array($artifact->summary) ? $artifact->summary : [];
+        $graphPreview = is_array($artifact->graph_preview)
+            ? $artifact->graph_preview
+            : $this->arrayValue($summary['graph_preview'] ?? null);
+
+        return [
+            'qdrant_point_count' => $this->intValue(data_get($summary, 'qdrant_preview.planned_points'))
+                ?? $this->intValue($summary['planned_points'] ?? null)
+                ?? $this->intValue(data_get($summary, 'documents.total_chunks')),
+            'neo4j_entity_count' => $this->intValue($graphPreview['total_entities'] ?? $graphPreview['planned_entities'] ?? null),
+            'neo4j_relation_count' => $this->intValue($graphPreview['total_triplets'] ?? $graphPreview['planned_triplets'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  list<mixed>  $artifacts
+     * @return array<string, mixed>|null
+     */
+    private function preferredMarkdownArtifact(array $artifacts): ?array
+    {
+        $candidates = array_values(array_filter(
+            $artifacts,
+            function (mixed $artifact): bool {
+                if (! is_array($artifact)) {
+                    return false;
+                }
+
+                $path = strtolower((string) ($artifact['uri'] ?? ''));
+                $mediaType = strtolower((string) ($artifact['media_type'] ?? ''));
+
+                return $path !== '' && ($mediaType === 'text/markdown' || str_ends_with($path, '.md') || str_ends_with($path, '.markdown'));
+            },
+        ));
+
+        usort($candidates, static function (array $left, array $right): int {
+            $leftPath = strtolower((string) ($left['uri'] ?? ''));
+            $rightPath = strtolower((string) ($right['uri'] ?? ''));
+            $leftChunk = str_contains($leftPath, '/chunks/') ? 1 : 0;
+            $rightChunk = str_contains($rightPath, '/chunks/') ? 1 : 0;
+
+            return ($rightChunk <=> $leftChunk)
+                ?: ((int) ($right['size_bytes'] ?? 0) <=> (int) ($left['size_bytes'] ?? 0));
+        });
+
+        return $candidates[0] ?? null;
     }
 
     private function qdrantStatus(ManagedDocument $document): string

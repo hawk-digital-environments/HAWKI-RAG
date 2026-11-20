@@ -21,9 +21,6 @@ docker-compose.override.yml
 public/build/
 public/hot
 public/storage/
-public/ingest_graph_preview.json
-public/ingest_summary.json
-public/neo4j_graph_visualization.json
 storage/**
 
 # Local RAG/runtime data and generated artifacts
@@ -37,6 +34,15 @@ python_rag/workers/
 
 # Python caches and test artifacts
 **/__pycache__/
+**/.venv/
+**/.venv*/
+**/tests/
+**/build/
+**/dist/
+**/*.egg-info/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
@@ -44,6 +50,7 @@ python_rag/workers/
 .coverage*
 .tox/
 .venv/
+.venv*/
 
 # Documentation and local tooling not needed in runtime images
 _documentation/
@@ -52,6 +59,8 @@ resources/js/crawler/
 .agents/
 .codex/
 .github/
+.idea/
+.vscode/
 bruno/
 docs/
 

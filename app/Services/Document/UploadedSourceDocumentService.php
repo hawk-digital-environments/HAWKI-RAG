@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
-use App\Models\Document;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Services\Document\Values\UploadedSourceDocument;
@@ -17,8 +16,7 @@ readonly class UploadedSourceDocumentService
     public function __construct(
         private UploadedSourceDocumentRepository $repository,
         private ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     public function resolve(string $sourceUrl, ?string $contentHash = null): ?UploadedSourceDocument
     {
@@ -38,13 +36,6 @@ readonly class UploadedSourceDocumentService
 
         foreach ($this->ingestionSources($sourceUrl, $contentHash) as $source) {
             $document = $this->fromIngestionSource($sourceUrl, $source);
-            if ($document !== null) {
-                return $document;
-            }
-        }
-
-        foreach ($this->documents($sourceUrl, $contentHash) as $documentModel) {
-            $document = $this->fromDocument($sourceUrl, $documentModel);
             if ($document !== null) {
                 return $document;
             }
@@ -77,18 +68,6 @@ readonly class UploadedSourceDocumentService
             : $this->repository->ingestionSources($sourceUrl);
     }
 
-    /**
-     * @return iterable<int, Document>
-     */
-    private function documents(string $sourceUrl, ?string $contentHash): iterable
-    {
-        $matches = $this->repository->documents($sourceUrl, $contentHash);
-
-        return $matches->isNotEmpty() || $contentHash === null
-            ? $matches
-            : $this->repository->documents($sourceUrl);
-    }
-
     private function fromPipelineJob(string $sourceUrl, PipelineJob $job): ?UploadedSourceDocument
     {
         $paths = [
@@ -106,19 +85,6 @@ readonly class UploadedSourceDocumentService
             data_get($source->metadata, 'upload.local_path'),
         ];
         $downloadName = $this->downloadName($sourceUrl, data_get($source->metadata, 'upload.original_filename'));
-
-        return $this->firstReadableDocument($paths, $downloadName);
-    }
-
-    private function fromDocument(string $sourceUrl, Document $document): ?UploadedSourceDocument
-    {
-        $paths = [
-            $document->storage_path,
-            data_get($document->metadata_json, 'upload.local_path'),
-            data_get($document->metadata_json, 'passthrough.original_path'),
-            data_get($document->metadata_json, 'passthrough.file_path'),
-        ];
-        $downloadName = $this->downloadName($sourceUrl, $document->original_filename);
 
         return $this->firstReadableDocument($paths, $downloadName);
     }
@@ -207,7 +173,7 @@ readonly class UploadedSourceDocumentService
     }
 
     /**
-     * @param list<mixed> $paths
+     * @param  list<mixed>  $paths
      */
     private function firstReadableDocument(array $paths, string $downloadName): ?UploadedSourceDocument
     {

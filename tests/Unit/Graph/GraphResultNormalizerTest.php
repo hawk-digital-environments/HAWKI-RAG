@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Graph;
 
-use App\Models\Document;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
+use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
+use App\Models\PipelineTask;
 use App\Services\Graph\GraphResultNormalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -73,12 +77,52 @@ class GraphResultNormalizerTest extends TestCase
         File::put($path, 'ö'.str_repeat('a', 179).'Veröffentlicht'.str_repeat('z', 430));
 
         try {
-            Document::query()->create([
-                'external_id' => 'doc-utf8',
-                'collection' => 'graph-utf8',
-                'source_type' => Document::SOURCE_UPLOAD,
-                'storage_path' => $path,
-                'checksum_sha256' => hash('sha256', 'doc-utf8'),
+            $task = PipelineTask::query()->create([
+                'task_id' => 'task-graph-utf8',
+                'dataset_id' => 'graph-utf8',
+                'status' => PipelineTask::STATUS_COMPLETED,
+                'metadata' => [],
+            ]);
+            $job = PipelineJob::query()->create([
+                'job_id' => 'job-graph-utf8',
+                'task_id' => $task->task_id,
+                'job_type' => PipelineJob::TYPE_INGEST,
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'metadata' => [],
+            ]);
+            ManagedDocument::query()->create([
+                'document_id' => 'adoc_graph_utf8_1',
+                'dataset_id' => 'graph-utf8',
+                'display_name' => 'graph-source-utf8.md',
+                'source_type' => 'upload',
+                'source_checksum_sha256' => hash('sha256', 'doc-utf8'),
+                'graph_enabled' => true,
+                'status' => ManagedDocument::STATUS_INDEXED,
+                'latest_task_id' => $task->task_id,
+                'latest_job_id' => $job->job_id,
+            ]);
+            ManagedDocumentOutput::query()->create([
+                'document_id' => 'adoc_graph_utf8_1',
+                'bridge_document_id' => 'doc-utf8',
+                'qdrant_collection' => 'graph-utf8',
+                'neo4j_namespace' => 'graph-utf8',
+                'chunk_count' => 1,
+                'status' => 'indexed',
+                'active' => true,
+            ]);
+            PipelineStageState::query()->create([
+                'pipeline_job_id' => $job->id,
+                'job_id' => $job->job_id,
+                'stage' => 'convert',
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'counts' => [],
+                'metadata' => [
+                    'artifacts' => [[
+                        'uri' => $path,
+                        'media_type' => 'text/markdown',
+                        'size_bytes' => filesize($path),
+                    ]],
+                ],
             ]);
 
             $graph = app(GraphResultNormalizer::class)->graph([[

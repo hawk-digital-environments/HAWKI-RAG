@@ -71,8 +71,25 @@ class PipelineUploadStorage
 
     private function taskRoot(string $taskId): string
     {
-        return rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), DIRECTORY_SEPARATOR)
+        return $this->sharedRoot()
             .DIRECTORY_SEPARATOR
             .$taskId;
+    }
+
+    private function sharedRoot(): string
+    {
+        $root = trim((string) $this->config->get('temporal.storage.shared_root', '/shared'));
+        $normalized = rtrim($root, DIRECTORY_SEPARATOR);
+        if (
+            $normalized === ''
+            || ! str_starts_with($normalized, DIRECTORY_SEPARATOR)
+            || preg_match('#(^|/)\.{1,2}(/|$)#', $normalized) === 1
+        ) {
+            throw new \LogicException(
+                'temporal.storage.shared_root must be a canonical absolute directory below the filesystem root.',
+            );
+        }
+
+        return $normalized;
     }
 }

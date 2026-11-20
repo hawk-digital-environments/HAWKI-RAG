@@ -16,7 +16,7 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-retry-mintimeout 20000 \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm config set fetch-timeout 300000 \
- && npm ci --with-dev
+ && npm ci --include=dev
 
 # Copy rest of application
 COPY --chown=www-data:www-data . .
@@ -44,6 +44,7 @@ ENV ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJE
 # extensions used by Laravel here: gd, pdo_mysql, pdo_pgsql, opcache, bcmath,
 # exif, pcntl, zip, and intl. Temporal client operations run in Python.
 RUN apt-get update && apt-get install -y \
+    acl \
     python3-requests \
     unzip \
  && rm -rf /var/lib/apt/lists/*
@@ -76,6 +77,8 @@ RUN mkdir -p \
 
 # Copy container config
 COPY ./docker/rag_app /container/custom/
+# Run the Laravel scheduler (dataset-cleanup and future tasks) in web mode.
+COPY ./docker/rag_app/supervisor/laravel-scheduler.conf /container/templates/supervisor/conf.d/laravel-scheduler.service.mode-web.conf
 
 # Dump composer autoload
 RUN composer dump-autoload --optimize
