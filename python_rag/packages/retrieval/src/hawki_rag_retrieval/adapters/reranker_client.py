@@ -6,6 +6,7 @@ from typing import Any, Optional, Protocol, cast
 
 import requests as requests_module
 from hawki_rag_text.safety import strip_control_characters
+from .external_reranker import load_external_reranker_settings
 
 # Preserve historical logger identity per Epoch 4 D3 decision
 logger = logging.getLogger("hawki_bridge.adapters.reranker_client")
@@ -15,6 +16,7 @@ class _RerankerHTTPResponse(Protocol):
     """Response surface consumed from an external reranker."""
 
     ok: bool
+    status_code: int
 
     def json(self) -> object: ...
 
@@ -29,6 +31,7 @@ class _RerankerHTTPClient(Protocol):
         headers: dict[str, str],
         json: dict[str, object],
         timeout: float,
+        allow_redirects: bool = False,
     ) -> _RerankerHTTPResponse: ...
 
 
@@ -159,7 +162,8 @@ def rerank_hits(
             )
 
         if mode == "external":
-            rr_url = os.environ.get("RERANKER_API_URL", "").strip()
+            settings = load_external_reranker_settings()
+            rr_url = settings.url
             if rr_url:
                 docs: list[str] = []
                 for h in candidates:
@@ -174,17 +178,14 @@ def rerank_hits(
                             )[:2000]
                         )
                     )
-                headers = {"Content-Type": "application/json"}
-                rr_key = os.environ.get("RERANKER_API_KEY", "").strip()
-                if rr_key:
-                    headers["Authorization"] = f"Bearer {rr_key}"
                 response = resolved_http_client.post(
                     rr_url,
-                    headers=headers,
-                    json={"query": user_query, "documents": docs},
+                    headers=settings.headers,
+                    json=settings.body(user_query, docs),
                     timeout=30,
+                    allow_redirects=False,
                 )
-                if response.ok:
+                if 200 <= response.status_code < 300:
                     payload = response.json()
                     order = (
                         payload.get("results") if isinstance(payload, dict) else payload

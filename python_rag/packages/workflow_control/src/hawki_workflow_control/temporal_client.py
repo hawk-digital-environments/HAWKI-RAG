@@ -91,6 +91,16 @@ class TemporalControlClient:
     def __init__(self, settings: WorkflowControlSettings) -> None:
         self.settings = settings
 
+    async def health(self) -> None:
+        """Describe the configured namespace without starting or changing work."""
+        from temporalio.api.workflowservice.v1 import DescribeNamespaceRequest
+
+        client = await self.connect_temporal()
+        await client.workflow_service.describe_namespace(
+            DescribeNamespaceRequest(namespace=self.settings.temporal_namespace),
+            timeout=timedelta(seconds=3),
+        )
+
     async def workflow_status(
         self, *, workflow_id: str, run_id: str, include_result: bool = False
     ) -> dict[str, Any]:

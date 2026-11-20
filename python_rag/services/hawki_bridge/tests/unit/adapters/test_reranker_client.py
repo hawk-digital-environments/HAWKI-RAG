@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 class _FakeResponse:
     ok = True
+    status_code = 200
 
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
@@ -30,6 +31,7 @@ class _FakeRequests:
         headers: dict[str, str],
         json: dict[str, object],
         timeout: float,
+        allow_redirects: bool = False,
     ) -> _FakeResponse:
         self.posts.append(
             {

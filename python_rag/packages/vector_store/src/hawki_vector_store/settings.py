@@ -39,24 +39,37 @@ class QdrantHTTPSettings:
     text_scroll_batch: int
 
 
-def qdrant_settings_from_env() -> QdrantSettings:
-    default_attempts = _int_env("QDRANT_RETRY_ATTEMPTS", 3)
-    upsert_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_UPSERT", default_attempts)
-    delete_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_DELETE", default_attempts)
-    count_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_COUNT", default_attempts)
-    search_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_SEARCH", default_attempts)
-    scroll_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_SCROLL", default_attempts)
-    collection_read_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_READ", default_attempts)
+def qdrant_settings_from_env(env=None) -> QdrantSettings:
+    source = os.environ if env is None else env
+    default_attempts = _int_env("QDRANT_RETRY_ATTEMPTS", 3, env=source)
+    upsert_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_UPSERT", default_attempts, env=source
+    )
+    delete_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_DELETE", default_attempts, env=source
+    )
+    count_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_COUNT", default_attempts, env=source
+    )
+    search_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_SEARCH", default_attempts, env=source
+    )
+    scroll_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_SCROLL", default_attempts, env=source
+    )
+    collection_read_attempts = _int_env(
+        "QDRANT_RETRY_ATTEMPTS_READ", default_attempts, env=source
+    )
     collection_create_attempts = _int_env(
-        "QDRANT_RETRY_ATTEMPTS_COLLECTION_CREATE", default_attempts
+        "QDRANT_RETRY_ATTEMPTS_COLLECTION_CREATE", default_attempts, env=source
     )
     return QdrantSettings(
-        scheme=os.environ.get("QDRANT_SCHEME", "http"),
-        host=os.environ.get("QDRANT_HOST", "qdrant"),
-        port=_int_env("QDRANT_PORT", 6333),
-        collection=os.environ.get("QDRANT_COLLECTION", "").strip(),
-        api_key=os.environ.get("QDRANT_API_KEY"),
-        timeout=_float_env("QDRANT_TIMEOUT", 30.0),
+        scheme=source.get("QDRANT_SCHEME", "http"),
+        host=source.get("QDRANT_HOST", "qdrant"),
+        port=_int_env("QDRANT_PORT", 6333, env=source),
+        collection=source.get("QDRANT_COLLECTION", "").strip(),
+        api_key=source.get("QDRANT_API_KEY"),
+        timeout=_float_env("QDRANT_TIMEOUT", 30.0, env=source),
         max_attempts=default_attempts,
         retry_attempts_by_operation={
             "qdrant.upsert_points": upsert_attempts,
@@ -100,15 +113,17 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return value.lower() in ("1", "true", "yes", "on")
 
 
-def _int_env(name: str, default: int) -> int:
+def _int_env(name: str, default: int, *, env=None) -> int:
+    source = os.environ if env is None else env
     try:
-        return int(os.environ.get(name, default))
+        return int(source.get(name, default))
     except Exception:
         return default
 
 
-def _float_env(name: str, default: float) -> float:
+def _float_env(name: str, default: float, *, env=None) -> float:
+    source = os.environ if env is None else env
     try:
-        return float(os.environ.get(name, default))
+        return float(source.get(name, default))
     except Exception:
         return default

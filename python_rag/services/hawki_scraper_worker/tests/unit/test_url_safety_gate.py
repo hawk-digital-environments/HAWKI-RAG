@@ -37,6 +37,8 @@ def test_xml_sitemap_uses_crawler_resource_parser_and_preserves_generation():
 
     wire = dict(
         owner="url",
+        dataset_id="dataset",
+        task_id="task",
         job_id="job",
         source_url="https://example.org",
         generation=7,
@@ -53,6 +55,7 @@ def test_xml_sitemap_uses_crawler_resource_parser_and_preserves_generation():
     assert payload["sitemap"] is False
     assert payload["sitemap_only"] is True
     assert payload["source_url"] == "https://example.org"
+    assert payload["dataset_id"] == "dataset" and payload["task_id"] == "task"
     assert (
         payload["generation"] == 7
         and payload["url_ingestion_operation_id"] == "operation"

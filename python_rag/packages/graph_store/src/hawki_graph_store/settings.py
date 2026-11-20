@@ -17,13 +17,14 @@ class Neo4jSettings:
     perf_log: bool
 
 
-def load_neo4j_settings(database: str | None = None) -> Neo4jSettings:
+def load_neo4j_settings(database: str | None = None, *, env=None) -> Neo4jSettings:
     """Parse Neo4j client settings from environment with safe defaults."""
-    uri = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
-    user = os.environ.get("NEO4J_USER", os.environ.get("NEO4J_USERNAME", "neo4j"))
-    password = os.environ.get("NEO4J_PASSWORD", "password")
+    source = os.environ if env is None else env
+    uri = source.get("NEO4J_URI", "bolt://neo4j:7687")
+    user = source.get("NEO4J_USER", source.get("NEO4J_USERNAME", "neo4j"))
+    password = source.get("NEO4J_PASSWORD", "password")
     configured_database = (
-        database or os.environ.get("NEO4J_DATABASE") or ""
+        database or source.get("NEO4J_DATABASE") or ""
     ).strip() or None
     return Neo4jSettings(
         uri=uri,

@@ -14,6 +14,7 @@ use App\Models\PipelineTask;
 use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Document\ManagedDocumentRecoveryGuard;
+use App\Services\Document\ManagedDocumentWriterReconciliationService;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
@@ -34,8 +35,10 @@ final class ManagedDocumentWriterTest extends TestCase
     {
         parent::setUp();
         $this->seedWriter();
+        // Real artifact evidence for canonical reconciliation fixtures.
+
         Http::preventStrayRequests();
-        Http::fake(fn ($request) => Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run',
+        Http::fake(fn ($request) => Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => $request->data()['run_id'] ?? 'delete-run',
             'status' => str_ends_with($request->url(), '/execution/status') ? $this->workflowStatus : 'pending']));
     }
 
@@ -254,6 +257,7 @@ final class ManagedDocumentWriterTest extends TestCase
 
     public function test_pre_fix_vector_only_evidence_and_frozen_operations_fail_closed(): void
     {
+        PipelineTask::query()->update(['status' => 'failed']);
         $source = IngestionSource::query()->firstOrFail();
         $metadata = $source->metadata;
         $metadata['managed_dispatch']['input']['ingestion']['graph'] = false;
@@ -277,11 +281,11 @@ final class ManagedDocumentWriterTest extends TestCase
         $manifest = $root.'/manifest.json';
         $this->workflowStatus = 'COMPLETED';
         try {
-            File::put($manifest, json_encode([['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md']], JSON_THROW_ON_ERROR));
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(1);
-            File::put($manifest, json_encode([['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md', 'graph' => true]], JSON_THROW_ON_ERROR));
+            $this->publishManifest($manifest, [['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md']]);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true])->assertExitCode(1);
+            $this->publishManifest($manifest, [['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md', 'graph' => true]]);
             $operation->update(['run_id' => 'closed-old-run']);
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--retire-operation' => $operation->operation_id])->assertExitCode(0);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true, '--retire-operation' => $operation->operation_id])->assertExitCode(0);
             $this->assertSame('abandoned', $operation->fresh()->status);
             $fresh = app(ManagedDocumentOutputDeletionService::class)->prepare(ManagedDocument::query()->firstOrFail(), 'delete', 'resolved-graph');
             $this->assertSame('historic_namespace', $fresh->workflow_input['targets'][0]['neo4j_namespace']);
@@ -325,6 +329,7 @@ final class ManagedDocumentWriterTest extends TestCase
 
     public function test_fresh_vector_only_snapshot_requires_effective_graph_evidence_and_explicit_reconciliation(): void
     {
+        PipelineTask::query()->update(['status' => 'failed']);
         $document = ManagedDocument::query()->firstOrFail();
         $document->update(['graph_enabled' => false]);
         $source = IngestionSource::query()->firstOrFail();
@@ -351,10 +356,10 @@ final class ManagedDocumentWriterTest extends TestCase
         try {
             $manifest = $root.'/manifest.json';
             $record = ['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md'];
-            File::put($manifest, json_encode([$record], JSON_THROW_ON_ERROR));
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(1);
-            File::put($manifest, json_encode([[...$record, 'graph' => false]], JSON_THROW_ON_ERROR));
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(0);
+            $this->publishManifest($manifest, [$record]);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true])->assertExitCode(1);
+            $this->publishManifest($manifest, [[...$record, 'graph' => false]]);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true])->assertExitCode(0);
             $operation = app(ManagedDocumentOutputDeletionService::class)->prepare($document->fresh(), 'delete', 'validated-vector-only');
             $this->assertNull($operation->workflow_input['targets'][0]['neo4j_namespace']);
             $this->assertTrue($operation->attempts['effective_graph_scope']);
@@ -533,6 +538,7 @@ final class ManagedDocumentWriterTest extends TestCase
 
     public function test_reconciliation_requires_physical_attestation_and_valid_owned_manifest(): void
     {
+        PipelineTask::query()->update(['status' => 'failed']);
         $root = storage_path('framework/testing/writer-reconciliation-'.bin2hex(random_bytes(8)));
         File::ensureDirectoryExists($root);
         config()->set('temporal.storage.shared_root', $root);
@@ -543,18 +549,18 @@ final class ManagedDocumentWriterTest extends TestCase
         try {
             $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest])->assertExitCode(1);
             $this->assertArrayNotHasKey('managed_writer_gate', IngestionSource::query()->firstOrFail()->metadata);
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(1);
-            $this->assertSame('closed', IngestionSource::query()->firstOrFail()->metadata['managed_writer_gate']);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true])->assertExitCode(1);
+            $this->assertArrayNotHasKey('managed_writer_gate', IngestionSource::query()->firstOrFail()->metadata);
             $this->assertArrayNotHasKey('managed_target_manifest_complete', IngestionSource::query()->firstOrFail()->metadata);
-            File::put($manifest, json_encode([['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md']], JSON_THROW_ON_ERROR));
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(0);
+            $this->publishManifest($manifest, [['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md']]);
+            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--apply' => true])->assertExitCode(0);
             $this->assertSame('historic_collection', ManagedDocumentOutput::query()->firstOrFail()->qdrant_collection);
             $this->assertTrue(IngestionSource::query()->firstOrFail()->metadata['managed_target_manifest_complete']);
             $this->signedWriter($this->writerEvent())->assertStatus(409);
             $operation = app(ManagedDocumentOutputDeletionService::class)->prepare(ManagedDocument::query()->firstOrFail(), 'delete', 'old-operation');
             $operation->update(['attempts' => null, 'run_id' => 'closed-deletion-run']);
             $this->deleteJson('/api/documents/adoc_writer_test')->assertStatus(409);
-            $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true, '--retire-operation' => $operation->operation_id])->assertExitCode(0);
+            app(ManagedDocumentWriterReconciliationService::class)->retireLegacyOperation($operation->operation_id, 'source-writer');
             $this->assertSame('abandoned', $operation->fresh()->status);
             $fresh = app(ManagedDocumentOutputDeletionService::class)->prepare(ManagedDocument::query()->firstOrFail(), 'delete', 'new-operation');
             $this->assertNotSame($operation->operation_id, $fresh->operation_id);
@@ -562,5 +568,17 @@ final class ManagedDocumentWriterTest extends TestCase
         } finally {
             File::deleteDirectory($root);
         }
+    }
+
+    private function publishManifest(string $manifest, array $records): void
+    {
+        $directory = dirname($manifest).'/sources/source-writer/markdown';
+        File::ensureDirectoryExists($directory);
+        foreach ($records as &$record) {
+            File::put($directory.'/'.$record['relative_path'], 'owned content');
+            $record['markdown_path'] = $directory.'/'.$record['relative_path'];
+            $record['content_hash'] = hash('sha256', 'owned content');
+        }
+        File::put($manifest, json_encode($records, JSON_THROW_ON_ERROR));
     }
 }

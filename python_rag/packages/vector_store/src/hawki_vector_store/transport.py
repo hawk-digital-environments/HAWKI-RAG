@@ -55,6 +55,9 @@ class QdrantHTTPTransport:
             headers["api-key"] = self.api_key
         return headers
 
+    def close(self) -> None:
+        self._session.close()
+
     def _attempt_budget(self, request: QdrantRequest) -> int:
         operation = request.operation
         if operation is None:

@@ -102,6 +102,24 @@ async def control(operation: str, request: Request) -> dict:
     body = await authorized_body(request, operation)
     service = request.app.state.workflow_control
     try:
+        if operation == "relay-readiness":
+            family = body.get("family")
+            if set(body) != {"family"} or family not in {
+                "text_ingestion",
+                "managed_document",
+                "url_ingestion",
+            }:
+                raise ValueError()
+            if getattr(request.app.state, family + "_service", None) is None:
+                raise HTTPException(503, "Callback owner unavailable.")
+            return {"ready": True, "family": family}
+        if operation == "health":
+            if body:
+                raise ValueError()
+            import asyncio
+
+            await asyncio.wait_for(service.port.health(), timeout=5)
+            return {"status": "ok"}
         if operation == "source/retry-identity":
             value = RetryIdentity.model_validate(body)
             identity = source_retry(

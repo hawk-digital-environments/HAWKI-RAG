@@ -8,6 +8,8 @@ by an unknown collection.
 from __future__ import annotations
 
 import logging
+import os
+from collections.abc import Mapping
 from urllib.parse import quote
 
 import httpx
@@ -28,6 +30,14 @@ class QdrantCatalog:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key.strip()
         self._timeout = timeout_seconds
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> QdrantCatalog:
+        source = os.environ if env is None else env
+        return cls(
+            source.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
+            source.get("QDRANT_API_KEY", ""),
+        )
 
     def available_collections(self) -> set[str] | None:
         """Return the exact collection names, or ``None`` when unknown."""
@@ -57,6 +67,10 @@ class QdrantCatalog:
             and isinstance(item.get("name"), str)
             and item["name"].strip()
         }
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
 
     def point_count(self, collection: str) -> int | None:
         """Return the exact point count of a collection, or ``None``."""

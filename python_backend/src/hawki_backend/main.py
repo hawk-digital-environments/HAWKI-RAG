@@ -55,6 +55,7 @@ from hawki_backend.text_ingestion.service import TextIngestionService
 from hawki_backend.text_ingestion.settings import (
     TextIngestionSettings,
     load_text_ingestion_settings,
+    load_sink_settings,
 )
 from hawki_backend.text_ingestion.vectors import TextVectorDeletion
 from hawki_backend.managed_documents.api import (
@@ -245,11 +246,7 @@ def create_app(
             if managed_database is not None:
                 owned_engine = build_engine(managed_database)
         if owned_engine is not None:
-            managed_settings = TextIngestionSettings(
-                shared_root=os.environ.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared"),
-                qdrant_url=os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
-                qdrant_api_key=os.environ.get("QDRANT_API_KEY", ""),
-            )
+            managed_settings = load_sink_settings()
             resolved_managed_service = ManagedService(
                 repository=ManagedRepository(owned_engine),
                 storage=UploadStorage(managed_settings.shared_root),
@@ -267,11 +264,7 @@ def create_app(
             if url_database is not None:
                 owned_engine = build_engine(url_database)
         if owned_engine is not None:
-            sink_settings = TextIngestionSettings(
-                shared_root=url_settings.shared_root,
-                qdrant_url=os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
-                qdrant_api_key=os.environ.get("QDRANT_API_KEY", ""),
-            )
+            sink_settings = load_sink_settings()
             resolved_url_service = UrlIngestionService(
                 repository=UrlRepository(owned_engine),
                 policy=resolved_policy,
@@ -286,10 +279,7 @@ def create_app(
     if resolved_dataset_service is None and dataset_store is not None:
         resolved_dataset_service = DatasetService(
             dataset_store,
-            QdrantCatalog(
-                os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
-                os.environ.get("QDRANT_API_KEY", ""),
-            ),
+            QdrantCatalog.from_env(),
             embedding_provider=os.environ.get(
                 "HAWKI_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama"
             ),
@@ -308,7 +298,23 @@ def create_app(
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         """Recover archived deletions and release the resources we own."""
         cleanup_task: asyncio.Task[None] | None = None
-        if resolved_dataset_service is not None:
+        if (
+            os.environ.get("HAWKI_BACKEND_REQUIRE_READY_SCHEMA", "false").lower()
+            == "true"
+        ):
+            from hawki_backend.readiness import check_database
+
+            try:
+                await asyncio.to_thread(check_database, os.environ)
+            except Exception:
+                raise RuntimeError(
+                    "Backend schema readiness failed before cleanup startup"
+                ) from None
+        if (
+            resolved_dataset_service is not None
+            and os.environ.get("HAWKI_BACKEND_DATASET_CLEANUP_ENABLED", "true").lower()
+            == "true"
+        ):
             await _reconcile_once(resolved_dataset_service)
             cleanup_task = asyncio.create_task(
                 _reconcile_periodically(resolved_dataset_service)
@@ -360,10 +366,7 @@ def create_app(
             dataset_store,
             resolved_policy,
             resolved_query_settings,
-            QdrantCatalog(
-                os.environ.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
-                os.environ.get("QDRANT_API_KEY", ""),
-            ),
+            QdrantCatalog.from_env(),
             owned_engine,
             ManagedRepository(owned_engine),
         )

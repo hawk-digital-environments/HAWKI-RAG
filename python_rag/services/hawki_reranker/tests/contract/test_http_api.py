@@ -72,12 +72,13 @@ class TestRerankerApiFlow:
                         "Registration information.",
                     ],
                     "top_n": 2,
-                    "model": "local-reranker",
+                    "model": model.model_name,
                 },
             )
 
         assert response.status_code == 200
         assert response.json() == {
+            "model": model.model_name,
             "results": [
                 {
                     "index": 1,
@@ -89,7 +90,7 @@ class TestRerankerApiFlow:
                     "document": "Registration information.",
                     "relevance_score": 0.65,
                 },
-            ]
+            ],
         }
         assert model.predict_calls == [
             [

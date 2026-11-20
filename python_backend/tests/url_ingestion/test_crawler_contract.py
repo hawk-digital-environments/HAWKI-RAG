@@ -139,3 +139,64 @@ def test_receipt_for_another_generation_is_rejected_at_callback(env):
     with pytest.raises(UrlIngestionError) as caught:
         env.repository.complete(callback, "bad", "running")
     assert caught.value.status == 409
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "source_id",
+        "source_url",
+        "generation",
+        "url_ingestion_operation_id",
+        "dataset_id",
+        "task_id",
+    ],
+)
+def test_every_receipt_identity_is_required_and_cannot_publish(env, identity):
+    from .test_lifecycle import event
+
+    row = generation(env, create(env))
+    body = receipt(row)
+    body["metadata"].pop(identity)
+    callback = event(
+        row,
+        "missing-identity-" + identity,
+        activity_id="scrape_source",
+        producer="scraper",
+        stage="scrape",
+        phase="scrape_source",
+        metrics={"crawler_receipt": body},
+    )
+    with pytest.raises(UrlIngestionError):
+        env.repository.complete(callback, "invalid", "running")
+    assert (
+        env.repository.source("default", row["source_id"])["current_generation"] is None
+    )
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "dataset_id",
+        "task_id",
+        "source_id",
+        "source_url",
+        "generation",
+        "url_ingestion_operation_id",
+    ],
+)
+def test_crawler_readiness_requires_every_submit_identity(env, identity):
+    document = api_schema()
+    del document["components"]["schemas"]["CrawlConfig"]["properties"][identity]
+    configured(
+        env,
+        lambda request: httpx.Response(
+            200,
+            json=document
+            if request.url.path == "/openapi.json"
+            else {"status": "healthy"},
+        ),
+    )
+    with pytest.raises(UrlIngestionError):
+        create(env)
+    env.port.start_ingest_workflow.assert_not_called()

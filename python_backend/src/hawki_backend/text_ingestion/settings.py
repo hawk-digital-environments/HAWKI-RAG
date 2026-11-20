@@ -96,6 +96,16 @@ def load_text_ingestion_settings(
     )
 
 
+def load_sink_settings(env: Mapping[str, str] | None = None) -> TextIngestionSettings:
+    """Managed and URL cleanup share this existing runtime sink contract."""
+    source = os.environ if env is None else env
+    return TextIngestionSettings(
+        shared_root=source.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared"),
+        qdrant_url=source.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
+        qdrant_api_key=source.get("QDRANT_API_KEY", ""),
+    )
+
+
 def _env_name(suffix: str) -> str:
     return f"{_PREFIX}{suffix}"
 

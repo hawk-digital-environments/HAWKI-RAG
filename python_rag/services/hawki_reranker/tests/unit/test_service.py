@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import pytest
 
 from hawki_rag_contracts.retrieval.rerank import RerankRequest as ContractRerankRequest
 from hawki_reranker import main
@@ -63,10 +64,11 @@ def test_rerank_preserves_document_indices_and_applies_top_n(
 
     assert response.status_code == 200
     assert response.json() == {
+        "model": "test-model",
         "results": [
             {"index": 1, "document": "best", "relevance_score": 0.9},
             {"index": 2, "document": "middle", "relevance_score": 0.4},
-        ]
+        ],
     }
     assert model.calls == [
         [
@@ -92,3 +94,33 @@ def test_whitespace_only_content_returns_a_client_error(
 
     assert response.status_code == 400
     assert response.json() == {"detail": "query and documents are required"}
+
+
+@pytest.mark.parametrize(
+    "key,model,status",
+    [
+        ("valid", "test-model", 200),
+        ("wrong", "test-model", 401),
+        ("valid", "missing", 422),
+    ],
+)
+def test_model_and_credential_are_checked_before_inference(
+    asgi_test_client_class, key, model, status
+):
+    class OneModel(FakeModel):
+        def predict(self, pairs):
+            self.calls.append(pairs)
+            return [0.9] * len(pairs)
+
+    instance = OneModel("test-model")
+    app = create_app(
+        settings=RerankerSettings(model_name="test-model", api_key="valid"),
+        model_factory=lambda _: instance,
+    )
+    response = asgi_test_client_class(app).post(
+        "/v1/rerank",
+        headers={"Authorization": "Bearer " + key},
+        json={"query": "readiness", "documents": ["fixture"], "model": model},
+    )
+    assert response.status_code == status
+    assert bool(instance.calls) == (status == 200)

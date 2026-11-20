@@ -62,12 +62,19 @@ def _clean_ollama_image_data(value: object) -> str | None:
     return raw
 
 
+def ollama_api_url(env=None) -> str:
+    source = os.environ if env is None else env
+    if "OLLAMA_BASE_URL" in source:
+        raise ValueError("Unsupported OLLAMA_BASE_URL; use OLLAMA_API_URL")
+    return source.get("OLLAMA_API_URL", "http://ollama:11434/api").rstrip("/")
+
+
 class OllamaProvider:
     def __init__(self, *, http_client: _OllamaHTTPClient | None = None) -> None:
         self._http_client = (
             cast(_OllamaHTTPClient, requests) if http_client is None else http_client
         )
-        base = os.environ.get("OLLAMA_API_URL", "http://ollama:11434/api").rstrip("/")
+        base = ollama_api_url()
         self.base = base
         # Model selection is request-scoped: apply_provider_overrides injects
         # the dataset-pinned models from Laravel before any call is made.

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import hmac
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from hawki_rag_contracts.retrieval.rerank import (
     RerankRequest,
     RerankResponse,
@@ -30,7 +31,15 @@ def create_app(
         return {"ok": True}
 
     @application.post("/v1/rerank", response_model=RerankResponse)
-    def rerank(request: RerankRequest) -> RerankResponse:
+    def rerank(
+        request: RerankRequest, authorization: str = Header(default="")
+    ) -> RerankResponse:
+        if active_settings.api_key and not hmac.compare_digest(
+            authorization.encode(), ("Bearer " + active_settings.api_key).encode()
+        ):
+            raise HTTPException(401, "Invalid reranker credential")
+        if request.model is not None and request.model != active_settings.model_name:
+            raise HTTPException(422, "Configured reranker model unavailable")
         query = request.query.strip()
         documents = [str(document) for document in request.documents]
         if (
@@ -47,6 +56,7 @@ def create_app(
         )
         limit = request.top_n or len(ranked)
         return RerankResponse(
+            model=active_settings.model_name,
             results=[
                 RerankResult(
                     index=index,
@@ -54,7 +64,7 @@ def create_app(
                     relevance_score=float(score),
                 )
                 for index, score in ranked[:limit]
-            ]
+            ],
         )
 
     return application

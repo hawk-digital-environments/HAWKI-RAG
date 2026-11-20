@@ -142,6 +142,7 @@ def test_single_implementation_per_retrieval_adapter() -> None:
         "qdrant_search_policy.py",
         "neo4j_reader.py",
         "reranker_client.py",
+        "external_reranker.py",
     }
     actual = {
         f.name for f in adapters_dir.iterdir() if f.is_file() and f.suffix == ".py"

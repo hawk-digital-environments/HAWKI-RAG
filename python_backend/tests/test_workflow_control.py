@@ -931,3 +931,58 @@ def test_concurrent_recovery_dispatches_only_once_and_reconciles_after_timeout(
             start.assert_awaited_once()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_signed_control_health_is_read_only_and_reports_dependency_failure(
+    control, failure
+):
+    service, port, app, engine = control
+    port.health = AsyncMock(side_effect=TemporalUnavailable() if failure else None)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/internal/workflow-control/health", **signed({}, operation="health")
+            )
+
+    response = asyncio.run(request())
+    assert response.status_code == (503 if failure else 200)
+    port.health.assert_awaited_once()
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                sa.select(sa.func.count()).select_from(operations)
+            ).scalar_one()
+            == 0
+        )
+
+
+@pytest.mark.parametrize(
+    "family", ["text_ingestion", "url_ingestion", "managed_document"]
+)
+@pytest.mark.parametrize("available", [False, True])
+def test_signed_owner_readiness_never_dispatches(control, family, available):
+    service, port, app, engine = control
+    setattr(app.state, family + "_service", object() if available else None)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/internal/workflow-control/relay-readiness",
+                **signed({"family": family}, operation="relay-readiness"),
+            )
+
+    result = asyncio.run(request())
+    assert result.status_code == (200 if available else 503)
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                sa.select(sa.func.count()).select_from(operations)
+            ).scalar_one()
+            == 0
+        )

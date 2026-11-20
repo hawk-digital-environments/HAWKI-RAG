@@ -32,6 +32,7 @@ class RerankResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     results: list[RerankResult]
+    model: str | None = None
 
 
 __all__ = ["RerankRequest", "RerankResponse", "RerankResult"]

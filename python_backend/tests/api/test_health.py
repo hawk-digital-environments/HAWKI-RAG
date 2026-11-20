@@ -52,3 +52,15 @@ def test_health_and_query_are_the_only_endpoints() -> None:
     assert set(paths["/v1/query"]) == {"post"}
     assert set(paths["/v1/text-ingestions"]) == {"post"}
     assert set(paths["/v1/text-ingestions/{source_id}"]) == {"delete"}
+
+
+def test_readiness_requires_authentication_and_leaves_health_public():
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.get("/v1/readiness"), await client.get("/v1/health")
+
+    ready, health = asyncio.run(request())
+    assert ready.status_code in {401, 503}
+    assert health.status_code == 200 and health.json() == {"status": "ok"}

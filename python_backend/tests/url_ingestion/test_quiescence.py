@@ -29,6 +29,8 @@ def receipt(old, status="completed", sealed=True, **changes):
         metadata={
             key: wire[key]
             for key in (
+                "dataset_id",
+                "task_id",
                 "source_id",
                 "source_url",
                 "generation",

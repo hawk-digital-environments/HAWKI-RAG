@@ -33,6 +33,8 @@ def build_scraper_start_payload(
 
     if workflow_input.get("owner") == "url":
         payload.update(
+            dataset_id=workflow_input["dataset_id"],
+            task_id=workflow_input["task_id"],
             generation=workflow_input["generation"],
             url_ingestion_operation_id=workflow_input["url_ingestion_operation_id"],
         )

@@ -400,6 +400,8 @@ async def ownership(request: Request) -> JSONResponse:
 
 @internal_router.get("/internal/url-ingestion/readiness")
 async def readiness(request: Request) -> JSONResponse:
+    from hawki_rag_contracts.pipeline.crawler import CRAWLER_CONTRACT
+
     instance = getattr(request.app.state, "url_ingestion_service", None)
     compatible = False
     healthy = None
@@ -422,6 +424,7 @@ async def readiness(request: Request) -> JSONResponse:
             and instance.control is not None,
             "scraper_healthy": healthy,
             "safe_fetch_supported": compatible,
+            "required_crawler_contract": CRAWLER_CONTRACT,
             "schedule_generations_supported": True,
             "ready": compatible
             and instance.settings.enabled

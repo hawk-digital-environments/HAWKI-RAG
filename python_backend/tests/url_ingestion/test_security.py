@@ -233,6 +233,7 @@ def test_readiness_distinguishes_configuration_and_safety(env):
         "workflow_control_configured": True,
         "scraper_healthy": None,
         "safe_fetch_supported": False,
+        "required_crawler_contract": "permanent-job-v2",
         "schedule_generations_supported": True,
         "ready": False,
     }

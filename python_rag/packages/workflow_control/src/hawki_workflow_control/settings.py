@@ -38,23 +38,24 @@ class WorkflowControlSettings:
         ]
 
 
-def load_settings() -> WorkflowControlSettings:
+def load_settings(env=None) -> WorkflowControlSettings:
+    source = os.environ if env is None else env
     return WorkflowControlSettings(
-        temporal_address=os.environ.get("TEMPORAL_ADDRESS", "temporal:7233"),
-        temporal_namespace=os.environ.get("TEMPORAL_NAMESPACE", "default"),
-        workflow_type=os.environ.get(
+        temporal_address=source.get("TEMPORAL_ADDRESS", "temporal:7233"),
+        temporal_namespace=source.get("TEMPORAL_NAMESPACE", "default"),
+        workflow_type=source.get(
             "TEMPORAL_INGEST_WORKFLOW_TYPE", INGEST_SOURCE_WORKFLOW
         ),
-        workflow_task_queue=os.environ.get(
+        workflow_task_queue=source.get(
             "TEMPORAL_RAG_WORKFLOW_TASK_QUEUE", WORKFLOW_TASK_QUEUE
         ),
         workflow_execution_timeout_seconds=int(
-            os.environ.get("TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT", "172800")
+            source.get("TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT", "172800")
         ),
         workflow_run_timeout_seconds=int(
-            os.environ.get("TEMPORAL_WORKFLOW_RUN_TIMEOUT", "86400")
+            source.get("TEMPORAL_WORKFLOW_RUN_TIMEOUT", "86400")
         ),
         workflow_task_timeout_seconds=int(
-            os.environ.get("TEMPORAL_WORKFLOW_TASK_TIMEOUT", "30")
+            source.get("TEMPORAL_WORKFLOW_TASK_TIMEOUT", "30")
         ),
     )

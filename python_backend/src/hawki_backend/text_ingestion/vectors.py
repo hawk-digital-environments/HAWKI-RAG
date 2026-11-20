@@ -17,6 +17,16 @@ from .settings import TextIngestionSettings
 logger = logging.getLogger(__name__)
 
 
+def vector_client(settings: TextIngestionSettings, operation_key: str = ""):
+    """Use the same credentials, TLS/proxy defaults and timeout for sink reads."""
+    import httpx
+
+    headers = {"X-Operation-Id": operation_key} if operation_key else {}
+    if settings.qdrant_api_key:
+        headers["api-key"] = settings.qdrant_api_key
+    return httpx.Client(timeout=15.0, headers=headers)
+
+
 class HttpResponse(Protocol):
     status_code: int
 
@@ -58,15 +68,7 @@ class TextVectorDeletion:
 
         client = self._client
         if client is None:
-            import httpx
-
-            headers = {"X-Operation-Id": operation_key}
-            if self._settings.qdrant_api_key:
-                headers["api-key"] = self._settings.qdrant_api_key
-            client = httpx.Client(
-                timeout=15.0,
-                headers=headers,
-            )
+            client = vector_client(self._settings, operation_key)
             owned = True
         else:
             owned = False

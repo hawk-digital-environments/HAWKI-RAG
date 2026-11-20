@@ -127,6 +127,10 @@ class QdrantHTTP:
         r.raise_for_status()
         return parse_collection_names(r.json())
 
+    def close(self) -> None:
+        """Release the HTTP session owned by this client."""
+        self._transport.close()
+
     def _pick_default_collection(self) -> str | None:
         """Pick the most populated collection when no default is configured."""
         try:
