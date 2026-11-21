@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../Operations/python_runtime.md); the original text is retained as migration history.
+
 # REST APIs
 
 Laravel is the public HTTP boundary. Its canonical JSON routes use `/api`.

@@ -17,7 +17,7 @@ from hawki_indexer_worker.indexing.batch_execution import (
 )
 from hawki_indexer_worker.adapters.composition import build_ingest_workflow_dependencies
 from hawki_artifact_store.local import LocalArtifactStore
-from hawki_pipeline_callbacks import LaravelCallbackClient
+from hawki_pipeline_callbacks import PipelineCallbackClient
 from hawki_rag_contracts.pipeline.ingestion import IndexResult
 from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
 from hawki_indexer_worker.indexing.point_identity import deterministic_point_id
@@ -71,8 +71,8 @@ def test_signed_registration_uses_actual_execution_and_sibling_endpoint(
     client = httpx.Client(transport=httpx.MockTransport(receive))
     monkeypatch.setattr(
         managed_writer,
-        "LaravelCallbackClient",
-        lambda settings: LaravelCallbackClient(settings, client=client),
+        "PipelineCallbackClient",
+        lambda settings: PipelineCallbackClient(settings, client=client),
     )
     writer = registration(tmp_path, attempt=2)
     writer.register_targets([])

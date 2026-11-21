@@ -1,4 +1,4 @@
-"""Static contracts for the six production Python role images."""
+"""Static contracts for the current production Python role images."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ PINNED_PYTHON_NGINX = (
     "05b581371d0d9faef2f160079acd0a4e18503b99d47b995825205e71fd13c136"
 )
 SERVICES = {
-    "hawki_bridge": ("bridge", "hawki-bridge", "hawki_bridge.main:app"),
     "hawki_workflow_worker": (
         "workflow",
         "hawki-workflow-worker",
@@ -96,7 +95,7 @@ def test_store_consumers_copy_the_independent_store_packages() -> None:
     source = _source()
 
     assert "python_rag/packages/stores" not in source
-    for target in ("bridge-builder", "indexer-builder"):
+    for target in ("indexer-builder",):
         builder = _stage(source, target)
         assert "python_rag/packages/graph_store/pyproject.toml" in builder
         assert "python_rag/packages/graph_store/src" in builder
@@ -128,10 +127,7 @@ def test_builders_strip_nonruntime_content_before_copying_site_packages() -> Non
 def test_web_targets_use_one_asgi_worker_behind_nginx() -> None:
     source = _source()
 
-    for target, module in (
-        ("bridge", "hawki_bridge.main:app"),
-        ("reranker", "hawki_reranker.main:app"),
-    ):
+    for target, module in (("reranker", "hawki_reranker.main:app"),):
         runtime = _stage(source, f"{target}-runtime")
         assert f"PYTHON_APP_MODULE={module}" in runtime
         assert "GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker" in runtime

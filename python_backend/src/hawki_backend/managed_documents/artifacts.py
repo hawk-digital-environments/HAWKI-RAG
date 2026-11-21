@@ -4,11 +4,13 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import unicodedata
 from pathlib import Path
 from typing import BinaryIO
 
 from .input import MAX_FILE_BYTES, ManagedError
+from hawki_backend.historical_archive import require_unreserved
 
 
 def hash_upload(stream: BinaryIO) -> str:
@@ -32,6 +34,53 @@ class UploadStorage:
         if not path.is_absolute() or ".." in path.parts or path == Path("/"):
             raise ValueError("Shared root must be a canonical absolute directory")
         self.root = path
+
+    def delete_revision(self, revision: dict) -> None:
+        """Remove only a drained Python revision's frozen source and upload.
+
+        The caller holds the document cleanup lock and has verified writer
+        quiescence and sink deletion. Validate every destination before mutation;
+        retries tolerate paths already removed by an earlier partial attempt.
+        """
+        require_unreserved(revision)
+        source_id, task_id = revision["source_id"], revision["task_id"]
+        if not re.fullmatch(r"source_[0-9a-f]{32}", source_id) or not re.fullmatch(
+            r"task_managed_[0-9a-f]{32}", task_id
+        ):
+            raise ValueError("Invalid Python managed artifact identity")
+        wire = revision["workflow_input"]
+        source = self.root / "sources" / source_id
+        upload = Path(revision["upload_path"])
+        expected = {
+            "raw_output_path": source / "raw",
+            "markdown_output_path": source / "markdown",
+            "ingest_manifest_path": source / "ingest/manifest.json",
+        }
+        if (
+            Path(wire["storage"]["shared_root"]) != self.root
+            or wire["source_id"] != source_id
+            or wire["task_id"] != task_id
+            or wire["managed_document_id"] != revision["managed_document_id"]
+            or upload.parent != self.root / task_id
+            or wire["upload"]["local_path"] != str(upload)
+            or any(Path(wire[key]) != path for key, path in expected.items())
+        ):
+            raise ValueError("Managed artifact paths differ from frozen ownership")
+        for path in (source, upload):
+            if not path.is_absolute() or path.resolve() != path or path.is_symlink():
+                raise ValueError("Managed artifact symlink or noncanonical path")
+        if source.exists() and any(path.is_symlink() for path in source.rglob("*")):
+            raise ValueError("Managed source contains an unverified artifact link")
+        if upload.exists():
+            with upload.open("rb") as stream:
+                if hash_upload(stream) != revision["source_checksum"]:
+                    raise ValueError("Managed upload checksum changed")
+        if source.exists():
+            shutil.rmtree(source)
+        upload.unlink(missing_ok=True)
+        # Other files in a task directory are never inferred to be ours.
+        if upload.parent.is_dir() and not any(upload.parent.iterdir()):
+            upload.parent.rmdir()
 
     def _publish(
         self, path: Path, stream: BinaryIO, checksum: str, *, mode: int = 0o644

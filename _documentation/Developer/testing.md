@@ -1,128 +1,67 @@
-# Testing
+# Python and frontend testing
 
-Choose checks for the boundary being changed. Unit/contract suites provide
-deterministic evidence; live smoke tests prove deployed services cooperate.
-One does not substitute for the other.
+The repository test/build toolchain requires Python and Node, with no PHP or
+Composer installation. See the [runtime guide](../Operations/python_runtime.md).
 
-| Change | Minimum relevant validation |
-|---|---|
-| Laravel request/auth | Relevant Feature/Unit tests for validation, identity, and grants |
-| Query pipeline | Bridge/query tests, including scope and fallback behavior |
-| Ingestion | Indexer tests, including incremental and partial-write behavior |
-| Graph extraction | Graph/indexer tests for scope, filtering, and failure handling |
-| Temporal workflow | Workflow compatibility tests for old/new history branches |
-| Documentation | Existing documentation build, link checks, and `git diff --check` |
+## Backend
 
-## Laravel
-
-From the repository root with Composer dependencies installed:
-
-```bash
-php artisan test --testsuite=Unit
-php artisan test --testsuite=Feature
-php artisan test --testsuite=System
+```sh
+cd python_backend
+uv sync --frozen --all-groups
+uv run --frozen pytest
+uv run --frozen ruff check .
 ```
 
-The System suite replaces external Python HTTP calls; it does not prove live
-model/store behavior. `make system-test` runs that suite.
-[Laravel test commands](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/tests/README.md) own the PostgreSQL migration-test
-environment; `make migration-test` uses the running stack and an isolated
-migration schema.
+PostgreSQL integration tests require their explicit isolated test DSN/flags.
+Never run them against a historical database. Alembic owns `hawki_backend`; tests
+and schema checks must not mutate historical public tables. The original PHP
+oracles have been captured as inert fixtures, with provenance under
+`python_backend/tests/fixtures/README.md`. Service JWT tests generate ephemeral
+keys in memory and preserve issuer/audience/client/scope/lifetime/signature checks.
 
-Use [the repository map](../Reference/8_repo_map.md#find-the-change-you-need)
-to find the feature/unit suite for your change.
+On this macOS host, 48 direct-text artifact tests retain the documented setgid
+assertion failure (`0o2775`); their behavior has not been relaxed. Report these
+separately from new failures. Linux CI keeps the full assertions.
 
 ## Python workspace
 
-Use Python **3.13.14** and the checked-in uv lock. From `python_rag`:
-
-```bash
-uv lock --check
-uv sync --frozen --group test --extra cpu \
-  --package hawki-bridge \
-  --package hawki-workflow-worker \
-  --package hawki-scraper-worker \
-  --package hawki-converter-worker \
-  --package hawki-indexer-worker
-
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-  uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
+```sh
+make python-deps
+cd python_rag
+uv run --frozen pytest -m "not integration"
+uv run --frozen ruff check packages services tests
 ```
 
-The root [pytest configuration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/pytest.ini) selects package,
-data-plane service, and cross-service tests. The reranker is
-intentionally separate:
+The reranker has an isolated environment because its Transformers resolution
+differs from the indexer. Optional integration/model tests require their live
+stores/providers and are skipped unless explicitly enabled. The unchanged
+638-line graph-store module currently triggers the pre-existing 600-line
+boundary test; report that baseline separately rather than weakening the limit.
 
-```bash
-UV_PROJECT_ENVIRONMENT=.venv-reranker \
-  uv sync --frozen --group test --package hawki-reranker --extra cpu
+Historical compatibility tests may contain old wire labels and mocked deployment
+inventories. They cannot start the removed PHP runtime. Current workers and live
+acceptance use the signed Python callback boundary.
 
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 UV_PROJECT_ENVIRONMENT=.venv-reranker \
-  uv run --frozen --no-sync pytest -c pytest.ini services/hawki_reranker/tests
-```
+## Frontend and crawler
 
-After installing the appropriate environment, append a member path to run a
-focused suite, for example `services/hawki_bridge/tests`.
-Tests live beside member `src/` trees; production images omit them.
-
-[Python CI](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.github/workflows/python-rag.yml) also checks Ruff formatting,
-lint, dependency boundaries, file length, lock CPU/CUDA invariants, and Compose.
-Run its exact commands when changing those concerns. From the repository root,
-`make python-deps` provisions the separate development environments.
-
-:::note Checking versus resolving the lock
-
-Use `uv lock --check` from `python_rag` to check the committed lock without
-resolving a new one. `make python-lock` first runs `uv lock`, which can modify
-`uv.lock`, then verifies the lock and CPU/CUDA invariants. Use that target when
-intentionally maintaining dependencies, and review any lockfile diff.
-
-:::
-
-## Live integration
-
-The `integration` marker requires live infrastructure. Use a disposable test
-dataset: tests can create indexed content and workflow/application records.
-
-- [Direct-text smoke](../Reference/direct_text_ingestion.md) proves Laravel →
-  bridge → Temporal → indexer → Qdrant without crawler/converter.
-- [Full ingestion smoke](../Getting%20Started/2_setup.md#full-ingestion-smoke-test)
-  adds the external tool handoff.
-- [Python live test instructions](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/tests/README.md) describe the
-  automated direct-text and source-workflow end-to-end tests.
-
-Set `RAWKI_INTEGRATION_REQUIRED=1` when missing infrastructure should fail rather
-than skip. Verify model readiness and the dataset's explicit ingest grant first.
-Temporal unit tests cover old/new patch paths, but captured production-history
-replay remains a separate rollout check.
-
-## Documentation checks
-
-From `_documentation.build`:
-
-```bash
+```sh
 npm ci
+npm test
 npm run build
 ```
 
-Skip `npm ci` when the locked dependencies are already installed. The existing
-build compiles Markdown/MDX and checks site links. Navigation is generated from
-documentation directories and page metadata. No dedicated documentation lint
-command is configured.
+The Node suite verifies same-origin Python API routing, browser credential
+isolation, graph scope/stale-response handling and the existing frontend helpers.
+The removed opt-in PHP browser fixture is replaced operationally by the Python
+managed/text/graph/URL smoke and cleanup audits. See `docker/crawler/README.md`
+for the upgraded crawler contract/lifecycle test command.
 
-From the repository root:
+## Live acceptance
 
-```bash
-git diff --check
-```
-
-Source-code links point to GitHub. When changing the repository map, verify the
-corresponding paths in your checkout; for example:
-
-```bash
-test -f python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py
-test -d python_rag/services/hawki_indexer_worker/tests
-```
-
-Review build warnings, linked headings, and rendered Mermaid diagrams. A site
-build does not execute curl examples or prove live service behavior.
+Use only the explicitly provisioned local overlay and disposable datasets.
+`scripts/smoke_local_graph.py` exercises the real converter, indexer, Ollama,
+Qdrant, Neo4j, graph UI operations, query/download and API deletion.
+`scripts/audit_local_graph.py` verifies cleanup read-only. The URL smoke uses
+the separate isolated fixture overlay and its own read-only receipt/store audit.
+Remove disposable fixture networking afterward. Preserve all historical archives,
+SQL rows and original files throughout. Never bypass `crawler_contract`.

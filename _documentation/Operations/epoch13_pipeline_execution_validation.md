@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](python_runtime.md); the original text is retained as migration history.
+
 # Epoch 13 validation — 2026-11-15
 
 Validation ran on `feat/python-pipeline-execution`, without a commit, merge,
@@ -157,56 +159,56 @@ legacy-admin selector decision, rollback restrictions and Epoch 14 exclusions.
 
 ### Python (8)
 
-- [python_backend/src/hawki_backend/url_ingestion/api.py](../../python_backend/src/hawki_backend/url_ingestion/api.py)
-- [python_backend/src/hawki_backend/url_ingestion/ownership.py](../../python_backend/src/hawki_backend/url_ingestion/ownership.py)
-- [python_backend/src/hawki_backend/url_ingestion/reads.py](../../python_backend/src/hawki_backend/url_ingestion/reads.py)
-- [python_backend/src/hawki_backend/url_ingestion/repository.py](../../python_backend/src/hawki_backend/url_ingestion/repository.py)
-- [python_backend/src/hawki_backend/url_ingestion/scheduler.py](../../python_backend/src/hawki_backend/url_ingestion/scheduler.py)
-- [python_backend/src/hawki_backend/url_ingestion/schema.py](../../python_backend/src/hawki_backend/url_ingestion/schema.py)
-- [python_backend/src/hawki_backend/url_ingestion/service.py](../../python_backend/src/hawki_backend/url_ingestion/service.py)
-- [python_backend/src/hawki_backend/url_ingestion/task_commands.py](../../python_backend/src/hawki_backend/url_ingestion/task_commands.py)
+- `python_backend/src/hawki_backend/url_ingestion/api.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/api.py)
+- `python_backend/src/hawki_backend/url_ingestion/ownership.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/ownership.py)
+- `python_backend/src/hawki_backend/url_ingestion/reads.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/reads.py)
+- `python_backend/src/hawki_backend/url_ingestion/repository.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/repository.py)
+- `python_backend/src/hawki_backend/url_ingestion/scheduler.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/scheduler.py)
+- `python_backend/src/hawki_backend/url_ingestion/schema.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/schema.py)
+- `python_backend/src/hawki_backend/url_ingestion/service.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/service.py)
+- `python_backend/src/hawki_backend/url_ingestion/task_commands.py` (repository reference: python_backend/src/hawki_backend/url_ingestion/task_commands.py)
 
 ### Laravel (14)
 
-- [app/Console/Commands/StartOrchestratedPipelineTask.php](../../app/Console/Commands/StartOrchestratedPipelineTask.php)
-- [app/Http/Controllers/Health/PipelineHealthController.php](../../app/Http/Controllers/Health/PipelineHealthController.php)
-- [app/Http/Middleware/CrawlerIngestionBoundary.php](../../app/Http/Middleware/CrawlerIngestionBoundary.php)
-- [app/Services/Pipeline/CrawlerCallbackBoundary.php](../../app/Services/Pipeline/CrawlerCallbackBoundary.php)
-- [app/Services/Pipeline/PipelineCompatibilityBoundary.php](../../app/Services/Pipeline/PipelineCompatibilityBoundary.php)
-- [app/Services/Pipeline/PipelineExecutionBackend.php](../../app/Services/Pipeline/PipelineExecutionBackend.php)
-- [app/Services/Pipeline/PipelineOwnership.php](../../app/Services/Pipeline/PipelineOwnership.php)
-- [app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php](../../app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php)
-- [app/Services/Pipeline/State/PipelineStageRollupService.php](../../app/Services/Pipeline/State/PipelineStageRollupService.php)
-- [app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php](../../app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php)
-- [app/Services/Pipeline/Status/PipelineStageStatusMerger.php](../../app/Services/Pipeline/Status/PipelineStageStatusMerger.php)
-- [app/Services/Pipeline/Tasks/PipelineTaskStarter.php](../../app/Services/Pipeline/Tasks/PipelineTaskStarter.php)
-- [app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php](../../app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php)
-- [app/Services/Scrape/Tasks/ScrapeTaskService.php](../../app/Services/Scrape/Tasks/ScrapeTaskService.php)
+- `app/Console/Commands/StartOrchestratedPipelineTask.php` (historical source at `5391cb23`: app/Console/Commands/StartOrchestratedPipelineTask.php)
+- `app/Http/Controllers/Health/PipelineHealthController.php` (historical source at `5391cb23`: app/Http/Controllers/Health/PipelineHealthController.php)
+- `app/Http/Middleware/CrawlerIngestionBoundary.php` (historical source at `5391cb23`: app/Http/Middleware/CrawlerIngestionBoundary.php)
+- `app/Services/Pipeline/CrawlerCallbackBoundary.php` (historical source at `5391cb23`: app/Services/Pipeline/CrawlerCallbackBoundary.php)
+- `app/Services/Pipeline/PipelineCompatibilityBoundary.php` (historical source at `5391cb23`: app/Services/Pipeline/PipelineCompatibilityBoundary.php)
+- `app/Services/Pipeline/PipelineExecutionBackend.php` (historical source at `5391cb23`: app/Services/Pipeline/PipelineExecutionBackend.php)
+- `app/Services/Pipeline/PipelineOwnership.php` (historical source at `5391cb23`: app/Services/Pipeline/PipelineOwnership.php)
+- `app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php` (historical source at `5391cb23`: app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php)
+- `app/Services/Pipeline/State/PipelineStageRollupService.php` (historical source at `5391cb23`: app/Services/Pipeline/State/PipelineStageRollupService.php)
+- `app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php` (historical source at `5391cb23`: app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php)
+- `app/Services/Pipeline/Status/PipelineStageStatusMerger.php` (historical source at `5391cb23`: app/Services/Pipeline/Status/PipelineStageStatusMerger.php)
+- `app/Services/Pipeline/Tasks/PipelineTaskStarter.php` (historical source at `5391cb23`: app/Services/Pipeline/Tasks/PipelineTaskStarter.php)
+- `app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php` (historical source at `5391cb23`: app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php)
+- `app/Services/Scrape/Tasks/ScrapeTaskService.php` (historical source at `5391cb23`: app/Services/Scrape/Tasks/ScrapeTaskService.php)
 
 ### Migrations (1)
 
-- [python_backend/alembic/versions/0008_url_task_commands.py](../../python_backend/alembic/versions/0008_url_task_commands.py)
+- `python_backend/alembic/versions/0008_url_task_commands.py` (repository reference: python_backend/alembic/versions/0008_url_task_commands.py)
 
 ### Tests (9)
 
-- [python_backend/tests/api/test_health.py](../../python_backend/tests/api/test_health.py)
-- [python_backend/tests/auth/test_dependencies.py](../../python_backend/tests/auth/test_dependencies.py)
-- [python_backend/tests/test_retrieval_import.py](../../python_backend/tests/test_retrieval_import.py)
-- [python_backend/tests/url_ingestion/test_postgres.py](../../python_backend/tests/url_ingestion/test_postgres.py)
-- [python_backend/tests/url_ingestion/test_task_commands.py](../../python_backend/tests/url_ingestion/test_task_commands.py)
-- [python_backend/tests/url_ingestion/test_temporal_dispatch_recovery.py](../../python_backend/tests/url_ingestion/test_temporal_dispatch_recovery.py)
-- [tests/Feature/Pipeline/PipelineStatusTest.php](../../tests/Feature/Pipeline/PipelineStatusTest.php)
-- [tests/Feature/Pipeline/PythonUrlIngestionBffTest.php](../../tests/Feature/Pipeline/PythonUrlIngestionBffTest.php)
-- [tests/Feature/Scraping/ScraperTaskProxyTest.php](../../tests/Feature/Scraping/ScraperTaskProxyTest.php)
+- `python_backend/tests/api/test_health.py` (repository reference: python_backend/tests/api/test_health.py)
+- `python_backend/tests/auth/test_dependencies.py` (repository reference: python_backend/tests/auth/test_dependencies.py)
+- `python_backend/tests/test_retrieval_import.py` (repository reference: python_backend/tests/test_retrieval_import.py)
+- `python_backend/tests/url_ingestion/test_postgres.py` (repository reference: python_backend/tests/url_ingestion/test_postgres.py)
+- `python_backend/tests/url_ingestion/test_task_commands.py` (repository reference: python_backend/tests/url_ingestion/test_task_commands.py)
+- `python_backend/tests/url_ingestion/test_temporal_dispatch_recovery.py` (repository reference: python_backend/tests/url_ingestion/test_temporal_dispatch_recovery.py)
+- `tests/Feature/Pipeline/PipelineStatusTest.php` (historical source at `5391cb23`: tests/Feature/Pipeline/PipelineStatusTest.php)
+- `tests/Feature/Pipeline/PythonUrlIngestionBffTest.php` (historical source at `5391cb23`: tests/Feature/Pipeline/PythonUrlIngestionBffTest.php)
+- `tests/Feature/Scraping/ScraperTaskProxyTest.php` (historical source at `5391cb23`: tests/Feature/Scraping/ScraperTaskProxyTest.php)
 
 ### Configuration/docs (6)
 
-- [.env.example](../../.env.example)
+- `.env.example` (repository reference: .env.example)
 - [_documentation/Operations/epoch13_pipeline_execution_validation.md](../../_documentation/Operations/epoch13_pipeline_execution_validation.md)
 - [_documentation/Operations/python_pipeline_execution.md](../../_documentation/Operations/python_pipeline_execution.md)
-- [config/config.php](../../config/config.php)
-- [config/scraper.php](../../config/scraper.php)
-- [python_backend/README.md](../../python_backend/README.md)
+- `config/config.php` (historical source at `5391cb23`: config/config.php)
+- `config/scraper.php` (historical source at `5391cb23`: config/scraper.php)
+- `python_backend/README.md` (repository reference: python_backend/README.md)
 
 
 ## Independent review fixes F1–F5 — 2026-11-15

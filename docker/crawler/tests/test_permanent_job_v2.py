@@ -85,3 +85,51 @@ async def test_owner_is_durable_and_replay_never_starts_a_second_execution(monke
 def test_azure_platform_address_is_rejected_at_the_connection_boundary():
     with pytest.raises(UnsafeDestination):
         approve_address("168.63.129.16")
+
+
+def test_explicit_legacy_archive_releases_only_imported_capacity(tmp_path):
+    import hashlib
+    import json
+    from hawki_crawler.runtime.store import RuntimeStore, atomic_json
+
+    root = tmp_path
+    artifact = root / "legacy"
+    artifact.mkdir()
+    (artifact / "job_state.json").write_text('{"status":"completed"}')
+    store = RuntimeStore(root)
+    record = store.get("legacy")
+    original = store.path("legacy").read_bytes()
+    manifest = {
+        "version": 1,
+        "records": {
+            "legacy": {
+                "classification": "legacy-archive",
+                "record_sha256": hashlib.sha256(
+                    json.dumps(record, sort_keys=True).encode()
+                ).hexdigest(),
+                "artifact_state_sha256": hashlib.sha256(
+                    (artifact / "job_state.json").read_bytes()
+                ).hexdigest(),
+            }
+        },
+    }
+    atomic_json(store.directory / "legacy-archive", manifest)
+    assert store.archived_legacy(record)
+    assert not record["sealed"] and not record["quiescent"]
+    assert not store.archived_legacy(dict(record, fingerprint="modern-request"))
+    assert not store.archived_legacy(dict(record, metadata={"dataset_id": "owned"}))
+    store.close()
+    store = RuntimeStore(root)
+    assert store.path("legacy").read_bytes() == original
+    assert store.archived_legacy(store.get("legacy"))
+    from hawki_crawler.crawler.models import CrawlConfig
+
+    for number in range(5):
+        store.admit(CrawlConfig(**dict(payload(), job_id=f"new-{number}")), 5)
+    with pytest.raises(OverflowError):
+        store.admit(CrawlConfig(**dict(payload(), job_id="sixth")), 5)
+    with pytest.raises(ValueError):
+        store.admit(CrawlConfig(**dict(payload(), job_id="legacy")), 5)
+    (artifact / "job_state.json").write_text('{"status":"changed"}')
+    assert not store.archived_legacy(store.get("legacy"))
+    store.close()

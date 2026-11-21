@@ -1,3 +1,8 @@
+> **Historical compatibility package only.** No Compose service or Docker target
+> deploys this server. Current API/query/graph operations belong to `hawki_backend`;
+> use the [Python runtime guide](../../../_documentation/Operations/python_runtime.md).
+> The old service description below is retained as migration history.
+
 # HAWKI bridge
 
 > Epoch 8: `/temporal/*` control endpoints are retired and return 410. Laravel

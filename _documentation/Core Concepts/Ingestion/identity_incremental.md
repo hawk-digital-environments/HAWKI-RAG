@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../../Operations/python_runtime.md); the original text is retained as migration history.
+
 # Identity & Incremental Ingestion
 
 Incremental ingestion allows the system to recognize documents across multiple indexing runs. It uses three different values for different purposes: **source identity** identifies the same logical document over time, the **content hash** shows whether the document's content has changed, and the **idempotency key** identifies a specific submission or retry. For direct text, the same dataset and `external_document_id` should be kept across revisions. When the content changes, the hash changes and a new idempotency key should be used. The idempotency key belongs to the submission, not to the document itself.

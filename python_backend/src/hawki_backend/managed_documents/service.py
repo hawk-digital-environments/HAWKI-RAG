@@ -305,6 +305,9 @@ class ManagedService:
             else [principal.tenant_id, principal.principal_id, purpose, target, key]
         )
         doc_id = document_id or "adoc_" + uuid.uuid4().hex
+        from hawki_backend.historical_archive import require_unreserved
+
+        require_unreserved({"managed_document_id": doc_id, "dataset_id": dataset})
         canonical = body.canonical()
         fingerprint_input = body.model_dump(mode="json")
         fingerprint_input["metadata_json"] = body.metadata_json or []
@@ -693,6 +696,7 @@ class ManagedService:
                         self.repository.advance(operation, "drained")
                         for revision in owners:
                             self.cleanup.delete(revision, operation["mutation_id"])
+                            self.storage.delete_revision(revision)
                         self.repository.advance(operation, "cleaned")
                     if operation["stage"] not in {
                         "prepared",

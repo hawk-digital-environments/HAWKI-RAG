@@ -1,4 +1,4 @@
-"""Keep Laravel's compatibility fixture tied to real Python upload publication."""
+"""Keep the historical compatibility fixture tied to real Python upload publication."""
 
 import hashlib
 import json
@@ -9,9 +9,7 @@ import pytest
 
 from hawki_backend.managed_documents.artifacts import UploadStorage
 
-FIXTURE_PATH = (
-    Path(__file__).resolve().parents[3] / "tests/Fixtures/python_managed_upload.fixture"
-)
+FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures/managed_upload.fixture"
 FIXTURE = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 
 

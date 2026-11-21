@@ -17,6 +17,7 @@ from hawki_vector_store.requests import QdrantRequest
 from hawki_vector_store.transport import QdrantHTTPTransport
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "historical"))
 import query_readiness as readiness  # noqa: E402
 import query_storage as storage  # noqa: E402
 

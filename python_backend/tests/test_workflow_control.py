@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import json
 import time
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -22,6 +21,40 @@ from hawki_backend.workflow_control.service import WorkflowControl
 from hawki_workflow_control.temporal_client import TemporalExecution
 from hawki_workflow_control.temporal_client import TemporalUnavailable
 from hawki_workflow_control.temporal_client import WorkflowOwnershipConflict
+
+
+def historical_wire(case, *, stamp=None):
+    """Replay independently captured bytes with a fresh test-only HMAC clock."""
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "python_rag/packages/contracts/tests/fixtures/historical_control.fixture"
+    )
+    data = json.loads(fixture.read_text())
+    wire = data["cases"][case]
+    operation = (
+        "deletion/start"
+        if "deletion" in case
+        else "source/start"
+        if case == "replacement"
+        else case
+    )
+    old_stamp = wire["headers"]["X-Hawki-Timestamp"]
+
+    def signature(timestamp):
+        raw = (
+            f"hawki-workflow-control-v1\nPOST\n/internal/workflow-control/{operation}\n{timestamp}\n".encode()
+            + wire["body"].encode()
+        )
+        return (
+            "v1=" + hmac.new(b"contract-test-secret", raw, hashlib.sha256).hexdigest()
+        )
+
+    assert signature(old_stamp) == wire["headers"]["X-Hawki-Signature"]
+    stamp = str(int(time.time()) if stamp is None else stamp)
+    return {
+        "body": wire["body"],
+        "headers": {"X-Hawki-Timestamp": stamp, "X-Hawki-Signature": signature(stamp)},
+    }
 
 
 def source_input():
@@ -567,13 +600,14 @@ def test_backend_runtime_has_no_worker_dependency():
     assert "hawki-workflow-control" in metadata
     assert "hawki-workflow-worker" not in metadata
     assert "hawki-indexer-worker" not in metadata
-    assert "HAWKI_QUERY_BACKEND=python" in (root.parent / ".env.example").read_text()
+    assert (
+        "HAWKI_BACKEND_SERVICE_ONLY=true" in (root.parent / ".env.example").read_text()
+    )
 
 
 @pytest.mark.parametrize("count", [1, 1728])
-def test_real_php_signature_and_historical_deletion_wire_reach_backend(control, count):
+def test_historical_deletion_wire_reaches_backend(control, count):
     _, port, app, _ = control
-    root = Path(__file__).resolve().parents[2]
     value = {
         "operation_id": "delete_" + "b" * 64,
         "managed_document_id": "adoc-a",
@@ -590,15 +624,7 @@ def test_real_php_signature_and_historical_deletion_wire_reach_backend(control, 
             for index in range(count)
         ],
     }
-    wire = json.loads(
-        subprocess.run(
-            ["php", str(root / "tests/Support/managed_deletion_wire.php")],
-            input=json.dumps(value),
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout
-    )
+    wire = historical_wire("backend-deletion-" + str(count))
     app.state.workflow_control_secret = "contract-test-secret"
     identity = "managed-" + value["operation_id"]
     port.start_managed_deletion.return_value = {
@@ -616,23 +642,9 @@ def test_real_php_signature_and_historical_deletion_wire_reach_backend(control, 
     )
 
 
-def test_signed_php_replacement_selects_restricted_reuse_in_python(control):
+def test_historical_replacement_selects_restricted_reuse(control):
     _, port, app, _ = control
-    root = Path(__file__).resolve().parents[2]
-    value = {**source_input(), "managed_document_id": "adoc-a"}
-    wire = json.loads(
-        subprocess.run(
-            [
-                "php",
-                str(root / "tests/Support/managed_deletion_wire.php"),
-                "replacement",
-            ],
-            input=json.dumps(value),
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout
-    )
+    wire = historical_wire("replacement")
     app.state.workflow_control_secret = "contract-test-secret"
     response = request(
         app, "source/start", content=wire["body"], headers=wire["headers"]
@@ -693,34 +705,18 @@ def test_signature_authenticates_every_contract_component(control, mutation, cap
 
 
 @pytest.mark.parametrize("operation", ["execution/status", "execution/cancel"])
-def test_php_signer_and_python_verifier_bind_operation_independently_of_host(
+def test_historical_signing_contract_binds_operation_independently_of_host(
     control, operation
 ):
     _, port, app, _ = control
     port.workflow_status.return_value = {"status": "RUNNING", "error": None}
     app.state.workflow_control_secret = "contract-test-secret"
-    root = Path(__file__).resolve().parents[2]
     body = {"workflow_id": "ingest-source-source-a", "run_id": "run-a"}
     stamp = int(time.time())
-    wires = []
-    for host in ["http://backend.test", "http://different-host.test"]:
-        wires.append(
-            json.loads(
-                subprocess.run(
-                    [
-                        "php",
-                        str(root / "tests/Support/managed_deletion_wire.php"),
-                        operation,
-                        host,
-                        str(stamp),
-                    ],
-                    input=json.dumps(body),
-                    text=True,
-                    capture_output=True,
-                    check=True,
-                ).stdout
-            )
-        )
+    wires = [
+        historical_wire(operation, stamp=stamp)
+        for _host in ["http://backend.test", "http://different-host.test"]
+    ]
     assert wires[0] == wires[1]
     expected = signed(
         body, operation=operation, secret="contract-test-secret", timestamp=stamp

@@ -198,8 +198,10 @@ def test_bridge_manifest_and_dockerfile_are_production_pinned() -> None:
         "neunerlei/python-nginx:3.13@sha256:"
         "05b581371d0d9faef2f160079acd0a4e18503b99d47b995825205e71fd13c136"
     ) in dockerfile
-    assert "AS bridge-builder" in dockerfile
-    assert "AS bridge-runtime" in dockerfile
+    assert "AS bridge-builder" not in dockerfile
+    assert "AS bridge-runtime" not in dockerfile
+    assert "AS indexer-builder" in dockerfile
+    assert "AS indexer-runtime" in dockerfile
     assert "UV_PYTHON=/usr/local/bin/python3.13" in dockerfile
     assert "UV_PYTHON_DOWNLOADS=never" in dockerfile
     assert "--frozen --no-dev --no-editable" in dockerfile
@@ -209,11 +211,13 @@ def test_bridge_manifest_and_dockerfile_are_production_pinned() -> None:
         "/workspace/python_rag/.venv/lib/python3.13/site-packages/ "
         "/opt/venv/lib/python3.13/site-packages/"
     ) in dockerfile
-    bridge_runtime = dockerfile.split("AS bridge-runtime", maxsplit=1)[1]
-    assert "PYTHON_APP_MODULE=hawki_bridge.main:app" in bridge_runtime
-    assert "GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker" in bridge_runtime
-    assert "GUNICORN_WORKERS=1" in bridge_runtime
-    assert "USER " not in bridge_runtime
+    runtime = dockerfile.split("AS reranker-runtime", maxsplit=1)[1].split(
+        "FROM ", maxsplit=1
+    )[0]
+    assert "PYTHON_APP_MODULE=hawki_reranker.main:app" in runtime
+    assert "GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker" in runtime
+    assert "GUNICORN_WORKERS=1" in runtime
+    assert "USER " not in runtime
     assert "tests" not in "\n".join(
         line for line in dockerfile.splitlines() if line.startswith("COPY ")
     )

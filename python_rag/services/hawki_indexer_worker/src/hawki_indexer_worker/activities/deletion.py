@@ -10,7 +10,7 @@ from temporalio.service import RPCError
 
 from .deletion_proof import execution_absent, require_durable_proof
 
-from hawki_pipeline_callbacks import LaravelCallbackClient, LaravelCallbackSettings
+from hawki_pipeline_callbacks import PipelineCallbackClient, PipelineCallbackSettings
 from hawki_rag_contracts.pipeline.deletion import (
     DELETE_MANAGED_GRAPH_ACTIVITY,
     DELETE_MANAGED_VECTORS_ACTIVITY,
@@ -82,8 +82,8 @@ def report_managed_deletion(payload: dict[str, Any]) -> dict[str, Any]:
         "status": payload["status"],
         "results": payload["results"],
     }
-    with LaravelCallbackClient(
-        LaravelCallbackSettings(
+    with PipelineCallbackClient(
+        PipelineCallbackSettings(
             endpoint=endpoint,
             secret=settings.callback_secret,
             timeout_seconds=settings.callback_timeout_seconds,

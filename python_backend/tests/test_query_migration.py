@@ -11,6 +11,8 @@ import sqlalchemy as sa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import query_grants as migration  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "historical"))
 import query_readiness as readiness  # noqa: E402
 from hawki_backend.persistence.schema import metadata, datasets, dataset_grants  # noqa: E402
 from hawki_backend.query.settings import load_query_settings  # noqa: E402

@@ -49,21 +49,21 @@ preserved throughout recovery.
 
 Production implementation:
 
-- python_backend/src/hawki_backend/workflow_control/{repository,service}.py
-- python_backend/src/hawki_backend/url_ingestion/{repository,service,scheduler}.py
+- `python_backend/src/hawki_backend/workflow_control/{repository,service}.py`
+- `python_backend/src/hawki_backend/url_ingestion/{repository,service,scheduler}.py`
 - python_rag/packages/workflow_control/src/hawki_workflow_control/temporal_client.py
 - python_rag/packages/contracts/src/hawki_rag_contracts/pipeline/temporal.py
 - python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/ingest_source.py
 
 Tests:
 
-- python_backend/tests/url_ingestion/{conftest,test_lifecycle,test_postgres}.py
+- `python_backend/tests/url_ingestion/{conftest,test_lifecycle,test_postgres}.py`
 - python_backend/tests/url_ingestion/test_dispatch_recovery.py
 - python_backend/tests/url_ingestion/test_temporal_dispatch_recovery.py
 - python_backend/tests/url_ingestion/test_terminal_acknowledgement.py
 - python_backend/tests/url_ingestion/test_temporal_terminal_acknowledgement.py
 - python_backend/tests/url_ingestion/terminal_workflow_fixture.py
-- python_rag/packages/workflow_control/tests/{test_url_dispatch,test_workflow_status}.py
+- `python_rag/packages/workflow_control/tests/{test_url_dispatch,test_workflow_status}.py`
 - python_rag/services/hawki_workflow_worker/tests/unit/test_url_terminal_acknowledgement.py
 
 Documentation: this report, python_url_ingestion.md and workflow worker README.md.

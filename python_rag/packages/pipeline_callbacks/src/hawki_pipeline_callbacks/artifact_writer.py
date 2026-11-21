@@ -3,11 +3,11 @@
 from contextlib import contextmanager
 import hashlib
 
-from .client import LaravelCallbackClient, LaravelCallbackSettings
+from .client import PipelineCallbackClient, PipelineCallbackSettings
 
 
 @contextmanager
-def url_artifact_writer(wire, info, settings, *, client_factory=LaravelCallbackClient):
+def url_artifact_writer(wire, info, settings, *, client_factory=PipelineCallbackClient):
     if wire.get("owner") != "url":
         yield
         return
@@ -28,7 +28,7 @@ def url_artifact_writer(wire, info, settings, *, client_factory=LaravelCallbackC
         job_id=wire["job_id"],
         targets=[],
     )
-    callback = LaravelCallbackSettings(
+    callback = PipelineCallbackSettings(
         endpoint=settings.callback_url.rsplit("/", 1)[0] + "/managed-writers",
         secret=settings.callback_secret,
         timeout_seconds=settings.callback_timeout_seconds,

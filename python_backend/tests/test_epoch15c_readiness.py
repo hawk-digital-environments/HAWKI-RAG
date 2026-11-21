@@ -185,7 +185,13 @@ def test_staging_and_cutover_templates_require_an_explicit_handoff():
     def read(name):
         return dict(
             line.split("=", 1)
-            for line in (root / "docker/env" / name).read_text().splitlines()
+            for line in (
+                (root / "python_backend/tests/fixtures/epoch15c_staging.env.fixture")
+                if name == "epoch15c.staging.env.example"
+                else (root / "docker/env" / name)
+            )
+            .read_text()
+            .splitlines()
             if line and not line.startswith("#")
         )
 
@@ -391,7 +397,11 @@ def test_component_results_preserve_application_failure(monkeypatch, value):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     env = environment()
-    container = {"Id": "fixture", "State": {"Running": True}}
+    container = {
+        "Id": "fixture",
+        "State": {"Running": True},
+        "Config": {"Labels": {"com.docker.compose.project": "test"}},
+    }
     monkeypatch.setattr(module, "inspect", lambda _: (container, env))
     monkeypatch.setattr(module, "configuration_checks", lambda *_: {"auth": value})
     families = dict.fromkeys(
@@ -422,7 +432,7 @@ def test_component_results_preserve_application_failure(monkeypatch, value):
 
     monkeypatch.setattr(module.subprocess, "run", run)
     report = module.deployment_report("cutover", True)
-    assert report["checks"]["laravel.auth"] == value
+    assert report["checks"]["configuration.auth"] == value
     assert report["checks"]["backend.auth"] == "PASS"
     assert report["status"] == ("PASS" if value == "PASS" else "FAIL")
 

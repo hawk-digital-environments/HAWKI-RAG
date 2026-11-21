@@ -289,6 +289,7 @@ def create_app(
             embedding_model=os.environ.get(
                 "HAWKI_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"
             ),
+            graph_enabled=_dataset_graph_default(),
             cleanup=DatasetCleanupCoordinator(
                 dataset_store,
                 managed_documents=resolved_managed_service,
@@ -429,6 +430,13 @@ async def _reconcile_urls_periodically(service: UrlIngestionService) -> None:
             await asyncio.to_thread(lambda: asyncio.run(tick(service)))
         except Exception as error:
             logger.warning("URL reconciliation failed error=%s", type(error).__name__)
+
+
+def _dataset_graph_default() -> bool:
+    value = os.environ.get("HAWKI_BACKEND_DATASET_GRAPH_ENABLED", "false").lower()
+    if value not in {"true", "false"}:
+        raise ValueError("HAWKI_BACKEND_DATASET_GRAPH_ENABLED must be true or false")
+    return value == "true"
 
 
 def _dataset_source() -> Literal["environment", "database"]:

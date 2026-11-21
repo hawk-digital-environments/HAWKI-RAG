@@ -2,8 +2,8 @@
 
 This Python **3.13.14** uv workspace contains the RAG services and reusable
 packages, managed by [pyproject.toml](pyproject.toml) and one [lockfile](uv.lock).
-It owns Python retrieval and ingestion implementation, not Laravel's public
-authorization or application records.
+It owns retrieval and ingestion. FastAPI owns current service authorization and
+operational records; historical public-schema records remain preserved evidence.
 
 The handbook is authoritative for
 [runtime architecture](../_documentation/Getting%20Started/3_introduction_architecture.md)
@@ -19,6 +19,10 @@ and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-wo
 | Deterministic suites and isolated reranker environment | [Testing](../_documentation/Developer/testing.md) |
 | Live integration tests | [Test README](tests/README.md) |
 | Ownership rules | [Architecture Rules](../_documentation/Developer/architecture_rules.md) |
+
+The current [Python runtime guide](../_documentation/Operations/python_runtime.md)
+supersedes historical Laravel-era deployment instructions. The bridge package is
+retained only for compatibility tests; it has no Compose service or image target.
 
 ## Local development
 

@@ -1,9 +1,7 @@
-"""Real PHP serialization/signature consumed by the real FastAPI boundary."""
+"""Preserved historical wire bytes remain retired at the compatibility boundary."""
 
 import json
 from pathlib import Path
-import shutil
-import subprocess
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -32,22 +30,35 @@ def deletion_input() -> dict[str, Any]:
     }
 
 
-def php_wire(payload: dict[str, Any], mode: str = "deletion") -> dict[str, Any]:
+def historical_wire(target_count: int) -> dict[str, Any]:
+    import hashlib
+    import hmac
+    import time
+
     root = next(
         parent
         for parent in Path(__file__).resolve().parents
-        if (parent / "artisan").exists()
+        if (parent / "python_rag/uv.lock").is_file()
     )
-    if shutil.which("php") is None or not (root / "vendor/autoload.php").exists():
-        pytest.skip("PHP/vendor dependencies required for the cross-language contract")
-    result = subprocess.run(
-        ["php", str(root / "tests/Support/managed_deletion_wire.php"), mode],
-        input=json.dumps(payload),
-        text=True,
-        capture_output=True,
-        check=True,
+    data = json.loads(
+        (
+            root
+            / "python_rag/packages/contracts/tests/fixtures/historical_control.fixture"
+        ).read_text()
     )
-    return json.loads(result.stdout)
+    wire = data["cases"]["bridge-deletion-" + str(target_count)]
+    stamp = str(int(time.time()))
+    signed = (
+        f"hawki-workflow-control-v1\nPOST\n/internal/workflow-control/deletion/start\n{stamp}\n".encode()
+        + wire["body"].encode()
+    )
+    signature = (
+        "v1=" + hmac.new(b"contract-test-secret", signed, hashlib.sha256).hexdigest()
+    )
+    return {
+        "body": wire["body"],
+        "headers": {"X-Hawki-Timestamp": stamp, "X-Hawki-Signature": signature},
+    }
 
 
 @pytest.mark.parametrize("target_count", [1, 1728])
@@ -59,7 +70,7 @@ def test_legacy_signed_deletion_is_retired_without_dispatch(
         {**payload["targets"][0], "output_id": index + 1}
         for index in range(target_count)
     ]
-    wire = php_wire(payload)
+    wire = historical_wire(target_count)
     temporal = AsyncMock()
     app = build_app(
         runtime_summary=lambda: {},

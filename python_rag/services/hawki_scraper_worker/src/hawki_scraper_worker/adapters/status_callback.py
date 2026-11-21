@@ -21,8 +21,8 @@ from hawki_rag_contracts.pipeline.temporal import SCRAPE_SOURCE_ACTIVITY
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
     CallbackSender,
-    LaravelCallbackClient,
-    LaravelCallbackSettings,
+    PipelineCallbackClient,
+    PipelineCallbackSettings,
     deterministic_event_id,
 )
 
@@ -51,9 +51,9 @@ class ScraperStatusReporter:
 
     @classmethod
     def from_settings(
-        cls, settings: LaravelCallbackSettings
+        cls, settings: PipelineCallbackSettings
     ) -> "ScraperStatusReporter":
-        return cls(LaravelCallbackClient(settings))
+        return cls(PipelineCallbackClient(settings))
 
     def close(self) -> None:
         self.sender.close()

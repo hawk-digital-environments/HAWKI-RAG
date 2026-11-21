@@ -131,3 +131,17 @@ docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml \
 
 Unknown legacy receipts remain unsealed and consume capacity until legitimately
 reconciled. Never delete or mark them drained to create admission capacity.
+
+The historical handoff adds an explicit offline archive sidecar for the four
+inventoried imports. `archive_legacy.py` requires stopped producers and recorded
+empty queues/executions, takes the exclusive runtime lock, and writes only
+`/shared/.crawler-runtime/legacy-archive`. It refuses to overwrite an archive.
+It never changes original records or artifacts. Archived records keep `unknown`
+and every false drainage/seal flag. They still reserve permanent IDs and artifact
+roots, and cannot be replayed or cleaned as modern jobs. Only their admission-slot
+accounting changes. Missing evidence, changed hashes, modern ownership or a
+modern request fingerprint keeps ordinary fail-closed accounting.
+
+The local legacy worker definitions require the `legacy-workers` profile.
+Previously running legacy replicas were explicitly stopped with restart disabled;
+the dedicated `rawki_local_*` workers continue to serve new traffic.

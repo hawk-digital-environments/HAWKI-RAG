@@ -186,7 +186,7 @@ def test_status_callback_builds_indexer_event_and_redacts_secrets(monkeypatch) -
             sent.append(event)
             return {"accepted": True}
 
-    monkeypatch.setattr(status_callback, "LaravelCallbackClient", RecordingClient)
+    monkeypatch.setattr(status_callback, "PipelineCallbackClient", RecordingClient)
     settings = IndexerSettings(
         temporal_address="temporal:7233",
         temporal_namespace="default",

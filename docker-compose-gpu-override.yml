@@ -19,7 +19,7 @@ services:
               count: 1
               capabilities: [ gpu ]
 
-  hawki-rag-indexer-worker:
+  rawki_local_indexer_worker:
     build:
       target: indexer-runtime
       args:

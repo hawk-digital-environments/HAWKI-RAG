@@ -17,6 +17,7 @@ from hawki_backend.url_ingestion.errors import UrlIngestionError
 from hawki_backend.url_ingestion.ownership import classify
 from hawki_backend.url_ingestion.repository import UrlRepository
 from hawki_rag_contracts.pipeline.status import PipelineWorkerEvent
+from hawki_backend.historical_archive import require_unreserved
 
 router = APIRouter(prefix="/internal/pipeline", include_in_schema=False)
 
@@ -38,6 +39,7 @@ async def signed_body(request: Request) -> bytes:
 
 
 async def owner(request: Request, workflow_id: str) -> str:
+    require_unreserved({"workflow_id": workflow_id})
     control = request.app.state.workflow_control
     if control is None:
         raise HTTPException(503, "callbacks_unavailable")

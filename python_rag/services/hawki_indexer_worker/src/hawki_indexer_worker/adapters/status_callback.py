@@ -21,8 +21,8 @@ from hawki_rag_contracts.pipeline.status import (
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
     CallbackSender,
-    LaravelCallbackClient,
-    LaravelCallbackSettings,
+    PipelineCallbackClient,
+    PipelineCallbackSettings,
     deterministic_event_id,
 )
 
@@ -108,16 +108,16 @@ def report_status(
         return client.send(event)
 
 
-def create_callback_sender(settings: IndexerSettings) -> LaravelCallbackClient:
+def create_callback_sender(settings: IndexerSettings) -> PipelineCallbackClient:
     """Create a reusable sender from indexer-owned callback settings."""
 
-    callback_settings = LaravelCallbackSettings(
+    callback_settings = PipelineCallbackSettings(
         endpoint=settings.callback_url,
         secret=settings.callback_secret,
         timeout_seconds=settings.callback_timeout_seconds,
         retry_attempts=settings.callback_retry_attempts,
     )
-    return LaravelCallbackClient(callback_settings)
+    return PipelineCallbackClient(callback_settings)
 
 
 def _utc_now() -> datetime:

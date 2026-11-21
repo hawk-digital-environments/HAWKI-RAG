@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](python_runtime.md); the original text is retained as migration history.
+
 # Temporal Operations
 
 Laravel owns ingestion metadata and calls the bridge's Temporal controls.

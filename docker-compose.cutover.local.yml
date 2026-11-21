@@ -9,6 +9,7 @@ x-local-cutover-queues: &local_cutover_queues
   TEMPORAL_CLIENT_IDENTITY: rawki-python-local
   HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
   HAWKI_WORKFLOW_CONTROL_URL: http://hawki_backend
+  EXTERNAL_SCRAPER_URL: http://rawki-local-crawler:8080
 
 x-local-cutover-worker: &local_cutover_worker
   env_file:
@@ -16,7 +17,7 @@ x-local-cutover-worker: &local_cutover_worker
   environment: *local_cutover_queues
   volumes:
     - shared_storage:/shared
-  group_add:
+  group_add: !override
     - "${PGID}"
   networks: [default, hawki-network]
   depends_on:
@@ -59,8 +60,6 @@ services:
       context: .
       dockerfile: python_rag/Dockerfile
       target: indexer-runtime
-      args:
-        TORCH_VARIANT: cpu
 
   rawki_local_crawler:
     build:
@@ -132,6 +131,8 @@ services:
       SSL_CERT_FILE: /run/local-auth/ca-bundle.pem
       TEMPORAL_CLIENT_IDENTITY: hawki-rag-python-local
       EXTERNAL_SCRAPER_URL: http://rawki-local-crawler:8080
+      HAWKI_BACKEND_DATASET_GRAPH_ENABLED: "true"
+      HAWKI_BACKEND_HISTORICAL_ARCHIVE_ROOT: /shared/.historical-orphans
     volumes:
       - ./.secrets/ui-service/ca-bundle.pem:/run/local-auth/ca-bundle.pem:ro
     depends_on:

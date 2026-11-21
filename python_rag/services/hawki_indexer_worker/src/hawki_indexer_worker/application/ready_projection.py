@@ -17,7 +17,7 @@ from hawki_rag_contracts.pipeline.ingestion import (
 from hawki_rag_contracts.pipeline.status import MonitorArtifacts, PipelineStageStatus
 from hawki_rag_contracts.pipeline.temporal import MARK_SOURCE_READY_ACTIVITY
 
-from hawki_indexer_worker.adapters.laravel_metadata_client import (
+from hawki_indexer_worker.adapters.source_metadata_client import (
     directory_reference,
     manifest_reference,
 )

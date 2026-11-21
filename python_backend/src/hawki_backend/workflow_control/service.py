@@ -18,6 +18,7 @@ from hawki_rag_contracts.pipeline.ingestion import (
 
 from .identity import source_schedule, text_workflow, validate_source_workflow
 from .repository import OperationConflict, OperationRepository
+from hawki_backend.historical_archive import require_unreserved
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ class WorkflowControl:
             raise OperationConflict()
 
     def trusted_input(self, action: str, raw: dict) -> dict:
+        require_unreserved(raw)
         model = {
             "source": IngestSourceWorkflowInput,
             "text": IngestTextWorkflowInput,

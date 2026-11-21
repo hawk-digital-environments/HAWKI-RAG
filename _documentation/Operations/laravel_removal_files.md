@@ -1,0 +1,2315 @@
+# Laravel removal file inventory
+
+Generated from the unstaged worktree for manual review. Prior uncommitted safety work is included.
+No secret values or historical row/file contents are included.
+
+Tracked deletions: 599; tracked modifications: 110; expanded untracked files: 26.
+
+## Deleted files
+
+```text
+app/Console/Commands/CutoverRelayReadinessCommand.php
+app/Console/Commands/GrantDatasetIngestionAccess.php
+app/Console/Commands/GrantDatasetQueryAccess.php
+app/Console/Commands/LegacyDrainStatusCommand.php
+app/Console/Commands/PipelineHealthCommand.php
+app/Console/Commands/PipelineWorkersCommand.php
+app/Console/Commands/QueryCutoverExportCommand.php
+app/Console/Commands/QueryCutoverProbeCommand.php
+app/Console/Commands/ReconcileManagedDocumentWriterCommand.php
+app/Console/Commands/ReconcileTerminalProjectionsCommand.php
+app/Console/Commands/StartOrchestratedPipelineTask.php
+app/Console/Commands/UserManagement/CreateApiToken.php
+app/Console/Commands/UserManagement/CreateUser.php
+app/Console/Commands/UserManagement/RemoveUser.php
+app/Console/Commands/UserManagement/UpdateUserRole.php
+app/Http/Controllers/API/HawkiRagProxyController.php
+app/Http/Controllers/API/RagStatsController.php
+app/Http/Controllers/Controller.php
+app/Http/Controllers/DatasetController.php
+app/Http/Controllers/DatasetIngestionGrantController.php
+app/Http/Controllers/DatasetQueryGrantController.php
+app/Http/Controllers/Document/ManagedDeletionWriterProofController.php
+app/Http/Controllers/Document/ManagedDocumentDeletionEventController.php
+app/Http/Controllers/Document/ManagedDocumentWriterController.php
+app/Http/Controllers/Document/UnifiedDocumentController.php
+app/Http/Controllers/DocumentBrowserController.php
+app/Http/Controllers/Graph/ClearGraphViewController.php
+app/Http/Controllers/Graph/ClearNeo4jController.php
+app/Http/Controllers/Graph/GraphController.php
+app/Http/Controllers/Graph/GraphExpansionController.php
+app/Http/Controllers/Graph/GraphNodeController.php
+app/Http/Controllers/Graph/GraphOpsController.php
+app/Http/Controllers/Graph/GraphOverviewController.php
+app/Http/Controllers/Graph/GraphSearchController.php
+app/Http/Controllers/Graph/GraphSnapshotController.php
+app/Http/Controllers/Graph/SemanticGraphSearchController.php
+app/Http/Controllers/Health/HawkiRagSystemGateController.php
+app/Http/Controllers/Health/PipelineHealthController.php
+app/Http/Controllers/Health/RagHealthController.php
+app/Http/Controllers/Health/RagMonitorController.php
+app/Http/Controllers/Integration/TextIngestionController.php
+app/Http/Controllers/Integration/TextIngestionDeletionController.php
+app/Http/Controllers/Pipeline/PipelineWorkerEventController.php
+app/Http/Controllers/PipelineControlController.php
+app/Http/Controllers/PipelineRecoveryController.php
+app/Http/Controllers/PipelineStatusController.php
+app/Http/Controllers/PipelineTaskController.php
+app/Http/Controllers/Scrape/ScrapeControllerResponseFactory.php
+app/Http/Controllers/ScrapeController.php
+app/Http/Controllers/ScrapeTaskUiProxyController.php
+app/Http/Controllers/SettingsController.php
+app/Http/Controllers/UploadedSourceDocumentController.php
+app/Http/Middleware/CrawlerIngestionBoundary.php
+app/Http/Middleware/LimitTextIngestionRequestSize.php
+app/Http/Middleware/RequireBrowserQueryPrincipal.php
+app/Http/Middleware/RequireManagedMutationPrincipal.php
+app/Http/Middleware/RequireTextIngestionToken.php
+app/Http/Middleware/SecurityHeaders.php
+app/Http/Middleware/VerifyPipelineWorkerSignature.php
+app/Http/Requests/Concerns/InteractsWithManagedDocumentInput.php
+app/Http/Requests/Dataset/CreateDatasetRequest.php
+app/Http/Requests/Dataset/GrantSelfDatasetIngestionAccessRequest.php
+app/Http/Requests/Dataset/GrantSelfDatasetQueryAccessRequest.php
+app/Http/Requests/Dataset/ListDatasetsRequest.php
+app/Http/Requests/Document/CreateManagedDocumentBatchRequest.php
+app/Http/Requests/Document/CreateManagedDocumentRequest.php
+app/Http/Requests/Document/DownloadUploadedSourceRequest.php
+app/Http/Requests/Document/ListDocumentsRequest.php
+app/Http/Requests/Document/ManagedDeletionWriterProofRequest.php
+app/Http/Requests/Document/ManagedDocumentDeletionEventRequest.php
+app/Http/Requests/Document/ManagedDocumentRequest.php
+app/Http/Requests/Document/ManagedDocumentWriterRequest.php
+app/Http/Requests/Document/UpdateManagedDocumentRequest.php
+app/Http/Requests/Graph/ExpandGraphNodeRequest.php
+app/Http/Requests/Graph/SaveGraphSnapshotRequest.php
+app/Http/Requests/Graph/SearchGraphRequest.php
+app/Http/Requests/Graph/SemanticDatasetGraphSearchRequest.php
+app/Http/Requests/Graph/ShowGraphNodeRequest.php
+app/Http/Requests/Graph/ShowGraphOverviewRequest.php
+app/Http/Requests/Health/HealthCheckRequest.php
+app/Http/Requests/Integration/DeleteTextIngestionRequest.php
+app/Http/Requests/Integration/IngestTextRequest.php
+app/Http/Requests/Pipeline/ListFailedPipelineJobsRequest.php
+app/Http/Requests/Pipeline/ListPipelineTaskEventsRequest.php
+app/Http/Requests/Pipeline/ListPipelineTasksRequest.php
+app/Http/Requests/Pipeline/RetrySelectedPipelineJobsRequest.php
+app/Http/Requests/Pipeline/StartPipelineTaskRequest.php
+app/Http/Requests/Pipeline/StorePipelineWorkerEventRequest.php
+app/Http/Requests/Pipeline/UploadPipelineFileRequest.php
+app/Http/Requests/Pipeline/UpsertPipelineJobRequest.php
+app/Http/Requests/Rag/ListAuthorizedQueryDatasetsRequest.php
+app/Http/Requests/Rag/QueryDatasetRequest.php
+app/Http/Requests/Scrape/StartCrawlerTaskRequest.php
+app/Http/Requests/Settings/UpdateSettingsRequest.php
+app/Mcp/Servers/HawkiRagServer.php
+app/Mcp/Tools/WebSearchTool.php
+app/Models/Dataset.php
+app/Models/DatasetGrant.php
+app/Models/DatasetGrantToken.php
+app/Models/IngestedPage.php
+app/Models/IngestionSource.php
+app/Models/ManagedDocument.php
+app/Models/ManagedDocumentDeletion.php
+app/Models/ManagedDocumentOutput.php
+app/Models/PipelineJob.php
+app/Models/PipelineStageState.php
+app/Models/PipelineTask.php
+app/Models/PipelineWorkerEventRecord.php
+app/Models/RagGraphFailure.php
+app/Models/RagIngestionArtifact.php
+app/Models/ScrapeProcess.php
+app/Models/ScrapeStatistics.php
+app/Models/ScrapedElement.php
+app/Models/User.php
+app/Policies/DatasetQueryPolicy.php
+app/Policies/UserAccessPolicy.php
+app/Providers/AppServiceProvider.php
+app/Services/Authorization/BrowserQueryPrincipalService.php
+app/Services/Authorization/DatasetGrantTokenService.php
+app/Services/Authorization/DatasetIngestionAuthorizationService.php
+app/Services/Authorization/DatasetIngestionGrantService.php
+app/Services/Authorization/DatasetQueryAuthorizationService.php
+app/Services/Authorization/DatasetQueryGrantService.php
+app/Services/Authorization/Exceptions/AuthorizationExceptionInterface.php
+app/Services/Authorization/Exceptions/DatasetNotReadyException.php
+app/Services/Authorization/Exceptions/DatasetQueryNotFoundException.php
+app/Services/Authorization/Exceptions/GrantTokenInvalidException.php
+app/Services/Authorization/Exceptions/GrantTokenRequiredException.php
+app/Services/Authorization/Exceptions/QueryTokenSigningException.php
+app/Services/Authorization/ManagedMutationPrincipalService.php
+app/Services/Authorization/QueryTokenSigner.php
+app/Services/Authorization/Repositories/DatasetGrantRepository.php
+app/Services/Authorization/Repositories/ManagedMutationTokenRepository.php
+app/Services/Authorization/Repositories/QueryCutoverInventoryRepository.php
+app/Services/Authorization/Values/AuthenticatedPrincipal.php
+app/Services/Authorization/Values/AuthorizedDatasetScope.php
+app/Services/Authorization/Values/IngestionSelfGrant.php
+app/Services/Dataset/DatasetAuthority.php
+app/Services/Dataset/DatasetBackend.php
+app/Services/Dataset/DatasetGraphStatsService.php
+app/Services/Dataset/DatasetIdentifierFactory.php
+app/Services/Dataset/DatasetPayloadBuilder.php
+app/Services/Dataset/DatasetRepository.php
+app/Services/Dataset/DatasetService.php
+app/Services/Dataset/DatasetStorageCleanupService.php
+app/Services/Dataset/DatasetVectorStatsService.php
+app/Services/Dataset/Exceptions/DatasetBackendUnavailableException.php
+app/Services/Dataset/Exceptions/DatasetCreationConflictException.php
+app/Services/Dataset/Exceptions/DatasetExceptionInterface.php
+app/Services/Dataset/Exceptions/DatasetInactiveException.php
+app/Services/Dataset/Exceptions/DatasetNotFoundException.php
+app/Services/Dataset/LegacyDatasetStatePreflight.php
+app/Services/Dataset/PythonDatasetClient.php
+app/Services/Dataset/QdrantCollectionCatalog.php
+app/Services/Dataset/Repositories/DatasetGraphAvailabilityRepository.php
+app/Services/Dataset/RequireDatasetManager.php
+app/Services/Dataset/Values/DatasetCreationResult.php
+app/Services/Dataset/Values/DatasetProjection.php
+app/Services/Document/Clients/PythonManagedDocumentClient.php
+app/Services/Document/DocumentLatestGraphReportService.php
+app/Services/Document/DocumentMarkdownPreviewReader.php
+app/Services/Document/Exceptions/ManagedDeletionException.php
+app/Services/Document/ManagedCallbackBoundary.php
+app/Services/Document/ManagedDeletionWriterProofService.php
+app/Services/Document/ManagedDocumentBoundary.php
+app/Services/Document/ManagedDocumentDeletionReceiptVerifier.php
+app/Services/Document/ManagedDocumentOutputDeletionService.php
+app/Services/Document/ManagedDocumentPayloadBuilder.php
+app/Services/Document/ManagedDocumentPipelineStateResolver.php
+app/Services/Document/ManagedDocumentPipelineSummaryService.php
+app/Services/Document/ManagedDocumentReadBoundary.php
+app/Services/Document/ManagedDocumentRecoveryGuard.php
+app/Services/Document/ManagedDocumentService.php
+app/Services/Document/ManagedDocumentSyncService.php
+app/Services/Document/ManagedDocumentSyncStateResolver.php
+app/Services/Document/ManagedDocumentWriterReconciliationService.php
+app/Services/Document/ManagedDocumentWriterService.php
+app/Services/Document/ManagedPipelineResponseMapper.php
+app/Services/Document/ManagedWriterReconciliationAssessment.php
+app/Services/Document/Repositories/ManagedDocumentDeletionRepository.php
+app/Services/Document/Repositories/ManagedDocumentOutputRepository.php
+app/Services/Document/Repositories/ManagedDocumentRepository.php
+app/Services/Document/Repositories/ManagedDocumentWriterRepository.php
+app/Services/Document/Repositories/ManagedIngestionMetadataRepository.php
+app/Services/Document/Repositories/ManagedWriterReconciliationRepository.php
+app/Services/Document/UnifiedDocumentService.php
+app/Services/Document/UploadedSourceDocumentRepository.php
+app/Services/Document/UploadedSourceDocumentService.php
+app/Services/Document/Values/ManagedDocumentId.php
+app/Services/Document/Values/ManagedDocumentPipelineState.php
+app/Services/Document/Values/ManagedDocumentSyncState.php
+app/Services/Document/Values/UploadedSourceDocument.php
+app/Services/Graph/Exceptions/GraphCacheException.php
+app/Services/Graph/Exceptions/GraphExceptionInterface.php
+app/Services/Graph/Exceptions/GraphSnapshotException.php
+app/Services/Graph/Exceptions/Neo4jClientException.php
+app/Services/Graph/GraphCypherSearch.php
+app/Services/Graph/GraphOpsBackend.php
+app/Services/Graph/GraphOpsService.php
+app/Services/Graph/GraphResultNormalizer.php
+app/Services/Graph/GraphSearchService.php
+app/Services/Graph/GraphSnapshotService.php
+app/Services/Graph/GraphSnapshotStore.php
+app/Services/Graph/GraphSourceDocumentResolver.php
+app/Services/Graph/Neo4jAdmin.php
+app/Services/Graph/Neo4jClient.php
+app/Services/Graph/Neo4jGraphExplorer.php
+app/Services/Graph/Neo4jQueryClient.php
+app/Services/Graph/PythonGraphOpsClient.php
+app/Services/Health/HawkiRagSystemGateService.php
+app/Services/Pipeline/Clients/PythonTemporalBridgeClient.php
+app/Services/Pipeline/Clients/PythonUrlIngestionClient.php
+app/Services/Pipeline/CrawlerCallbackBoundary.php
+app/Services/Pipeline/Exceptions/CrawlerAuthorityException.php
+app/Services/Pipeline/Exceptions/PipelineExceptionInterface.php
+app/Services/Pipeline/Exceptions/PipelineRetryException.php
+app/Services/Pipeline/Exceptions/PipelineUploadStorageException.php
+app/Services/Pipeline/Exceptions/PipelineWorkerEventException.php
+app/Services/Pipeline/Exceptions/PipelineWorkerSignatureException.php
+app/Services/Pipeline/Health/HttpEndpointHealthCheck.php
+app/Services/Pipeline/Health/Neo4jHealthCheck.php
+app/Services/Pipeline/Health/PipelineDatabaseHealthCheck.php
+app/Services/Pipeline/Health/PipelineHealthResultFactory.php
+app/Services/Pipeline/Health/PipelineHealthService.php
+app/Services/Pipeline/Health/PipelineSharedStorageHealthCheck.php
+app/Services/Pipeline/Health/PipelineTemporalHealthCheck.php
+app/Services/Pipeline/Health/PipelineWorkerHealthCheck.php
+app/Services/Pipeline/Health/QdrantHealthCheck.php
+app/Services/Pipeline/LegacyDrainStatusService.php
+app/Services/Pipeline/Logs/PipelineStageLogService.php
+app/Services/Pipeline/PipelineCompatibilityBoundary.php
+app/Services/Pipeline/PipelineExecutionBackend.php
+app/Services/Pipeline/PipelineFileHasher.php
+app/Services/Pipeline/PipelineManagedDocumentViewService.php
+app/Services/Pipeline/PipelineOwnership.php
+app/Services/Pipeline/PipelineRecoveryWorkflowService.php
+app/Services/Pipeline/PipelineService.php
+app/Services/Pipeline/PipelineWorkerEventService.php
+app/Services/Pipeline/PipelineWorkerEventSignatureVerifier.php
+app/Services/Pipeline/Recovery/PipelineRecoveryAttemptService.php
+app/Services/Pipeline/Recovery/PipelineRecoveryFailedJobPresenter.php
+app/Services/Pipeline/Recovery/PipelineRecoveryInputNormalizer.php
+app/Services/Pipeline/Recovery/PipelineRecoveryListService.php
+app/Services/Pipeline/Recovery/PipelineRecoveryMetadataService.php
+app/Services/Pipeline/Recovery/PipelineRecoveryPayloadService.php
+app/Services/Pipeline/Recovery/PipelineRecoveryRetryCoordinator.php
+app/Services/Pipeline/Recovery/PipelineRecoveryService.php
+app/Services/Pipeline/Recovery/PipelineRetryResumeService.php
+app/Services/Pipeline/Repositories/IngestionSourceRepository.php
+app/Services/Pipeline/Repositories/LegacyDrainRepository.php
+app/Services/Pipeline/Repositories/PipelineJobCreationRepository.php
+app/Services/Pipeline/Repositories/PipelineJobRecoveryRepository.php
+app/Services/Pipeline/Repositories/PipelineJobRollupRepository.php
+app/Services/Pipeline/Repositories/PipelineJobStateMutationRepository.php
+app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php
+app/Services/Pipeline/Repositories/PipelineScheduledRunRepository.php
+app/Services/Pipeline/Repositories/PipelineSchemaInspector.php
+app/Services/Pipeline/Repositories/PipelineStageStateRepository.php
+app/Services/Pipeline/Repositories/PipelineStatusRepository.php
+app/Services/Pipeline/Repositories/PipelineTaskRepository.php
+app/Services/Pipeline/Repositories/PipelineTransactionRepository.php
+app/Services/Pipeline/Repositories/PipelineWorkerEventRepository.php
+app/Services/Pipeline/Repositories/Queries/ActivePipelineJobsQuery.php
+app/Services/Pipeline/Repositories/Queries/FailedPipelineJobsQuery.php
+app/Services/Pipeline/Repositories/Queries/PipelineTaskJobsQuery.php
+app/Services/Pipeline/Repositories/Queries/PipelineWorkerEventJobQuery.php
+app/Services/Pipeline/Repositories/TerminalProjectionRepository.php
+app/Services/Pipeline/State/PipelineStageAttributeNormalizer.php
+app/Services/Pipeline/State/PipelineStageClaimService.php
+app/Services/Pipeline/State/PipelineStageRollupService.php
+app/Services/Pipeline/State/PipelineStageStatusPayloadBuilder.php
+app/Services/Pipeline/State/PipelineStageTransitionService.php
+app/Services/Pipeline/State/PipelineStateService.php
+app/Services/Pipeline/Status/PipelineConversionDatasetScanner.php
+app/Services/Pipeline/Status/PipelineConversionStageSynchronizer.php
+app/Services/Pipeline/Status/PipelineConversionStatusService.php
+app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php
+app/Services/Pipeline/Status/PipelineScrapeStatusService.php
+app/Services/Pipeline/Status/PipelineStageEmptyResponseFactory.php
+app/Services/Pipeline/Status/PipelineStageStatusMerger.php
+app/Services/Pipeline/Status/PipelineStageValueFormatter.php
+app/Services/Pipeline/Status/PipelineStatusService.php
+app/Services/Pipeline/Status/PipelineWorkflowStatusSynchronizer.php
+app/Services/Pipeline/Tasks/IngestSourceWorkflowPayloadFactory.php
+app/Services/Pipeline/Tasks/PipelineTaskCancellationService.php
+app/Services/Pipeline/Tasks/PipelineTaskCounterService.php
+app/Services/Pipeline/Tasks/PipelineTaskInputNormalizer.php
+app/Services/Pipeline/Tasks/PipelineTaskJobUpdater.php
+app/Services/Pipeline/Tasks/PipelineTaskMetadataService.php
+app/Services/Pipeline/Tasks/PipelineTaskPayloadService.php
+app/Services/Pipeline/Tasks/PipelineTaskRetryService.php
+app/Services/Pipeline/Tasks/PipelineTaskService.php
+app/Services/Pipeline/Tasks/PipelineTaskSourceResolver.php
+app/Services/Pipeline/Tasks/PipelineTaskStarter.php
+app/Services/Pipeline/Tasks/PipelineTaskStatusRefresher.php
+app/Services/Pipeline/Tasks/PipelineTaskStatusService.php
+app/Services/Pipeline/Tasks/PipelineTaskStorageCleanupService.php
+app/Services/Pipeline/Tasks/PipelineTaskTimelineService.php
+app/Services/Pipeline/TerminalProjectionReconciliationService.php
+app/Services/Pipeline/Uploads/PipelineCustomConverterProfileWriter.php
+app/Services/Pipeline/Uploads/PipelineUploadIdentifierFactory.php
+app/Services/Pipeline/Uploads/PipelineUploadPayloadService.php
+app/Services/Pipeline/Uploads/PipelineUploadPolicy.php
+app/Services/Pipeline/Uploads/PipelineUploadResultFactory.php
+app/Services/Pipeline/Uploads/PipelineUploadService.php
+app/Services/Pipeline/Uploads/PipelineUploadStorage.php
+app/Services/Pipeline/Values/LegacyDrainState.php
+app/Services/Pipeline/Values/PipelineResumePlan.php
+app/Services/Pipeline/Values/PipelineStage.php
+app/Services/Pipeline/Values/PipelineStageArtifact.php
+app/Services/Pipeline/Values/PipelineStageStatus.php
+app/Services/Pipeline/Values/PipelineStoredUpload.php
+app/Services/Pipeline/Values/PipelineUploadInput.php
+app/Services/Pipeline/Values/PipelineUploadResult.php
+app/Services/Pipeline/Values/PipelineWorker.php
+app/Services/Pipeline/Values/PipelineWorkerEvent.php
+app/Services/Pipeline/Values/TemporalWorkflowExecution.php
+app/Services/Pipeline/Values/TerminalProjectionTemporalEvidence.php
+app/Services/Profile/ApiTokenService.php
+app/Services/Profile/Exceptions/ProfileExceptionInterface.php
+app/Services/Profile/Exceptions/ProfileTokenException.php
+app/Services/Profile/Values/ApiTokenAbility.php
+app/Services/Rag/Clients/PythonQueryClient.php
+app/Services/Rag/RagBridgeHealthClient.php
+app/Services/Rag/RagGraphConfigReporter.php
+app/Services/Rag/RagHealthService.php
+app/Services/Rag/RagLatencyTimer.php
+app/Services/Rag/RagLatestDocumentGraphReporter.php
+app/Services/Rag/RagMonitorArtifactReader.php
+app/Services/Rag/RagMonitorArtifactStore.php
+app/Services/Rag/RagMonitorService.php
+app/Services/Rag/RagProxyService.php
+app/Services/Rag/RagQueryService.php
+app/Services/Rag/RagStatsService.php
+app/Services/Rag/Repositories/RagMonitorArtifactRepository.php
+app/Services/RagSearch/Exceptions/RagSearchExceptionInterface.php
+app/Services/RagSearch/Exceptions/RagSearcherFailedException.php
+app/Services/RagSearch/RagSearchPayloadFactory.php
+app/Services/RagSearch/RagSearchResponseFilter.php
+app/Services/RagSearch/RagSearchSchemaFactory.php
+app/Services/RagSearch/RagSearcher.php
+app/Services/Scrape/Clients/ScrapeCrawlerClient.php
+app/Services/Scrape/Clients/ScrapeCrawlerHttpClient.php
+app/Services/Scrape/Clients/ScrapeCrawlerPayloadNormalizer.php
+app/Services/Scrape/Clients/ScrapeCrawlerResponseMapper.php
+app/Services/Scrape/Exceptions/ScrapeExceptionInterface.php
+app/Services/Scrape/Exceptions/ScrapeResponseException.php
+app/Services/Scrape/ScrapeService.php
+app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php
+app/Services/Scrape/Tasks/ScrapeCrawlerTaskNormalizer.php
+app/Services/Scrape/Tasks/ScrapeTaskNormalizer.php
+app/Services/Scrape/Tasks/ScrapeTaskPayloadBuilder.php
+app/Services/Scrape/Tasks/ScrapeTaskProfileNormalizer.php
+app/Services/Scrape/Tasks/ScrapeTaskService.php
+app/Services/Scrape/Tasks/ScrapeTaskStartPayloadBuilder.php
+app/Services/Scrape/Tasks/ScrapeTaskStarter.php
+app/Services/Scrape/Tasks/ScrapeTaskUiClient.php
+app/Services/Scrape/Tasks/ScrapeTaskUiStartWorkflow.php
+app/Services/Scrape/Tasks/ScrapeTaskValueNormalizer.php
+app/Services/Settings/Repositories/SettingsFileRepository.php
+app/Services/Settings/SettingsService.php
+app/Services/TextIngestion/Clients/PythonTextIngestionClient.php
+app/Services/TextIngestion/Exceptions/TextIngestionDeletionException.php
+app/Services/TextIngestion/Exceptions/TextIngestionExceptionInterface.php
+app/Services/TextIngestion/Exceptions/TextIngestionIdempotencyException.php
+app/Services/TextIngestion/Exceptions/TextIngestionNotFoundException.php
+app/Services/TextIngestion/Exceptions/TextIngestionRecoveryException.php
+app/Services/TextIngestion/Exceptions/TextIngestionSourceBusyException.php
+app/Services/TextIngestion/Exceptions/TextIngestionStorageException.php
+app/Services/TextIngestion/Exceptions/TextIngestionWorkflowStartException.php
+app/Services/TextIngestion/TextIngestionArtifactStorage.php
+app/Services/TextIngestion/TextIngestionDeletionService.php
+app/Services/TextIngestion/TextIngestionIdentifierFactory.php
+app/Services/TextIngestion/TextIngestionRecoveryService.php
+app/Services/TextIngestion/TextIngestionRequestFingerprint.php
+app/Services/TextIngestion/TextIngestionService.php
+app/Services/TextIngestion/TextIngestionVectorDeletionService.php
+app/Services/TextIngestion/TextIngestionWorkflowPayloadFactory.php
+app/Services/TextIngestion/Values/StoredTextArtifact.php
+app/Services/TextIngestion/Values/TextContentFormat.php
+app/Services/TextIngestion/Values/TextIngestionDeletionResult.php
+app/Services/TextIngestion/Values/TextIngestionDeletionTarget.php
+app/Services/TextIngestion/Values/TextIngestionInput.php
+app/Services/TextIngestion/Values/TextIngestionMode.php
+app/Services/TextIngestion/Values/TextIngestionResult.php
+app/Services/User/Repositories/UserRepository.php
+app/Services/User/Values/UserRole.php
+app/Services/WebSearch/Contracts/WebSearchInterface.php
+app/Services/WebSearch/Exceptions/WebSearchFailedException.php
+app/Services/WebSearch/Implementations/BraveSearch.php
+app/Services/WebSearch/Implementations/TavilySearch.php
+app/Support/Clock/CarbonClock.php
+artisan
+bootstrap/app.php
+bootstrap/cache/.gitignore
+bootstrap/providers.php
+composer.json
+composer.lock
+config/app.php
+config/auth.php
+config/cache.php
+config/config.php
+config/cors.php
+config/database.php
+config/file_converter.php
+config/filesystems.php
+config/logging.php
+config/mail.php
+config/mcp.php
+config/model_providers.php
+config/queue.php
+config/sanctum.php
+config/scraper.php
+config/services.php
+config/session.php
+config/temporal.php
+config/web_search.php
+database/.gitignore
+database/migrations/0001_01_01_000000_create_users_table.php
+database/migrations/0001_01_01_000002_create_jobs_table.php
+database/migrations/2025_10_21_141108_create_personal_access_tokens_table.php
+database/migrations/2026_04_22_140000_create_documents_table.php
+database/migrations/2026_05_29_010000_create_pipeline_state_tables.php
+database/migrations/2026_05_29_011000_create_scrape_operational_tables.php
+database/migrations/2026_06_02_120000_create_pipeline_tasks_and_extend_pipeline_jobs.php
+database/migrations/2026_06_03_000000_simplify_pipeline_task_job_tracking.php
+database/migrations/2026_06_05_000000_create_datasets_table.php
+database/migrations/2026_06_06_010000_remove_profile_id_from_pipeline_tasks.php
+database/migrations/2026_06_12_000000_create_ingestion_sources_and_temporal_columns.php
+database/migrations/2026_06_13_000000_create_postgresql_operational_tables.php
+database/migrations/2026_06_29_120000_create_ingested_pages_table.php
+database/migrations/2026_07_08_150000_create_managed_document_tables.php
+database/migrations/2026_07_13_000000_migrate_assistant_document_storage_to_managed_documents.php
+database/migrations/2026_07_14_000000_create_dataset_grants_table.php
+database/migrations/2026_07_23_000000_add_role_to_users_table.php
+database/migrations/2026_07_24_000000_reconcile_pipeline_schema_for_upgrades.php
+database/migrations/2026_07_24_010000_finalize_managed_document_storage_upgrade.php
+database/migrations/2026_08_03_000000_create_pipeline_worker_events_table.php
+database/migrations/2026_08_05_000000_create_rag_monitor_artifact_tables.php
+database/migrations/2026_09_16_000000_create_dataset_grant_tokens_table.php
+database/migrations/2026_10_09_000000_create_managed_document_deletions_table.php
+database/migrations/2026_10_12_000000_add_managed_deletion_recovery_state.php
+docker-compose.bff-ca.yml
+docker-compose.bff.yml
+docker-compose.local.yml
+docker/env/epoch15c.staging.env.example
+docker/laravel.Dockerfile
+docker/rag_app/entrypoint/composer.dev.sh
+docker/rag_app/entrypoint/entrypoint.sh
+docker/rag_app/nginx/project.prod.conf
+docker/rag_app/php/fpm/php-custom.ini
+docker/rag_app/supervisor/dataset-cleanup.conf
+phpunit.xml
+public/index.php
+public/swagger/README.md
+public/swagger/index.html
+public/swagger/openapi.yaml
+python_backend/scripts/query_readiness.py
+python_backend/tests/auth/test_php_bff_interoperability.py
+python_backend/tests/parity/test_live_operator_guards.py
+python_backend/tests/parity/test_live_scope_integration.py
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/laravel_metadata_client.py
+resources/views/svelte-page.blade.php
+routes/ai.php
+routes/api.php
+routes/health.php
+routes/web.php
+storage/framework/.gitignore
+storage/framework/cache/.gitignore
+storage/framework/cache/data/.gitignore
+storage/framework/sessions/.gitignore
+storage/framework/testing/.gitignore
+storage/framework/views/.gitignore
+tests/Feature/ApiContract/CanonicalApiRouteTest.php
+tests/Feature/ApiContract/OpenApiContractTest.php
+tests/Feature/Authentication/ApiTokenCommandTest.php
+tests/Feature/Authentication/CanonicalApiAccessTest.php
+tests/Feature/Authentication/ImplicitSingleUserQueryTest.php
+tests/Feature/Authentication/RouteSecurityTest.php
+tests/Feature/Authentication/UserManagementCommandTest.php
+tests/Feature/Authorization/DatasetAuthorizationGateTest.php
+tests/Feature/Authorization/DatasetIngestionAuthorizationTest.php
+tests/Feature/Authorization/ListDatasetsRequestAccessTest.php
+tests/Feature/Authorization/SelfDatasetIngestionGrantTest.php
+tests/Feature/Authorization/SelfDatasetQueryGrantTest.php
+tests/Feature/Authorization/UserAccessGateTest.php
+tests/Feature/Database/ManagedDeletionPostgresTest.php
+tests/Feature/Database/PostgresMigrationUpgradeTest.php
+tests/Feature/Datasets/DatasetAuthorityBoundaryTest.php
+tests/Feature/Datasets/DatasetDeletionBackgroundTest.php
+tests/Feature/Datasets/DatasetManagementTest.php
+tests/Feature/Datasets/PythonDatasetBffTest.php
+tests/Feature/Documents/CutoverRelayReadinessTest.php
+tests/Feature/Documents/DocumentBrowserTest.php
+tests/Feature/Documents/DocumentUnifiedApiTest.php
+tests/Feature/Documents/ManagedDeletionWriterProofTest.php
+tests/Feature/Documents/ManagedDocumentDeletionTest.php
+tests/Feature/Documents/ManagedDocumentWriterTest.php
+tests/Feature/Documents/ManagedWriterReconciliationTest.php
+tests/Feature/Documents/PythonManagedDocumentBffTest.php
+tests/Feature/Epoch15aCutoverTest.php
+tests/Feature/Graph/DatasetScopedGraphSearchTest.php
+tests/Feature/Graph/GraphExactGrantTest.php
+tests/Feature/Graph/GraphOpsBoundaryTest.php
+tests/Feature/Graph/GraphRequestValidationTest.php
+tests/Feature/Graph/GraphSnapshotAuthorizationTest.php
+tests/Feature/Graph/Neo4jClearAcknowledgementTest.php
+tests/Feature/Graph/Neo4jGraphExplorerPageTest.php
+tests/Feature/Graph/Neo4jScopedClearIntegrationTest.php
+tests/Feature/Graph/RagLatestDocumentGraphReporterTest.php
+tests/Feature/Health/HealthRequestValidationTest.php
+tests/Feature/Integration/DirectTextIngestionRecoveryTest.php
+tests/Feature/Integration/PythonTextIngestionBffTest.php
+tests/Feature/Integration/TextIngestionApiTest.php
+tests/Feature/Integration/TextIngestionAuthenticationTest.php
+tests/Feature/Integration/TextIngestionDeletionApiTest.php
+tests/Feature/Integration/TextIngestionReqTest.php
+tests/Feature/Mcp/HawkiRagRegistrationTest.php
+tests/Feature/Pipeline/LegacyDrainStatusTest.php
+tests/Feature/Pipeline/PipelineControllerDashboardTest.php
+tests/Feature/Pipeline/PipelineOperationsCommandTest.php
+tests/Feature/Pipeline/PipelineRecoveryRepositoryTest.php
+tests/Feature/Pipeline/PipelineRepositoryReadTest.php
+tests/Feature/Pipeline/PipelineStateRepositoryTest.php
+tests/Feature/Pipeline/PipelineStatusTest.php
+tests/Feature/Pipeline/PipelineUploadRepositoryTest.php
+tests/Feature/Pipeline/PipelineWorkerEventCallbackTest.php
+tests/Feature/Pipeline/PipelineWorkerEventTransportTest.php
+tests/Feature/Pipeline/PipelineWorkflowStatusSynchronizerTest.php
+tests/Feature/Pipeline/PythonUrlIngestionBffTest.php
+tests/Feature/Pipeline/TerminalProjectionReconciliationTest.php
+tests/Feature/PythonBffTableIndependenceTest.php
+tests/Feature/Query/BrowserDatasetScopedQueryTest.php
+tests/Feature/Query/DatasetScopedQueryTest.php
+tests/Feature/Query/GraphRetrievalModeTest.php
+tests/Feature/Query/HawkiRagPlaygroundPageTest.php
+tests/Feature/Query/PythonQueryBoundaryTest.php
+tests/Feature/Query/QueryCutoverToolsTest.php
+tests/Feature/README.md
+tests/Feature/Scraping/ScraperTaskProxyTest.php
+tests/Feature/Scraping/ScraperTaskUiProxyTest.php
+tests/Feature/Settings/SettingsDashboardTest.php
+tests/Feature/Ui/HawkiRagExperienceRouteTest.php
+tests/Fixtures/python_managed_upload.fixture
+tests/README.md
+tests/Support/ManagedWriterFixture.php
+tests/Support/QueryBffFixture.php
+tests/Support/managed_deletion_ui.php
+tests/Support/managed_deletion_wire.php
+tests/Support/mint_query_bff_token.php
+tests/Support/text_ingestion_parity.php
+tests/System/ImplicitSingleUserRagFlowTest.php
+tests/System/PdfIngestionFlowTest.php
+tests/System/SystemTestCase.php
+tests/System/TwoDatasetIsolationTest.php
+tests/TestCase.php
+tests/Unit/Authorization/AuthorizedDatasetScopeTest.php
+tests/Unit/Authorization/QueryTokenSignerTest.php
+tests/Unit/Document/ManagedDocumentDeletionReceiptVerifierTest.php
+tests/Unit/Graph/GraphResultNormalizerTest.php
+tests/Unit/Health/HawkiRagSystemGateServiceTest.php
+tests/Unit/PHPUnitDatabaseIsolationTest.php
+tests/Unit/Pipeline/IngestSourceWorkflowPayloadFactoryTest.php
+tests/Unit/Pipeline/PipelineDatabaseHealthCheckTest.php
+tests/Unit/Pipeline/PipelineIndexerLogConfigurationTest.php
+tests/Unit/Pipeline/PipelineRecoveryInputNormalizerTest.php
+tests/Unit/Pipeline/PipelineRecoveryMetadataServiceTest.php
+tests/Unit/Pipeline/PipelineRecoveryPayloadServiceTest.php
+tests/Unit/Pipeline/PipelineRetryResumeServiceTest.php
+tests/Unit/Pipeline/PipelineSharedStorageHealthCheckTest.php
+tests/Unit/Pipeline/PipelineStageStatusMergerTest.php
+tests/Unit/Pipeline/PipelineTaskCounterServiceTest.php
+tests/Unit/Pipeline/PipelineTaskInputNormalizerTest.php
+tests/Unit/Pipeline/PipelineTaskMetadataServiceTest.php
+tests/Unit/Pipeline/PipelineTaskPayloadServiceTest.php
+tests/Unit/Pipeline/PipelineTaskSourceResolverTest.php
+tests/Unit/Pipeline/PipelineTaskStatusServiceTest.php
+tests/Unit/Pipeline/PipelineUploadIdentifierFactoryTest.php
+tests/Unit/Pipeline/PipelineUploadInputTest.php
+tests/Unit/Pipeline/PipelineUploadPayloadServiceTest.php
+tests/Unit/Pipeline/PipelineUploadPolicyTest.php
+tests/Unit/Pipeline/PipelineUploadStorageTest.php
+tests/Unit/Pipeline/PipelineWorkerEventSignatureVerifierTest.php
+tests/Unit/Pipeline/PipelineWorkerEventTest.php
+tests/Unit/Pipeline/StorePipelineWorkerEventRequestTest.php
+tests/Unit/Pipeline/Values/PipelineStageArtifactTest.php
+tests/Unit/Rag/PythonQueryClientTest.php
+tests/Unit/RagSearch/RagSearcherDatasetScopeTest.php
+tests/Unit/Services/RagSearch/RagSearchResponseFilterTest.php
+tests/Unit/TextIngestion/StartTextIngestWorkflowClientTest.php
+tests/Unit/TextIngestion/TextIngestionArtifactStorageTest.php
+tests/Unit/TextIngestion/TextIngestionIdentifierFactoryTest.php
+tests/Unit/TextIngestion/TextIngestionInputTest.php
+tests/Unit/TextIngestion/TextIngestionRequestFingerprintTest.php
+tests/Unit/TextIngestion/TextIngestionResultTest.php
+tests/Unit/TextIngestion/TextIngestionWorkflowPayloadFactoryTest.php
+tests/bootstrap.php
+tests/js/managed-document-deletion-ui.test.js
+vite.config.js
+```
+
+## Modified files
+
+```text
+.dockerignore
+.env.example
+.gitattributes
+.github/workflows/python-rag.yml
+Makefile
+README.md
+_documentation/Core Concepts/Ingestion/chunking_embeddings.md
+_documentation/Core Concepts/Ingestion/graph_enrichment.md
+_documentation/Core Concepts/Ingestion/identity_incremental.md
+_documentation/Core Concepts/authorization_dataset_scope.md
+_documentation/Core Concepts/query_retrieval.md
+_documentation/Core Concepts/storage.md
+_documentation/Developer/architecture_rules.md
+_documentation/Developer/testing.md
+_documentation/Getting Started/1_requirements.md
+_documentation/Getting Started/2_setup.md
+_documentation/Getting Started/3_introduction_architecture.md
+_documentation/Getting Started/4_installation_zero_to_up.md
+_documentation/Operations/5_environment_db_queue.md
+_documentation/Operations/6_ingestion_embeddings.md
+_documentation/Operations/crawler_v2_local_upgrade.md
+_documentation/Operations/epoch11_blocker_validation.md
+_documentation/Operations/epoch11_crawler_integration_validation.md
+_documentation/Operations/epoch11_dispatch_recovery_validation.md
+_documentation/Operations/epoch13_pipeline_execution_validation.md
+_documentation/Operations/epoch15a_cutover.md
+_documentation/Operations/epoch15b_preparation.md
+_documentation/Operations/epoch15c_cutover.md
+_documentation/Operations/ingestion_recovery.md
+_documentation/Operations/laravel_off_cutover.md
+_documentation/Operations/laravel_off_local_runtime.md
+_documentation/Operations/monitoring.md
+_documentation/Operations/python_dataset_authority.md
+_documentation/Operations/python_graph_ops_admin.md
+_documentation/Operations/python_managed_documents.md
+_documentation/Operations/python_pipeline_execution.md
+_documentation/Operations/python_query_bff.md
+_documentation/Operations/python_query_cutover.md
+_documentation/Operations/python_text_ingestion.md
+_documentation/Operations/python_url_ingestion.md
+_documentation/Operations/python_workflow_control.md
+_documentation/Operations/temporal_operations.md
+_documentation/Operations/terminal_projection_reconciliation.md
+_documentation/Operations/troubleshooting.md
+_documentation/Reference/8_repo_map.md
+_documentation/Reference/direct_text_ingestion.md
+_documentation/Reference/mcp_query_search_contract.md
+_documentation/Reference/rest_apis.md
+_documentation/index.md
+docker-compose-gpu-override.yml
+docker-compose.cutover.local.yml
+docker-compose.yml
+docker/crawler/README.md
+docker/crawler/permanent-job-v2.patch
+docker/crawler/tests/test_permanent_job_v2.py
+docker/python_rag/80-rawki-runtime-permissions.sh
+docs/direct-text-ingestion.md
+package-lock.json
+package.json
+python_backend/.env.example
+python_backend/README.md
+python_backend/scripts/cutover_readiness.py
+python_backend/scripts/query_grants.py
+python_backend/src/hawki_backend/callbacks.py
+python_backend/src/hawki_backend/datasets/service.py
+python_backend/src/hawki_backend/main.py
+python_backend/src/hawki_backend/managed_documents/artifacts.py
+python_backend/src/hawki_backend/managed_documents/service.py
+python_backend/src/hawki_backend/url_ingestion/service.py
+python_backend/src/hawki_backend/workflow_control/service.py
+python_backend/tests/managed_documents/test_upload_storage.py
+python_backend/tests/test_deployment_configuration.py
+python_backend/tests/test_epoch15c_readiness.py
+python_backend/tests/test_laravel_off_configuration.py
+python_backend/tests/test_qdrant_routing.py
+python_backend/tests/test_query_migration.py
+python_backend/tests/test_readiness_security.py
+python_backend/tests/test_storage_binding.py
+python_backend/tests/test_workflow_control.py
+python_backend/tests/text_ingestion/test_artifacts.py
+python_rag/Dockerfile
+python_rag/README.md
+python_rag/packages/artifact_store/tests/contract/test_shared_storage.py
+python_rag/packages/pipeline_callbacks/README.md
+python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/__init__.py
+python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/artifact_writer.py
+python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/client.py
+python_rag/packages/pipeline_callbacks/tests/unit/test_client.py
+python_rag/services/README.md
+python_rag/services/hawki_bridge/README.md
+python_rag/services/hawki_bridge/tests/contract/deployment/test_image_packaging.py
+python_rag/services/hawki_bridge/tests/contract/http/test_managed_deletion_api.py
+python_rag/services/hawki_bridge/tests/contract/test_boundaries.py
+python_rag/services/hawki_converter_worker/src/hawki_converter_worker/adapters/status_callback.py
+python_rag/services/hawki_indexer_worker/README.md
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/activities/deletion.py
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/managed_writer.py
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/status_callback.py
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/index_execution.py
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/ready_projection.py
+python_rag/services/hawki_indexer_worker/tests/contract/test_boundaries.py
+python_rag/services/hawki_indexer_worker/tests/unit/activities/test_managed_writer_registration.py
+python_rag/services/hawki_indexer_worker/tests/unit/activities/test_text_writer_fence.py
+python_rag/services/hawki_indexer_worker/tests/unit/activities/test_url_writer_registration.py
+python_rag/services/hawki_scraper_worker/README.md
+python_rag/services/hawki_scraper_worker/src/hawki_scraper_worker/adapters/status_callback.py
+python_rag/services/hawki_scraper_worker/src/hawki_scraper_worker/settings.py
+python_rag/services/hawki_workflow_worker/README.md
+resources/js/svelte/README.md
+tailwind.config.js
+```
+
+## Added/untracked files
+
+```text
+.github/workflows/frontend.yml
+_documentation/History/laravel_openapi.yaml
+_documentation/History/public_schema.md
+_documentation/Operations/gebuhren_deletion_forensics.md
+_documentation/Operations/historical_orphan_graph_acceptance.md
+_documentation/Operations/historical_ownership_handoff.md
+_documentation/Operations/laravel_removal.md
+_documentation/Operations/laravel_removal_files.md
+_documentation/Operations/python_runtime.md
+docker/crawler/archive_legacy.py
+python_backend/HISTORICAL_EPOCHS.md
+python_backend/src/hawki_backend/historical_archive.py
+python_backend/tests/auth/test_service_issuer_contract.py
+python_backend/tests/fixtures/README.md
+python_backend/tests/fixtures/epoch15c_staging.env.fixture
+python_backend/tests/fixtures/managed_upload.fixture
+python_backend/tests/fixtures/text_ingestion.fixture
+python_backend/tests/historical/README.md
+python_backend/tests/historical/query_readiness.py
+python_backend/tests/managed_documents/test_artifact_cleanup.py
+python_backend/tests/test_historical_archive.py
+python_rag/packages/contracts/tests/fixtures/historical_control.fixture
+python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/source_metadata_client.py
+scripts/archive_historical_orphan.py
+scripts/audit_local_graph.py
+scripts/smoke_local_graph.py
+```
+
+## Removed obsolete environment names
+
+Name-only inventory; ignored local credentials are not displayed.
+
+```text
+APP_DEBUG
+APP_ENV
+APP_FAKER_LOCALE
+APP_FALLBACK_LOCALE
+APP_KEY
+APP_LOCALE
+APP_MAINTENANCE_DRIVER
+APP_MAINTENANCE_STORE
+APP_NAME
+APP_TIMEZONE
+APP_URL
+BCRYPT_ROUNDS
+BROADCAST_CONNECTION
+CACHE_PREFIX
+CACHE_STORE
+DB_CACHE_CONNECTION
+DB_CACHE_LOCK_CONNECTION
+DB_CACHE_LOCK_TABLE
+DB_CACHE_TABLE
+DB_QUEUE_CONNECTION
+FILESYSTEM_DISK
+HAWKI_PYTHON_GRAPH_OPS_TIMEOUT
+HAWKI_PYTHON_GRAPH_OPS_URL
+HAWKI_PYTHON_MANAGED_DOCUMENT_TIMEOUT
+HAWKI_PYTHON_MANAGED_DOCUMENT_URL
+HAWKI_PYTHON_QUERY_URL
+HAWKI_PYTHON_TEXT_INGESTION_EVENTS_URL
+HAWKI_PYTHON_TEXT_INGESTION_TIMEOUT
+HAWKI_PYTHON_TEXT_INGESTION_URL
+HAWKI_PYTHON_URL_INGESTION_URL
+HAWKI_QUERY_BFF_AUDIENCE
+HAWKI_QUERY_BFF_CLIENT_ID
+HAWKI_QUERY_BFF_ISSUER
+HAWKI_QUERY_BFF_KEY_ID
+HAWKI_QUERY_BFF_PRIVATE_KEY_PATH
+HAWKI_QUERY_BFF_TENANT
+HAWKI_QUERY_BFF_TOKEN_TTL
+HAWKI_RAG_BRIDGE_URL
+HAWKI_RAG_CORS_ALLOWED_ORIGINS
+HAWKI_RAG_HEALTH_GATE_ENABLED
+HAWKI_RAG_HEALTH_GATE_REQUIRED
+HAWKI_RAG_HEALTH_GATE_TIMEOUT
+HAWKI_RAG_INGEST_LOG_CACHE_PATH
+HAWKI_RAG_INGEST_LOG_CACHE_PATH_NEO4J
+HAWKI_RAG_INGEST_LOG_PATH
+HAWKI_RAG_INGEST_LOG_PATH_NEO4J
+HAWKI_RAG_QUERY_TIMEOUT
+LOG_CHANNEL
+LOG_DEPRECATIONS_CHANNEL
+LOG_STACK
+MAIL_FROM_ADDRESS
+MAIL_FROM_NAME
+MAIL_HOST
+MAIL_MAILER
+MAIL_PASSWORD
+MAIL_PORT
+MAIL_SCHEME
+MAIL_USERNAME
+MCP_BASE_URL
+MCP_ENABLED
+MCP_INGEST_ENABLED
+MCP_ROUTE_ENABLED
+MCP_SERVER
+MCP_TIMEOUT
+MCP_TOOL_RAG_INGEST
+MCP_TOOL_RAG_QUERY
+MCP_USE_FALLBACK
+MEMCACHED_HOST
+PHP_CLI_SERVER_WORKERS
+PHP_POST_MAX_SIZE
+PHP_UPLOAD_MAX_FILESIZE
+PIPELINE_SHARED_STORAGE_WEB_USER
+QUEUE_CONNECTION
+QUEUE_FAILED_DRIVER
+SANCTUM_EXPIRATION
+SANCTUM_ROUTES
+SANCTUM_TOKEN_PREFIX
+SESSION_CONNECTION
+SESSION_DOMAIN
+SESSION_DRIVER
+SESSION_ENCRYPT
+SESSION_EXPIRE_ON_CLOSE
+SESSION_HTTP_ONLY
+SESSION_LIFETIME
+SESSION_PATH
+SESSION_SAME_SITE
+SESSION_SECURE_COOKIE
+SESSION_TABLE
+VITE_APP_NAME
+```
+
+## git diff --stat
+
+```text
+ .dockerignore                                      |    2 +-
+ .env.example                                       |  139 +-
+ .gitattributes                                     |    2 -
+ .github/workflows/python-rag.yml                   |   82 +-
+ Makefile                                           |   95 +-
+ README.md                                          |   87 +-
+ .../Core Concepts/Ingestion/chunking_embeddings.md |    2 +
+ .../Core Concepts/Ingestion/graph_enrichment.md    |    2 +
+ .../Ingestion/identity_incremental.md              |    2 +
+ .../Core Concepts/authorization_dataset_scope.md   |    2 +
+ _documentation/Core Concepts/query_retrieval.md    |    2 +
+ _documentation/Core Concepts/storage.md            |    2 +
+ _documentation/Developer/architecture_rules.md     |    2 +
+ _documentation/Developer/testing.md                |  159 +-
+ _documentation/Getting Started/1_requirements.md   |    2 +
+ _documentation/Getting Started/2_setup.md          |    2 +
+ .../Getting Started/3_introduction_architecture.md |    2 +
+ .../Getting Started/4_installation_zero_to_up.md   |    2 +
+ .../Operations/5_environment_db_queue.md           |    2 +
+ .../Operations/6_ingestion_embeddings.md           |    2 +
+ .../Operations/crawler_v2_local_upgrade.md         |    4 +-
+ .../Operations/epoch11_blocker_validation.md       |    2 +
+ .../epoch11_crawler_integration_validation.md      |    2 +
+ .../epoch11_dispatch_recovery_validation.md        |    8 +-
+ .../epoch13_pipeline_execution_validation.md       |   74 +-
+ _documentation/Operations/epoch15a_cutover.md      |    2 +
+ _documentation/Operations/epoch15b_preparation.md  |    2 +
+ _documentation/Operations/epoch15c_cutover.md      |    2 +
+ _documentation/Operations/ingestion_recovery.md    |    2 +
+ _documentation/Operations/laravel_off_cutover.md   |    2 +
+ .../Operations/laravel_off_local_runtime.md        |    2 +
+ _documentation/Operations/monitoring.md            |    2 +
+ .../Operations/python_dataset_authority.md         |    2 +
+ .../Operations/python_graph_ops_admin.md           |    2 +
+ .../Operations/python_managed_documents.md         |    2 +
+ .../Operations/python_pipeline_execution.md        |    2 +
+ _documentation/Operations/python_query_bff.md      |    2 +
+ _documentation/Operations/python_query_cutover.md  |    2 +
+ _documentation/Operations/python_text_ingestion.md |    2 +
+ _documentation/Operations/python_url_ingestion.md  |    2 +
+ .../Operations/python_workflow_control.md          |    2 +
+ _documentation/Operations/temporal_operations.md   |    2 +
+ .../terminal_projection_reconciliation.md          |    2 +
+ _documentation/Operations/troubleshooting.md       |    2 +
+ _documentation/Reference/8_repo_map.md             |    2 +
+ _documentation/Reference/direct_text_ingestion.md  |    2 +
+ .../Reference/mcp_query_search_contract.md         |    2 +
+ _documentation/Reference/rest_apis.md              |    2 +
+ _documentation/index.md                            |  107 +-
+ .../Commands/CutoverRelayReadinessCommand.php      |   69 -
+ .../Commands/GrantDatasetIngestionAccess.php       |   62 -
+ app/Console/Commands/GrantDatasetQueryAccess.php   |   58 -
+ app/Console/Commands/LegacyDrainStatusCommand.php  |   40 -
+ app/Console/Commands/PipelineHealthCommand.php     |   51 -
+ app/Console/Commands/PipelineWorkersCommand.php    |   59 -
+ app/Console/Commands/QueryCutoverExportCommand.php |  102 -
+ app/Console/Commands/QueryCutoverProbeCommand.php  |   40 -
+ .../ReconcileManagedDocumentWriterCommand.php      |   47 -
+ .../ReconcileTerminalProjectionsCommand.php        |   48 -
+ .../Commands/StartOrchestratedPipelineTask.php     |  102 -
+ .../Commands/UserManagement/CreateApiToken.php     |  187 -
+ app/Console/Commands/UserManagement/CreateUser.php |   37 -
+ app/Console/Commands/UserManagement/RemoveUser.php |   68 -
+ .../Commands/UserManagement/UpdateUserRole.php     |   42 -
+ .../Controllers/API/HawkiRagProxyController.php    |   31 -
+ app/Http/Controllers/API/RagStatsController.php    |   19 -
+ app/Http/Controllers/Controller.php                |    8 -
+ app/Http/Controllers/DatasetController.php         |   45 -
+ .../DatasetIngestionGrantController.php            |   26 -
+ .../Controllers/DatasetQueryGrantController.php    |   22 -
+ .../ManagedDeletionWriterProofController.php       |   26 -
+ .../ManagedDocumentDeletionEventController.php     |   31 -
+ .../Document/ManagedDocumentWriterController.php   |   56 -
+ .../Document/UnifiedDocumentController.php         |   90 -
+ app/Http/Controllers/DocumentBrowserController.php |   47 -
+ .../Controllers/Graph/ClearGraphViewController.php |   19 -
+ .../Controllers/Graph/ClearNeo4jController.php     |   20 -
+ app/Http/Controllers/Graph/GraphController.php     |   40 -
+ .../Controllers/Graph/GraphExpansionController.php |   21 -
+ app/Http/Controllers/Graph/GraphNodeController.php |   19 -
+ app/Http/Controllers/Graph/GraphOpsController.php  |   63 -
+ .../Controllers/Graph/GraphOverviewController.php  |   17 -
+ .../Controllers/Graph/GraphSearchController.php    |   19 -
+ .../Controllers/Graph/GraphSnapshotController.php  |   33 -
+ .../Graph/SemanticGraphSearchController.php        |   32 -
+ .../Health/HawkiRagSystemGateController.php        |   18 -
+ .../Health/PipelineHealthController.php            |   47 -
+ .../Controllers/Health/RagHealthController.php     |   19 -
+ .../Controllers/Health/RagMonitorController.php    |   19 -
+ .../Integration/TextIngestionController.php        |   74 -
+ .../TextIngestionDeletionController.php            |   72 -
+ .../Pipeline/PipelineWorkerEventController.php     |   78 -
+ app/Http/Controllers/PipelineControlController.php |   46 -
+ .../Controllers/PipelineRecoveryController.php     |   65 -
+ app/Http/Controllers/PipelineStatusController.php  |   20 -
+ app/Http/Controllers/PipelineTaskController.php    |  199 -
+ .../Scrape/ScrapeControllerResponseFactory.php     |   25 -
+ app/Http/Controllers/ScrapeController.php          |   60 -
+ .../Controllers/ScrapeTaskUiProxyController.php    |   53 -
+ app/Http/Controllers/SettingsController.php        |   38 -
+ .../UploadedSourceDocumentController.php           |   60 -
+ app/Http/Middleware/CrawlerIngestionBoundary.php   |  156 -
+ .../Middleware/LimitTextIngestionRequestSize.php   |   25 -
+ .../Middleware/RequireBrowserQueryPrincipal.php    |   39 -
+ .../Middleware/RequireManagedMutationPrincipal.php |   23 -
+ app/Http/Middleware/RequireTextIngestionToken.php  |   36 -
+ app/Http/Middleware/SecurityHeaders.php            |   93 -
+ .../Middleware/VerifyPipelineWorkerSignature.php   |   25 -
+ .../Concerns/InteractsWithManagedDocumentInput.php |  151 -
+ app/Http/Requests/Dataset/CreateDatasetRequest.php |   43 -
+ .../GrantSelfDatasetIngestionAccessRequest.php     |   43 -
+ .../Dataset/GrantSelfDatasetQueryAccessRequest.php |   34 -
+ app/Http/Requests/Dataset/ListDatasetsRequest.php  |   27 -
+ .../Document/CreateManagedDocumentBatchRequest.php |   34 -
+ .../Document/CreateManagedDocumentRequest.php      |   22 -
+ .../Document/DownloadUploadedSourceRequest.php     |   57 -
+ .../Requests/Document/ListDocumentsRequest.php     |   38 -
+ .../Document/ManagedDeletionWriterProofRequest.php |   20 -
+ .../ManagedDocumentDeletionEventRequest.php        |   28 -
+ .../Requests/Document/ManagedDocumentRequest.php   |   18 -
+ .../Document/ManagedDocumentWriterRequest.php      |   33 -
+ .../Document/UpdateManagedDocumentRequest.php      |   41 -
+ app/Http/Requests/Graph/ExpandGraphNodeRequest.php |   42 -
+ .../Requests/Graph/SaveGraphSnapshotRequest.php    |   35 -
+ app/Http/Requests/Graph/SearchGraphRequest.php     |   36 -
+ .../Graph/SemanticDatasetGraphSearchRequest.php    |   42 -
+ app/Http/Requests/Graph/ShowGraphNodeRequest.php   |   36 -
+ .../Requests/Graph/ShowGraphOverviewRequest.php    |   30 -
+ app/Http/Requests/Health/HealthCheckRequest.php    |   32 -
+ .../Integration/DeleteTextIngestionRequest.php     |   49 -
+ .../Requests/Integration/IngestTextRequest.php     |  150 -
+ .../Pipeline/ListFailedPipelineJobsRequest.php     |   30 -
+ .../Pipeline/ListPipelineTaskEventsRequest.php     |   40 -
+ .../Requests/Pipeline/ListPipelineTasksRequest.php |   26 -
+ .../Pipeline/RetrySelectedPipelineJobsRequest.php  |   31 -
+ .../Requests/Pipeline/StartPipelineTaskRequest.php |   35 -
+ .../Pipeline/StorePipelineWorkerEventRequest.php   |  200 -
+ .../Pipeline/UploadPipelineFileRequest.php         |   74 -
+ .../Requests/Pipeline/UpsertPipelineJobRequest.php |   38 -
+ .../Rag/ListAuthorizedQueryDatasetsRequest.php     |   31 -
+ app/Http/Requests/Rag/QueryDatasetRequest.php      |  126 -
+ .../Requests/Scrape/StartCrawlerTaskRequest.php    |   44 -
+ .../Requests/Settings/UpdateSettingsRequest.php    |   76 -
+ app/Mcp/Servers/HawkiRagServer.php                 |   16 -
+ app/Mcp/Tools/WebSearchTool.php                    |   64 -
+ app/Models/Dataset.php                             |   48 -
+ app/Models/DatasetGrant.php                        |   29 -
+ app/Models/DatasetGrantToken.php                   |   31 -
+ app/Models/IngestedPage.php                        |   40 -
+ app/Models/IngestionSource.php                     |   59 -
+ app/Models/ManagedDocument.php                     |   66 -
+ app/Models/ManagedDocumentDeletion.php             |   20 -
+ app/Models/ManagedDocumentOutput.php               |   49 -
+ app/Models/PipelineJob.php                         |   86 -
+ app/Models/PipelineStageState.php                  |   44 -
+ app/Models/PipelineTask.php                        |   47 -
+ app/Models/PipelineWorkerEventRecord.php           |   46 -
+ app/Models/RagGraphFailure.php                     |   33 -
+ app/Models/RagIngestionArtifact.php                |   47 -
+ app/Models/ScrapeProcess.php                       |   39 -
+ app/Models/ScrapeStatistics.php                    |   77 -
+ app/Models/ScrapedElement.php                      |   75 -
+ app/Models/User.php                                |   45 -
+ app/Policies/DatasetQueryPolicy.php                |   20 -
+ app/Policies/UserAccessPolicy.php                  |   21 -
+ app/Providers/AppServiceProvider.php               |   87 -
+ .../Authorization/BrowserQueryPrincipalService.php |   72 -
+ .../Authorization/DatasetGrantTokenService.php     |   84 -
+ .../DatasetIngestionAuthorizationService.php       |   66 -
+ .../Authorization/DatasetIngestionGrantService.php |   57 -
+ .../DatasetQueryAuthorizationService.php           |  159 -
+ .../Authorization/DatasetQueryGrantService.php     |   59 -
+ .../Exceptions/AuthorizationExceptionInterface.php |    7 -
+ .../Exceptions/DatasetNotReadyException.php        |   30 -
+ .../Exceptions/DatasetQueryNotFoundException.php   |   30 -
+ .../Exceptions/GrantTokenInvalidException.php      |   30 -
+ .../Exceptions/GrantTokenRequiredException.php     |   30 -
+ .../Exceptions/QueryTokenSigningException.php      |   13 -
+ .../ManagedMutationPrincipalService.php            |   57 -
+ app/Services/Authorization/QueryTokenSigner.php    |  121 -
+ .../Repositories/DatasetGrantRepository.php        |  117 -
+ .../ManagedMutationTokenRepository.php             |   17 -
+ .../QueryCutoverInventoryRepository.php            |   29 -
+ .../Values/AuthenticatedPrincipal.php              |   22 -
+ .../Values/AuthorizedDatasetScope.php              |   50 -
+ .../Authorization/Values/IngestionSelfGrant.php    |   19 -
+ app/Services/Dataset/DatasetAuthority.php          |  240 -
+ app/Services/Dataset/DatasetBackend.php            |  107 -
+ app/Services/Dataset/DatasetGraphStatsService.php  |  101 -
+ app/Services/Dataset/DatasetIdentifierFactory.php  |   45 -
+ app/Services/Dataset/DatasetPayloadBuilder.php     |  122 -
+ app/Services/Dataset/DatasetRepository.php         |  191 -
+ app/Services/Dataset/DatasetService.php            |  373 -
+ .../Dataset/DatasetStorageCleanupService.php       |   81 -
+ app/Services/Dataset/DatasetVectorStatsService.php |   66 -
+ .../DatasetBackendUnavailableException.php         |   62 -
+ .../DatasetCreationConflictException.php           |   33 -
+ .../Exceptions/DatasetExceptionInterface.php       |    7 -
+ .../Exceptions/DatasetInactiveException.php        |   30 -
+ .../Exceptions/DatasetNotFoundException.php        |   30 -
+ .../Dataset/LegacyDatasetStatePreflight.php        |  129 -
+ app/Services/Dataset/PythonDatasetClient.php       |  551 --
+ app/Services/Dataset/QdrantCollectionCatalog.php   |   84 -
+ .../DatasetGraphAvailabilityRepository.php         |   68 -
+ app/Services/Dataset/RequireDatasetManager.php     |   46 -
+ .../Dataset/Values/DatasetCreationResult.php       |   22 -
+ app/Services/Dataset/Values/DatasetProjection.php  |   39 -
+ .../Clients/PythonManagedDocumentClient.php        |  210 -
+ .../Document/DocumentLatestGraphReportService.php  |  129 -
+ .../Document/DocumentMarkdownPreviewReader.php     |   86 -
+ .../Exceptions/ManagedDeletionException.php        |   13 -
+ app/Services/Document/ManagedCallbackBoundary.php  |   36 -
+ .../Document/ManagedDeletionWriterProofService.php |  148 -
+ app/Services/Document/ManagedDocumentBoundary.php  |   48 -
+ .../ManagedDocumentDeletionReceiptVerifier.php     |  102 -
+ .../ManagedDocumentOutputDeletionService.php       |  607 --
+ .../Document/ManagedDocumentPayloadBuilder.php     |  260 -
+ .../ManagedDocumentPipelineStateResolver.php       |   42 -
+ .../ManagedDocumentPipelineSummaryService.php      |   73 -
+ .../Document/ManagedDocumentReadBoundary.php       |  109 -
+ .../Document/ManagedDocumentRecoveryGuard.php      |   47 -
+ app/Services/Document/ManagedDocumentService.php   |  524 --
+ .../Document/ManagedDocumentSyncService.php        |   62 -
+ .../Document/ManagedDocumentSyncStateResolver.php  |  107 -
+ .../ManagedDocumentWriterReconciliationService.php |  157 -
+ .../Document/ManagedDocumentWriterService.php      |  159 -
+ .../Document/ManagedPipelineResponseMapper.php     |   50 -
+ .../ManagedWriterReconciliationAssessment.php      |  377 -
+ .../ManagedDocumentDeletionRepository.php          |   57 -
+ .../ManagedDocumentOutputRepository.php            |  213 -
+ .../Repositories/ManagedDocumentRepository.php     |  213 -
+ .../ManagedDocumentWriterRepository.php            |   43 -
+ .../ManagedIngestionMetadataRepository.php         |   21 -
+ .../ManagedWriterReconciliationRepository.php      |   49 -
+ app/Services/Document/UnifiedDocumentService.php   |   87 -
+ .../Document/UploadedSourceDocumentRepository.php  |   54 -
+ .../Document/UploadedSourceDocumentService.php     |  346 -
+ app/Services/Document/Values/ManagedDocumentId.php |  100 -
+ .../Values/ManagedDocumentPipelineState.php        |   59 -
+ .../Document/Values/ManagedDocumentSyncState.php   |   18 -
+ .../Document/Values/UploadedSourceDocument.php     |   14 -
+ .../Graph/Exceptions/GraphCacheException.php       |   19 -
+ .../Graph/Exceptions/GraphExceptionInterface.php   |    9 -
+ .../Graph/Exceptions/GraphSnapshotException.php    |   18 -
+ .../Graph/Exceptions/Neo4jClientException.php      |   30 -
+ app/Services/Graph/GraphCypherSearch.php           |   54 -
+ app/Services/Graph/GraphOpsBackend.php             |   53 -
+ app/Services/Graph/GraphOpsService.php             |  100 -
+ app/Services/Graph/GraphResultNormalizer.php       |  166 -
+ app/Services/Graph/GraphSearchService.php          |  205 -
+ app/Services/Graph/GraphSnapshotService.php        |   78 -
+ app/Services/Graph/GraphSnapshotStore.php          |  132 -
+ app/Services/Graph/GraphSourceDocumentResolver.php |  182 -
+ app/Services/Graph/Neo4jAdmin.php                  |   15 -
+ app/Services/Graph/Neo4jClient.php                 |   62 -
+ app/Services/Graph/Neo4jGraphExplorer.php          |  114 -
+ app/Services/Graph/Neo4jQueryClient.php            |   86 -
+ app/Services/Graph/PythonGraphOpsClient.php        |   79 -
+ app/Services/Health/HawkiRagSystemGateService.php  |  215 -
+ .../Clients/PythonTemporalBridgeClient.php         |  295 -
+ .../Pipeline/Clients/PythonUrlIngestionClient.php  |  131 -
+ app/Services/Pipeline/CrawlerCallbackBoundary.php  |   63 -
+ .../Exceptions/CrawlerAuthorityException.php       |   13 -
+ .../Exceptions/PipelineExceptionInterface.php      |    8 -
+ .../Pipeline/Exceptions/PipelineRetryException.php |   26 -
+ .../Exceptions/PipelineUploadStorageException.php  |   63 -
+ .../Exceptions/PipelineWorkerEventException.php    |   57 -
+ .../PipelineWorkerSignatureException.php           |   43 -
+ .../Pipeline/Health/HttpEndpointHealthCheck.php    |   76 -
+ app/Services/Pipeline/Health/Neo4jHealthCheck.php  |   84 -
+ .../Health/PipelineDatabaseHealthCheck.php         |   69 -
+ .../Health/PipelineHealthResultFactory.php         |   37 -
+ .../Pipeline/Health/PipelineHealthService.php      |   41 -
+ .../Health/PipelineSharedStorageHealthCheck.php    |  187 -
+ .../Health/PipelineTemporalHealthCheck.php         |   73 -
+ .../Pipeline/Health/PipelineWorkerHealthCheck.php  |  117 -
+ app/Services/Pipeline/Health/QdrantHealthCheck.php |   83 -
+ app/Services/Pipeline/LegacyDrainStatusService.php |   42 -
+ .../Pipeline/Logs/PipelineStageLogService.php      | 1276 ---
+ .../Pipeline/PipelineCompatibilityBoundary.php     |  205 -
+ app/Services/Pipeline/PipelineExecutionBackend.php |   44 -
+ app/Services/Pipeline/PipelineFileHasher.php       |   16 -
+ .../PipelineManagedDocumentViewService.php         |  103 -
+ app/Services/Pipeline/PipelineOwnership.php        |   46 -
+ .../Pipeline/PipelineRecoveryWorkflowService.php   |  222 -
+ app/Services/Pipeline/PipelineService.php          |   26 -
+ .../Pipeline/PipelineWorkerEventService.php        |  502 --
+ .../PipelineWorkerEventSignatureVerifier.php       |   48 -
+ .../Recovery/PipelineRecoveryAttemptService.php    |  158 -
+ .../PipelineRecoveryFailedJobPresenter.php         |   31 -
+ .../Recovery/PipelineRecoveryInputNormalizer.php   |   41 -
+ .../Recovery/PipelineRecoveryListService.php       |   34 -
+ .../Recovery/PipelineRecoveryMetadataService.php   |  119 -
+ .../Recovery/PipelineRecoveryPayloadService.php    |   41 -
+ .../Recovery/PipelineRecoveryRetryCoordinator.php  |  106 -
+ .../Pipeline/Recovery/PipelineRecoveryService.php  |   67 -
+ .../Recovery/PipelineRetryResumeService.php        |  203 -
+ .../Repositories/IngestionSourceRepository.php     |  416 -
+ .../Repositories/LegacyDrainRepository.php         |  172 -
+ .../Repositories/PipelineJobCreationRepository.php |  228 -
+ .../Repositories/PipelineJobRecoveryRepository.php |   81 -
+ .../Repositories/PipelineJobRollupRepository.php   |   57 -
+ .../PipelineJobStateMutationRepository.php         |  153 -
+ .../Repositories/PipelineOwnershipRepository.php   |   79 -
+ .../PipelineScheduledRunRepository.php             |   80 -
+ .../Repositories/PipelineSchemaInspector.php       |   35 -
+ .../Repositories/PipelineStageStateRepository.php  |  132 -
+ .../Repositories/PipelineStatusRepository.php      |   45 -
+ .../Repositories/PipelineTaskRepository.php        |  222 -
+ .../Repositories/PipelineTransactionRepository.php |   34 -
+ .../Repositories/PipelineWorkerEventRepository.php |   54 -
+ .../Queries/ActivePipelineJobsQuery.php            |   67 -
+ .../Queries/FailedPipelineJobsQuery.php            |   74 -
+ .../Repositories/Queries/PipelineTaskJobsQuery.php |   57 -
+ .../Queries/PipelineWorkerEventJobQuery.php        |   20 -
+ .../Repositories/TerminalProjectionRepository.php  |  103 -
+ .../State/PipelineStageAttributeNormalizer.php     |   91 -
+ .../Pipeline/State/PipelineStageClaimService.php   |   80 -
+ .../Pipeline/State/PipelineStageRollupService.php  |  118 -
+ .../State/PipelineStageStatusPayloadBuilder.php    |   87 -
+ .../State/PipelineStageTransitionService.php       |  138 -
+ .../Pipeline/State/PipelineStateService.php        |  126 -
+ .../Status/PipelineConversionDatasetScanner.php    |   98 -
+ .../Status/PipelineConversionStageSynchronizer.php |   64 -
+ .../Status/PipelineConversionStatusService.php     |   80 -
+ .../Status/PipelineScrapeStageSynchronizer.php     |   57 -
+ .../Status/PipelineScrapeStatusService.php         |   72 -
+ .../Status/PipelineStageEmptyResponseFactory.php   |   31 -
+ .../Pipeline/Status/PipelineStageStatusMerger.php  |   79 -
+ .../Status/PipelineStageValueFormatter.php         |   31 -
+ .../Pipeline/Status/PipelineStatusService.php      |  108 -
+ .../Status/PipelineWorkflowStatusSynchronizer.php  |   90 -
+ .../Tasks/IngestSourceWorkflowPayloadFactory.php   |  201 -
+ .../Tasks/PipelineTaskCancellationService.php      |   83 -
+ .../Pipeline/Tasks/PipelineTaskCounterService.php  |  137 -
+ .../Pipeline/Tasks/PipelineTaskInputNormalizer.php |   74 -
+ .../Pipeline/Tasks/PipelineTaskJobUpdater.php      |   80 -
+ .../Pipeline/Tasks/PipelineTaskMetadataService.php |   71 -
+ .../Pipeline/Tasks/PipelineTaskPayloadService.php  |  520 --
+ .../Pipeline/Tasks/PipelineTaskRetryService.php    |   73 -
+ .../Pipeline/Tasks/PipelineTaskService.php         |  159 -
+ .../Pipeline/Tasks/PipelineTaskSourceResolver.php  |  143 -
+ .../Pipeline/Tasks/PipelineTaskStarter.php         |  222 -
+ .../Pipeline/Tasks/PipelineTaskStatusRefresher.php |   42 -
+ .../Pipeline/Tasks/PipelineTaskStatusService.php   |   76 -
+ .../Tasks/PipelineTaskStorageCleanupService.php    |  286 -
+ .../Pipeline/Tasks/PipelineTaskTimelineService.php |   77 -
+ .../TerminalProjectionReconciliationService.php    |  331 -
+ .../PipelineCustomConverterProfileWriter.php       |   81 -
+ .../Uploads/PipelineUploadIdentifierFactory.php    |   43 -
+ .../Uploads/PipelineUploadPayloadService.php       |   96 -
+ .../Pipeline/Uploads/PipelineUploadPolicy.php      |   64 -
+ .../Uploads/PipelineUploadResultFactory.php        |   84 -
+ .../Pipeline/Uploads/PipelineUploadService.php     |  305 -
+ .../Pipeline/Uploads/PipelineUploadStorage.php     |   95 -
+ app/Services/Pipeline/Values/LegacyDrainState.php  |   39 -
+ .../Pipeline/Values/PipelineResumePlan.php         |   29 -
+ app/Services/Pipeline/Values/PipelineStage.php     |   12 -
+ .../Pipeline/Values/PipelineStageArtifact.php      |   63 -
+ .../Pipeline/Values/PipelineStageStatus.php        |   18 -
+ .../Pipeline/Values/PipelineStoredUpload.php       |   26 -
+ .../Pipeline/Values/PipelineUploadInput.php        |  105 -
+ .../Pipeline/Values/PipelineUploadResult.php       |   24 -
+ app/Services/Pipeline/Values/PipelineWorker.php    |   30 -
+ .../Pipeline/Values/PipelineWorkerEvent.php        |  123 -
+ .../Pipeline/Values/TemporalWorkflowExecution.php  |   15 -
+ .../Values/TerminalProjectionTemporalEvidence.php  |   16 -
+ app/Services/Profile/ApiTokenService.php           |   76 -
+ .../Exceptions/ProfileExceptionInterface.php       |    9 -
+ .../Profile/Exceptions/ProfileTokenException.php   |   23 -
+ app/Services/Profile/Values/ApiTokenAbility.php    |   12 -
+ app/Services/Rag/Clients/PythonQueryClient.php     |  202 -
+ app/Services/Rag/RagBridgeHealthClient.php         |   63 -
+ app/Services/Rag/RagGraphConfigReporter.php        |   43 -
+ app/Services/Rag/RagHealthService.php              |  124 -
+ app/Services/Rag/RagLatencyTimer.php               |   33 -
+ .../Rag/RagLatestDocumentGraphReporter.php         |   25 -
+ app/Services/Rag/RagMonitorArtifactReader.php      |   73 -
+ app/Services/Rag/RagMonitorArtifactStore.php       |   45 -
+ app/Services/Rag/RagMonitorService.php             |   62 -
+ app/Services/Rag/RagProxyService.php               |   92 -
+ app/Services/Rag/RagQueryService.php               |   74 -
+ app/Services/Rag/RagStatsService.php               |   56 -
+ .../Repositories/RagMonitorArtifactRepository.php  |  101 -
+ .../Exceptions/RagSearchExceptionInterface.php     |    9 -
+ .../Exceptions/RagSearcherFailedException.php      |   38 -
+ app/Services/RagSearch/RagSearchPayloadFactory.php |   38 -
+ app/Services/RagSearch/RagSearchResponseFilter.php |  101 -
+ app/Services/RagSearch/RagSearchSchemaFactory.php  |   44 -
+ app/Services/RagSearch/RagSearcher.php             |  113 -
+ .../Scrape/Clients/ScrapeCrawlerClient.php         |   67 -
+ .../Scrape/Clients/ScrapeCrawlerHttpClient.php     |   64 -
+ .../Clients/ScrapeCrawlerPayloadNormalizer.php     |   74 -
+ .../Scrape/Clients/ScrapeCrawlerResponseMapper.php |  117 -
+ .../Scrape/Exceptions/ScrapeExceptionInterface.php |    9 -
+ .../Scrape/Exceptions/ScrapeResponseException.php  |   13 -
+ app/Services/Scrape/ScrapeService.php              |   51 -
+ .../Tasks/ScrapeCrawlerTaskFallbackStarter.php     |   27 -
+ .../Scrape/Tasks/ScrapeCrawlerTaskNormalizer.php   |   60 -
+ app/Services/Scrape/Tasks/ScrapeTaskNormalizer.php |   74 -
+ .../Scrape/Tasks/ScrapeTaskPayloadBuilder.php      |  110 -
+ .../Scrape/Tasks/ScrapeTaskProfileNormalizer.php   |  121 -
+ app/Services/Scrape/Tasks/ScrapeTaskService.php    |   89 -
+ .../Scrape/Tasks/ScrapeTaskStartPayloadBuilder.php |   63 -
+ app/Services/Scrape/Tasks/ScrapeTaskStarter.php    |   23 -
+ app/Services/Scrape/Tasks/ScrapeTaskUiClient.php   |  137 -
+ .../Scrape/Tasks/ScrapeTaskUiStartWorkflow.php     |  128 -
+ .../Scrape/Tasks/ScrapeTaskValueNormalizer.php     |   65 -
+ .../Repositories/SettingsFileRepository.php        |   55 -
+ app/Services/Settings/SettingsService.php          |  622 --
+ .../Clients/PythonTextIngestionClient.php          |  486 --
+ .../Exceptions/TextIngestionDeletionException.php  |   17 -
+ .../Exceptions/TextIngestionExceptionInterface.php |    7 -
+ .../TextIngestionIdempotencyException.php          |   36 -
+ .../Exceptions/TextIngestionNotFoundException.php  |   30 -
+ .../Exceptions/TextIngestionRecoveryException.php  |   15 -
+ .../TextIngestionSourceBusyException.php           |   15 -
+ .../Exceptions/TextIngestionStorageException.php   |   18 -
+ .../TextIngestionWorkflowStartException.php        |   16 -
+ .../TextIngestion/TextIngestionArtifactStorage.php |  313 -
+ .../TextIngestion/TextIngestionDeletionService.php |  193 -
+ .../TextIngestionIdentifierFactory.php             |   50 -
+ .../TextIngestion/TextIngestionRecoveryService.php |   63 -
+ .../TextIngestionRequestFingerprint.php            |  131 -
+ .../TextIngestion/TextIngestionService.php         |  554 --
+ .../TextIngestionVectorDeletionService.php         |   72 -
+ .../TextIngestionWorkflowPayloadFactory.php        |  171 -
+ .../TextIngestion/Values/StoredTextArtifact.php    |   29 -
+ .../TextIngestion/Values/TextContentFormat.php     |   11 -
+ .../Values/TextIngestionDeletionResult.php         |   28 -
+ .../Values/TextIngestionDeletionTarget.php         |   13 -
+ .../TextIngestion/Values/TextIngestionInput.php    |   53 -
+ .../TextIngestion/Values/TextIngestionMode.php     |   32 -
+ .../TextIngestion/Values/TextIngestionResult.php   |   65 -
+ app/Services/User/Repositories/UserRepository.php  |   79 -
+ app/Services/User/Values/UserRole.php              |   11 -
+ .../WebSearch/Contracts/WebSearchInterface.php     |   15 -
+ .../Exceptions/WebSearchFailedException.php        |   28 -
+ .../WebSearch/Implementations/BraveSearch.php      |   66 -
+ .../WebSearch/Implementations/TavilySearch.php     |  129 -
+ app/Support/Clock/CarbonClock.php                  |   16 -
+ artisan                                            |   42 -
+ bootstrap/app.php                                  |   86 -
+ bootstrap/cache/.gitignore                         |    2 -
+ bootstrap/providers.php                            |    5 -
+ composer.json                                      |   85 -
+ composer.lock                                      | 8598 --------------------
+ config/app.php                                     |  128 -
+ config/auth.php                                    |  115 -
+ config/cache.php                                   |  102 -
+ config/config.php                                  |  142 -
+ config/cors.php                                    |   44 -
+ config/database.php                                |  149 -
+ config/file_converter.php                          |   24 -
+ config/filesystems.php                             |   77 -
+ config/logging.php                                 |  145 -
+ config/mail.php                                    |  116 -
+ config/mcp.php                                     |   16 -
+ config/model_providers.php                         |  227 -
+ config/queue.php                                   |  103 -
+ config/sanctum.php                                 |   96 -
+ config/scraper.php                                 |   63 -
+ config/services.php                                |   37 -
+ config/session.php                                 |  217 -
+ config/temporal.php                                |   72 -
+ config/web_search.php                              |   47 -
+ database/.gitignore                                |    1 -
+ .../0001_01_01_000000_create_users_table.php       |   32 -
+ .../0001_01_01_000002_create_jobs_table.php        |   43 -
+ ..._141108_create_personal_access_tokens_table.php |   33 -
+ .../2026_04_22_140000_create_documents_table.php   |   42 -
+ ...6_05_29_010000_create_pipeline_state_tables.php |   63 -
+ ..._29_011000_create_scrape_operational_tables.php |   87 -
+ ...ate_pipeline_tasks_and_extend_pipeline_jobs.php |   75 -
+ ..._000000_simplify_pipeline_task_job_tracking.php |   42 -
+ .../2026_06_05_000000_create_datasets_table.php    |  129 -
+ ...10000_remove_profile_id_from_pipeline_tasks.php |   39 -
+ ...eate_ingestion_sources_and_temporal_columns.php |   76 -
+ ...000000_create_postgresql_operational_tables.php |   61 -
+ ...26_06_29_120000_create_ingested_pages_table.php |   53 -
+ ...07_08_150000_create_managed_document_tables.php |   80 -
+ ...stant_document_storage_to_managed_documents.php |  425 -
+ ...26_07_14_000000_create_dataset_grants_table.php |   42 -
+ .../2026_07_23_000000_add_role_to_users_table.php  |   27 -
+ ...0000_reconcile_pipeline_schema_for_upgrades.php |  205 -
+ ...0_finalize_managed_document_storage_upgrade.php |  447 -
+ ..._000000_create_pipeline_worker_events_table.php |   44 -
+ ...5_000000_create_rag_monitor_artifact_tables.php |   55 -
+ ...16_000000_create_dataset_grant_tokens_table.php |   35 -
+ ...000_create_managed_document_deletions_table.php |   36 -
+ ..._000000_add_managed_deletion_recovery_state.php |   23 -
+ docker-compose-gpu-override.yml                    |    2 +-
+ docker-compose.bff-ca.yml                          |   12 -
+ docker-compose.bff.yml                             |   17 -
+ docker-compose.cutover.local.yml                   |    7 +-
+ docker-compose.local.yml                           |    8 -
+ docker-compose.yml                                 |   85 +-
+ docker/crawler/README.md                           |   14 +
+ docker/crawler/permanent-job-v2.patch              |   54 +-
+ docker/crawler/tests/test_permanent_job_v2.py      |   48 +
+ docker/env/epoch15c.staging.env.example            |   17 -
+ docker/laravel.Dockerfile                          |   83 -
+ docker/python_rag/80-rawki-runtime-permissions.sh  |    2 +-
+ docker/rag_app/entrypoint/composer.dev.sh          |    3 -
+ docker/rag_app/entrypoint/entrypoint.sh            |   75 -
+ docker/rag_app/nginx/project.prod.conf             |   16 -
+ docker/rag_app/php/fpm/php-custom.ini              |    6 -
+ docker/rag_app/supervisor/dataset-cleanup.conf     |   13 -
+ docs/direct-text-ingestion.md                      |    2 +
+ package-lock.json                                  |  337 -
+ package.json                                       |    6 +-
+ phpunit.xml                                        |   53 -
+ public/index.php                                   |   20 -
+ public/swagger/README.md                           |   19 -
+ public/swagger/index.html                          |   48 -
+ public/swagger/openapi.yaml                        | 3895 ---------
+ python_backend/.env.example                        |    4 +
+ python_backend/README.md                           | 1065 +--
+ python_backend/scripts/cutover_readiness.py        |  166 +-
+ python_backend/scripts/query_grants.py             |   21 +-
+ python_backend/scripts/query_readiness.py          |  771 --
+ python_backend/src/hawki_backend/callbacks.py      |    2 +
+ .../src/hawki_backend/datasets/service.py          |    8 +-
+ python_backend/src/hawki_backend/main.py           |    8 +
+ .../hawki_backend/managed_documents/artifacts.py   |   49 +
+ .../src/hawki_backend/managed_documents/service.py |    4 +
+ .../src/hawki_backend/url_ingestion/service.py     |    2 +
+ .../src/hawki_backend/workflow_control/service.py  |    2 +
+ .../tests/auth/test_php_bff_interoperability.py    |  136 -
+ .../tests/managed_documents/test_upload_storage.py |    6 +-
+ .../tests/parity/test_live_operator_guards.py      |  273 -
+ .../tests/parity/test_live_scope_integration.py    |  383 -
+ .../tests/test_deployment_configuration.py         |    9 +-
+ python_backend/tests/test_epoch15c_readiness.py    |   16 +-
+ .../tests/test_laravel_off_configuration.py        |   12 +-
+ python_backend/tests/test_qdrant_routing.py        |    1 +
+ python_backend/tests/test_query_migration.py       |    2 +
+ python_backend/tests/test_readiness_security.py    |    1 +
+ python_backend/tests/test_storage_binding.py       |   20 +-
+ python_backend/tests/test_workflow_control.py      |   96 +-
+ .../tests/text_ingestion/test_artifacts.py         |   74 +-
+ python_rag/Dockerfile                              |   33 -
+ python_rag/README.md                               |    8 +-
+ .../tests/contract/test_shared_storage.py          |   46 +-
+ python_rag/packages/pipeline_callbacks/README.md   |    2 +-
+ .../src/hawki_pipeline_callbacks/__init__.py       |   12 +-
+ .../hawki_pipeline_callbacks/artifact_writer.py    |    6 +-
+ .../src/hawki_pipeline_callbacks/client.py         |   42 +-
+ .../pipeline_callbacks/tests/unit/test_client.py   |   24 +-
+ python_rag/services/README.md                      |    5 +-
+ python_rag/services/hawki_bridge/README.md         |    5 +
+ .../contract/deployment/test_image_packaging.py    |   10 +-
+ .../contract/http/test_managed_deletion_api.py     |   41 +-
+ .../hawki_bridge/tests/contract/test_boundaries.py |   18 +-
+ .../adapters/status_callback.py                    |   10 +-
+ python_rag/services/hawki_indexer_worker/README.md |    6 +-
+ .../hawki_indexer_worker/activities/deletion.py    |    6 +-
+ .../adapters/laravel_metadata_client.py            |   26 -
+ .../adapters/managed_writer.py                     |    6 +-
+ .../adapters/status_callback.py                    |   10 +-
+ .../application/index_execution.py                 |    2 +-
+ .../application/ready_projection.py                |    2 +-
+ .../tests/contract/test_boundaries.py              |    2 +-
+ .../activities/test_managed_writer_registration.py |    6 +-
+ .../unit/activities/test_text_writer_fence.py      |    6 +-
+ .../activities/test_url_writer_registration.py     |    2 +-
+ python_rag/services/hawki_scraper_worker/README.md |    2 +-
+ .../adapters/status_callback.py                    |    8 +-
+ .../src/hawki_scraper_worker/settings.py           |   11 +-
+ .../services/hawki_workflow_worker/README.md       |    7 +-
+ resources/js/svelte/README.md                      |    7 +-
+ resources/views/svelte-page.blade.php              |   30 -
+ routes/ai.php                                      |    7 -
+ routes/api.php                                     |  289 -
+ routes/health.php                                  |   27 -
+ routes/web.php                                     |  238 -
+ storage/framework/.gitignore                       |    9 -
+ storage/framework/cache/.gitignore                 |    3 -
+ storage/framework/cache/data/.gitignore            |    2 -
+ storage/framework/sessions/.gitignore              |    2 -
+ storage/framework/testing/.gitignore               |    2 -
+ storage/framework/views/.gitignore                 |    2 -
+ tailwind.config.js                                 |    3 -
+ .../Feature/ApiContract/CanonicalApiRouteTest.php  |  137 -
+ tests/Feature/ApiContract/OpenApiContractTest.php  |  256 -
+ .../Feature/Authentication/ApiTokenCommandTest.php |   92 -
+ .../Authentication/CanonicalApiAccessTest.php      |   74 -
+ .../Authentication/ImplicitSingleUserQueryTest.php |  211 -
+ tests/Feature/Authentication/RouteSecurityTest.php |  137 -
+ .../Authentication/UserManagementCommandTest.php   |   49 -
+ .../Authorization/DatasetAuthorizationGateTest.php |  121 -
+ .../DatasetIngestionAuthorizationTest.php          |   82 -
+ .../ListDatasetsRequestAccessTest.php              |   62 -
+ .../SelfDatasetIngestionGrantTest.php              |  270 -
+ .../Authorization/SelfDatasetQueryGrantTest.php    |  169 -
+ tests/Feature/Authorization/UserAccessGateTest.php |   50 -
+ .../Database/ManagedDeletionPostgresTest.php       |  878 --
+ .../Database/PostgresMigrationUpgradeTest.php      |  773 --
+ .../Datasets/DatasetAuthorityBoundaryTest.php      |  281 -
+ .../Datasets/DatasetDeletionBackgroundTest.php     |  182 -
+ tests/Feature/Datasets/DatasetManagementTest.php   |  376 -
+ tests/Feature/Datasets/PythonDatasetBffTest.php    |  840 --
+ .../Documents/CutoverRelayReadinessTest.php        |   56 -
+ tests/Feature/Documents/DocumentBrowserTest.php    |  434 -
+ tests/Feature/Documents/DocumentUnifiedApiTest.php |  602 --
+ .../Documents/ManagedDeletionWriterProofTest.php   |  115 -
+ .../Documents/ManagedDocumentDeletionTest.php      |  890 --
+ .../Documents/ManagedDocumentWriterTest.php        |  584 --
+ .../Documents/ManagedWriterReconciliationTest.php  |  318 -
+ .../Documents/PythonManagedDocumentBffTest.php     |  529 --
+ tests/Feature/Epoch15aCutoverTest.php              |  250 -
+ .../Feature/Graph/DatasetScopedGraphSearchTest.php |  175 -
+ tests/Feature/Graph/GraphExactGrantTest.php        |   52 -
+ tests/Feature/Graph/GraphOpsBoundaryTest.php       |  289 -
+ tests/Feature/Graph/GraphRequestValidationTest.php |   63 -
+ .../Graph/GraphSnapshotAuthorizationTest.php       |   83 -
+ .../Graph/Neo4jClearAcknowledgementTest.php        |  139 -
+ tests/Feature/Graph/Neo4jGraphExplorerPageTest.php |   27 -
+ .../Graph/Neo4jScopedClearIntegrationTest.php      |   40 -
+ .../Graph/RagLatestDocumentGraphReporterTest.php   |  127 -
+ .../Feature/Health/HealthRequestValidationTest.php |   95 -
+ .../DirectTextIngestionRecoveryTest.php            |  488 --
+ .../Integration/PythonTextIngestionBffTest.php     |  216 -
+ tests/Feature/Integration/TextIngestionApiTest.php |  753 --
+ .../TextIngestionAuthenticationTest.php            |  187 -
+ .../Integration/TextIngestionDeletionApiTest.php   |  361 -
+ tests/Feature/Integration/TextIngestionReqTest.php |  224 -
+ tests/Feature/Mcp/HawkiRagRegistrationTest.php     |   21 -
+ tests/Feature/Pipeline/LegacyDrainStatusTest.php   |  293 -
+ .../Pipeline/PipelineControllerDashboardTest.php   | 1260 ---
+ .../Pipeline/PipelineOperationsCommandTest.php     |   51 -
+ .../Pipeline/PipelineRecoveryRepositoryTest.php    |  184 -
+ .../Pipeline/PipelineRepositoryReadTest.php        |  458 --
+ .../Pipeline/PipelineStateRepositoryTest.php       |  152 -
+ tests/Feature/Pipeline/PipelineStatusTest.php      |  179 -
+ .../Pipeline/PipelineUploadRepositoryTest.php      |  119 -
+ .../Pipeline/PipelineWorkerEventCallbackTest.php   |  901 --
+ .../Pipeline/PipelineWorkerEventTransportTest.php  |  105 -
+ .../PipelineWorkflowStatusSynchronizerTest.php     |   84 -
+ .../Feature/Pipeline/PythonUrlIngestionBffTest.php |  635 --
+ .../TerminalProjectionReconciliationTest.php       |  733 --
+ tests/Feature/PythonBffTableIndependenceTest.php   |  134 -
+ .../Query/BrowserDatasetScopedQueryTest.php        |  132 -
+ tests/Feature/Query/DatasetScopedQueryTest.php     |  375 -
+ tests/Feature/Query/GraphRetrievalModeTest.php     |  180 -
+ tests/Feature/Query/HawkiRagPlaygroundPageTest.php |   24 -
+ tests/Feature/Query/PythonQueryBoundaryTest.php    |  166 -
+ tests/Feature/Query/QueryCutoverToolsTest.php      |  194 -
+ tests/Feature/README.md                            |   51 -
+ tests/Feature/Scraping/ScraperTaskProxyTest.php    |  144 -
+ tests/Feature/Scraping/ScraperTaskUiProxyTest.php  |   36 -
+ tests/Feature/Settings/SettingsDashboardTest.php   |  211 -
+ tests/Feature/Ui/HawkiRagExperienceRouteTest.php   |   76 -
+ tests/Fixtures/python_managed_upload.fixture       |   93 -
+ tests/README.md                                    |   49 -
+ tests/Support/ManagedWriterFixture.php             |   54 -
+ tests/Support/QueryBffFixture.php                  |   62 -
+ tests/Support/managed_deletion_ui.php              |  108 -
+ tests/Support/managed_deletion_wire.php            |   41 -
+ tests/Support/mint_query_bff_token.php             |   51 -
+ tests/Support/text_ingestion_parity.php            |   17 -
+ tests/System/ImplicitSingleUserRagFlowTest.php     |  101 -
+ tests/System/PdfIngestionFlowTest.php              |  226 -
+ tests/System/SystemTestCase.php                    |   46 -
+ tests/System/TwoDatasetIsolationTest.php           |  117 -
+ tests/TestCase.php                                 |  146 -
+ .../Authorization/AuthorizedDatasetScopeTest.php   |   43 -
+ tests/Unit/Authorization/QueryTokenSignerTest.php  |  145 -
+ .../ManagedDocumentDeletionReceiptVerifierTest.php |  145 -
+ tests/Unit/Graph/GraphResultNormalizerTest.php     |  156 -
+ .../Unit/Health/HawkiRagSystemGateServiceTest.php  |  165 -
+ tests/Unit/PHPUnitDatabaseIsolationTest.php        |   25 -
+ .../IngestSourceWorkflowPayloadFactoryTest.php     |  270 -
+ .../Pipeline/PipelineDatabaseHealthCheckTest.php   |   41 -
+ .../PipelineIndexerLogConfigurationTest.php        |   22 -
+ .../PipelineRecoveryInputNormalizerTest.php        |   48 -
+ .../PipelineRecoveryMetadataServiceTest.php        |   95 -
+ .../PipelineRecoveryPayloadServiceTest.php         |   45 -
+ .../Pipeline/PipelineRetryResumeServiceTest.php    |  174 -
+ .../PipelineSharedStorageHealthCheckTest.php       |   66 -
+ .../Pipeline/PipelineStageStatusMergerTest.php     |   79 -
+ .../Pipeline/PipelineTaskCounterServiceTest.php    |  110 -
+ .../Pipeline/PipelineTaskInputNormalizerTest.php   |   76 -
+ .../Pipeline/PipelineTaskMetadataServiceTest.php   |   82 -
+ .../Pipeline/PipelineTaskPayloadServiceTest.php    |  257 -
+ .../Pipeline/PipelineTaskSourceResolverTest.php    |  100 -
+ .../Pipeline/PipelineTaskStatusServiceTest.php     |   93 -
+ .../PipelineUploadIdentifierFactoryTest.php        |   66 -
+ tests/Unit/Pipeline/PipelineUploadInputTest.php    |  108 -
+ .../Pipeline/PipelineUploadPayloadServiceTest.php  |  136 -
+ tests/Unit/Pipeline/PipelineUploadPolicyTest.php   |   59 -
+ tests/Unit/Pipeline/PipelineUploadStorageTest.php  |   87 -
+ .../PipelineWorkerEventSignatureVerifierTest.php   |   72 -
+ tests/Unit/Pipeline/PipelineWorkerEventTest.php    |   75 -
+ .../StorePipelineWorkerEventRequestTest.php        |  145 -
+ .../Pipeline/Values/PipelineStageArtifactTest.php  |  103 -
+ tests/Unit/Rag/PythonQueryClientTest.php           |  237 -
+ .../Unit/RagSearch/RagSearcherDatasetScopeTest.php |   75 -
+ .../RagSearch/RagSearchResponseFilterTest.php      |   80 -
+ .../StartTextIngestWorkflowClientTest.php          |  122 -
+ .../TextIngestionArtifactStorageTest.php           |  268 -
+ .../TextIngestionIdentifierFactoryTest.php         |  109 -
+ .../Unit/TextIngestion/TextIngestionInputTest.php  |   43 -
+ .../TextIngestionRequestFingerprintTest.php        |  179 -
+ .../Unit/TextIngestion/TextIngestionResultTest.php |   70 -
+ .../TextIngestionWorkflowPayloadFactoryTest.php    |   96 -
+ tests/bootstrap.php                                |   49 -
+ tests/js/managed-document-deletion-ui.test.js      |  177 -
+ vite.config.js                                     |   67 -
+ 709 files changed, 862 insertions(+), 80555 deletions(-)
+```
+
+## git diff --check
+
+```text
+PASS (no output)
+```
+
+## git status --short
+
+```text
+ M .dockerignore
+ M .env.example
+ M .gitattributes
+ M .github/workflows/python-rag.yml
+ M Makefile
+ M README.md
+ M "_documentation/Core Concepts/Ingestion/chunking_embeddings.md"
+ M "_documentation/Core Concepts/Ingestion/graph_enrichment.md"
+ M "_documentation/Core Concepts/Ingestion/identity_incremental.md"
+ M "_documentation/Core Concepts/authorization_dataset_scope.md"
+ M "_documentation/Core Concepts/query_retrieval.md"
+ M "_documentation/Core Concepts/storage.md"
+ M _documentation/Developer/architecture_rules.md
+ M _documentation/Developer/testing.md
+ M "_documentation/Getting Started/1_requirements.md"
+ M "_documentation/Getting Started/2_setup.md"
+ M "_documentation/Getting Started/3_introduction_architecture.md"
+ M "_documentation/Getting Started/4_installation_zero_to_up.md"
+ M _documentation/Operations/5_environment_db_queue.md
+ M _documentation/Operations/6_ingestion_embeddings.md
+ M _documentation/Operations/crawler_v2_local_upgrade.md
+ M _documentation/Operations/epoch11_blocker_validation.md
+ M _documentation/Operations/epoch11_crawler_integration_validation.md
+ M _documentation/Operations/epoch11_dispatch_recovery_validation.md
+ M _documentation/Operations/epoch13_pipeline_execution_validation.md
+ M _documentation/Operations/epoch15a_cutover.md
+ M _documentation/Operations/epoch15b_preparation.md
+ M _documentation/Operations/epoch15c_cutover.md
+ M _documentation/Operations/ingestion_recovery.md
+ M _documentation/Operations/laravel_off_cutover.md
+ M _documentation/Operations/laravel_off_local_runtime.md
+ M _documentation/Operations/monitoring.md
+ M _documentation/Operations/python_dataset_authority.md
+ M _documentation/Operations/python_graph_ops_admin.md
+ M _documentation/Operations/python_managed_documents.md
+ M _documentation/Operations/python_pipeline_execution.md
+ M _documentation/Operations/python_query_bff.md
+ M _documentation/Operations/python_query_cutover.md
+ M _documentation/Operations/python_text_ingestion.md
+ M _documentation/Operations/python_url_ingestion.md
+ M _documentation/Operations/python_workflow_control.md
+ M _documentation/Operations/temporal_operations.md
+ M _documentation/Operations/terminal_projection_reconciliation.md
+ M _documentation/Operations/troubleshooting.md
+ M _documentation/Reference/8_repo_map.md
+ M _documentation/Reference/direct_text_ingestion.md
+ M _documentation/Reference/mcp_query_search_contract.md
+ M _documentation/Reference/rest_apis.md
+ M _documentation/index.md
+ D app/Console/Commands/CutoverRelayReadinessCommand.php
+ D app/Console/Commands/GrantDatasetIngestionAccess.php
+ D app/Console/Commands/GrantDatasetQueryAccess.php
+ D app/Console/Commands/LegacyDrainStatusCommand.php
+ D app/Console/Commands/PipelineHealthCommand.php
+ D app/Console/Commands/PipelineWorkersCommand.php
+ D app/Console/Commands/QueryCutoverExportCommand.php
+ D app/Console/Commands/QueryCutoverProbeCommand.php
+ D app/Console/Commands/ReconcileManagedDocumentWriterCommand.php
+ D app/Console/Commands/ReconcileTerminalProjectionsCommand.php
+ D app/Console/Commands/StartOrchestratedPipelineTask.php
+ D app/Console/Commands/UserManagement/CreateApiToken.php
+ D app/Console/Commands/UserManagement/CreateUser.php
+ D app/Console/Commands/UserManagement/RemoveUser.php
+ D app/Console/Commands/UserManagement/UpdateUserRole.php
+ D app/Http/Controllers/API/HawkiRagProxyController.php
+ D app/Http/Controllers/API/RagStatsController.php
+ D app/Http/Controllers/Controller.php
+ D app/Http/Controllers/DatasetController.php
+ D app/Http/Controllers/DatasetIngestionGrantController.php
+ D app/Http/Controllers/DatasetQueryGrantController.php
+ D app/Http/Controllers/Document/ManagedDeletionWriterProofController.php
+ D app/Http/Controllers/Document/ManagedDocumentDeletionEventController.php
+ D app/Http/Controllers/Document/ManagedDocumentWriterController.php
+ D app/Http/Controllers/Document/UnifiedDocumentController.php
+ D app/Http/Controllers/DocumentBrowserController.php
+ D app/Http/Controllers/Graph/ClearGraphViewController.php
+ D app/Http/Controllers/Graph/ClearNeo4jController.php
+ D app/Http/Controllers/Graph/GraphController.php
+ D app/Http/Controllers/Graph/GraphExpansionController.php
+ D app/Http/Controllers/Graph/GraphNodeController.php
+ D app/Http/Controllers/Graph/GraphOpsController.php
+ D app/Http/Controllers/Graph/GraphOverviewController.php
+ D app/Http/Controllers/Graph/GraphSearchController.php
+ D app/Http/Controllers/Graph/GraphSnapshotController.php
+ D app/Http/Controllers/Graph/SemanticGraphSearchController.php
+ D app/Http/Controllers/Health/HawkiRagSystemGateController.php
+ D app/Http/Controllers/Health/PipelineHealthController.php
+ D app/Http/Controllers/Health/RagHealthController.php
+ D app/Http/Controllers/Health/RagMonitorController.php
+ D app/Http/Controllers/Integration/TextIngestionController.php
+ D app/Http/Controllers/Integration/TextIngestionDeletionController.php
+ D app/Http/Controllers/Pipeline/PipelineWorkerEventController.php
+ D app/Http/Controllers/PipelineControlController.php
+ D app/Http/Controllers/PipelineRecoveryController.php
+ D app/Http/Controllers/PipelineStatusController.php
+ D app/Http/Controllers/PipelineTaskController.php
+ D app/Http/Controllers/Scrape/ScrapeControllerResponseFactory.php
+ D app/Http/Controllers/ScrapeController.php
+ D app/Http/Controllers/ScrapeTaskUiProxyController.php
+ D app/Http/Controllers/SettingsController.php
+ D app/Http/Controllers/UploadedSourceDocumentController.php
+ D app/Http/Middleware/CrawlerIngestionBoundary.php
+ D app/Http/Middleware/LimitTextIngestionRequestSize.php
+ D app/Http/Middleware/RequireBrowserQueryPrincipal.php
+ D app/Http/Middleware/RequireManagedMutationPrincipal.php
+ D app/Http/Middleware/RequireTextIngestionToken.php
+ D app/Http/Middleware/SecurityHeaders.php
+ D app/Http/Middleware/VerifyPipelineWorkerSignature.php
+ D app/Http/Requests/Concerns/InteractsWithManagedDocumentInput.php
+ D app/Http/Requests/Dataset/CreateDatasetRequest.php
+ D app/Http/Requests/Dataset/GrantSelfDatasetIngestionAccessRequest.php
+ D app/Http/Requests/Dataset/GrantSelfDatasetQueryAccessRequest.php
+ D app/Http/Requests/Dataset/ListDatasetsRequest.php
+ D app/Http/Requests/Document/CreateManagedDocumentBatchRequest.php
+ D app/Http/Requests/Document/CreateManagedDocumentRequest.php
+ D app/Http/Requests/Document/DownloadUploadedSourceRequest.php
+ D app/Http/Requests/Document/ListDocumentsRequest.php
+ D app/Http/Requests/Document/ManagedDeletionWriterProofRequest.php
+ D app/Http/Requests/Document/ManagedDocumentDeletionEventRequest.php
+ D app/Http/Requests/Document/ManagedDocumentRequest.php
+ D app/Http/Requests/Document/ManagedDocumentWriterRequest.php
+ D app/Http/Requests/Document/UpdateManagedDocumentRequest.php
+ D app/Http/Requests/Graph/ExpandGraphNodeRequest.php
+ D app/Http/Requests/Graph/SaveGraphSnapshotRequest.php
+ D app/Http/Requests/Graph/SearchGraphRequest.php
+ D app/Http/Requests/Graph/SemanticDatasetGraphSearchRequest.php
+ D app/Http/Requests/Graph/ShowGraphNodeRequest.php
+ D app/Http/Requests/Graph/ShowGraphOverviewRequest.php
+ D app/Http/Requests/Health/HealthCheckRequest.php
+ D app/Http/Requests/Integration/DeleteTextIngestionRequest.php
+ D app/Http/Requests/Integration/IngestTextRequest.php
+ D app/Http/Requests/Pipeline/ListFailedPipelineJobsRequest.php
+ D app/Http/Requests/Pipeline/ListPipelineTaskEventsRequest.php
+ D app/Http/Requests/Pipeline/ListPipelineTasksRequest.php
+ D app/Http/Requests/Pipeline/RetrySelectedPipelineJobsRequest.php
+ D app/Http/Requests/Pipeline/StartPipelineTaskRequest.php
+ D app/Http/Requests/Pipeline/StorePipelineWorkerEventRequest.php
+ D app/Http/Requests/Pipeline/UploadPipelineFileRequest.php
+ D app/Http/Requests/Pipeline/UpsertPipelineJobRequest.php
+ D app/Http/Requests/Rag/ListAuthorizedQueryDatasetsRequest.php
+ D app/Http/Requests/Rag/QueryDatasetRequest.php
+ D app/Http/Requests/Scrape/StartCrawlerTaskRequest.php
+ D app/Http/Requests/Settings/UpdateSettingsRequest.php
+ D app/Mcp/Servers/HawkiRagServer.php
+ D app/Mcp/Tools/WebSearchTool.php
+ D app/Models/Dataset.php
+ D app/Models/DatasetGrant.php
+ D app/Models/DatasetGrantToken.php
+ D app/Models/IngestedPage.php
+ D app/Models/IngestionSource.php
+ D app/Models/ManagedDocument.php
+ D app/Models/ManagedDocumentDeletion.php
+ D app/Models/ManagedDocumentOutput.php
+ D app/Models/PipelineJob.php
+ D app/Models/PipelineStageState.php
+ D app/Models/PipelineTask.php
+ D app/Models/PipelineWorkerEventRecord.php
+ D app/Models/RagGraphFailure.php
+ D app/Models/RagIngestionArtifact.php
+ D app/Models/ScrapeProcess.php
+ D app/Models/ScrapeStatistics.php
+ D app/Models/ScrapedElement.php
+ D app/Models/User.php
+ D app/Policies/DatasetQueryPolicy.php
+ D app/Policies/UserAccessPolicy.php
+ D app/Providers/AppServiceProvider.php
+ D app/Services/Authorization/BrowserQueryPrincipalService.php
+ D app/Services/Authorization/DatasetGrantTokenService.php
+ D app/Services/Authorization/DatasetIngestionAuthorizationService.php
+ D app/Services/Authorization/DatasetIngestionGrantService.php
+ D app/Services/Authorization/DatasetQueryAuthorizationService.php
+ D app/Services/Authorization/DatasetQueryGrantService.php
+ D app/Services/Authorization/Exceptions/AuthorizationExceptionInterface.php
+ D app/Services/Authorization/Exceptions/DatasetNotReadyException.php
+ D app/Services/Authorization/Exceptions/DatasetQueryNotFoundException.php
+ D app/Services/Authorization/Exceptions/GrantTokenInvalidException.php
+ D app/Services/Authorization/Exceptions/GrantTokenRequiredException.php
+ D app/Services/Authorization/Exceptions/QueryTokenSigningException.php
+ D app/Services/Authorization/ManagedMutationPrincipalService.php
+ D app/Services/Authorization/QueryTokenSigner.php
+ D app/Services/Authorization/Repositories/DatasetGrantRepository.php
+ D app/Services/Authorization/Repositories/ManagedMutationTokenRepository.php
+ D app/Services/Authorization/Repositories/QueryCutoverInventoryRepository.php
+ D app/Services/Authorization/Values/AuthenticatedPrincipal.php
+ D app/Services/Authorization/Values/AuthorizedDatasetScope.php
+ D app/Services/Authorization/Values/IngestionSelfGrant.php
+ D app/Services/Dataset/DatasetAuthority.php
+ D app/Services/Dataset/DatasetBackend.php
+ D app/Services/Dataset/DatasetGraphStatsService.php
+ D app/Services/Dataset/DatasetIdentifierFactory.php
+ D app/Services/Dataset/DatasetPayloadBuilder.php
+ D app/Services/Dataset/DatasetRepository.php
+ D app/Services/Dataset/DatasetService.php
+ D app/Services/Dataset/DatasetStorageCleanupService.php
+ D app/Services/Dataset/DatasetVectorStatsService.php
+ D app/Services/Dataset/Exceptions/DatasetBackendUnavailableException.php
+ D app/Services/Dataset/Exceptions/DatasetCreationConflictException.php
+ D app/Services/Dataset/Exceptions/DatasetExceptionInterface.php
+ D app/Services/Dataset/Exceptions/DatasetInactiveException.php
+ D app/Services/Dataset/Exceptions/DatasetNotFoundException.php
+ D app/Services/Dataset/LegacyDatasetStatePreflight.php
+ D app/Services/Dataset/PythonDatasetClient.php
+ D app/Services/Dataset/QdrantCollectionCatalog.php
+ D app/Services/Dataset/Repositories/DatasetGraphAvailabilityRepository.php
+ D app/Services/Dataset/RequireDatasetManager.php
+ D app/Services/Dataset/Values/DatasetCreationResult.php
+ D app/Services/Dataset/Values/DatasetProjection.php
+ D app/Services/Document/Clients/PythonManagedDocumentClient.php
+ D app/Services/Document/DocumentLatestGraphReportService.php
+ D app/Services/Document/DocumentMarkdownPreviewReader.php
+ D app/Services/Document/Exceptions/ManagedDeletionException.php
+ D app/Services/Document/ManagedCallbackBoundary.php
+ D app/Services/Document/ManagedDeletionWriterProofService.php
+ D app/Services/Document/ManagedDocumentBoundary.php
+ D app/Services/Document/ManagedDocumentDeletionReceiptVerifier.php
+ D app/Services/Document/ManagedDocumentOutputDeletionService.php
+ D app/Services/Document/ManagedDocumentPayloadBuilder.php
+ D app/Services/Document/ManagedDocumentPipelineStateResolver.php
+ D app/Services/Document/ManagedDocumentPipelineSummaryService.php
+ D app/Services/Document/ManagedDocumentReadBoundary.php
+ D app/Services/Document/ManagedDocumentRecoveryGuard.php
+ D app/Services/Document/ManagedDocumentService.php
+ D app/Services/Document/ManagedDocumentSyncService.php
+ D app/Services/Document/ManagedDocumentSyncStateResolver.php
+ D app/Services/Document/ManagedDocumentWriterReconciliationService.php
+ D app/Services/Document/ManagedDocumentWriterService.php
+ D app/Services/Document/ManagedPipelineResponseMapper.php
+ D app/Services/Document/ManagedWriterReconciliationAssessment.php
+ D app/Services/Document/Repositories/ManagedDocumentDeletionRepository.php
+ D app/Services/Document/Repositories/ManagedDocumentOutputRepository.php
+ D app/Services/Document/Repositories/ManagedDocumentRepository.php
+ D app/Services/Document/Repositories/ManagedDocumentWriterRepository.php
+ D app/Services/Document/Repositories/ManagedIngestionMetadataRepository.php
+ D app/Services/Document/Repositories/ManagedWriterReconciliationRepository.php
+ D app/Services/Document/UnifiedDocumentService.php
+ D app/Services/Document/UploadedSourceDocumentRepository.php
+ D app/Services/Document/UploadedSourceDocumentService.php
+ D app/Services/Document/Values/ManagedDocumentId.php
+ D app/Services/Document/Values/ManagedDocumentPipelineState.php
+ D app/Services/Document/Values/ManagedDocumentSyncState.php
+ D app/Services/Document/Values/UploadedSourceDocument.php
+ D app/Services/Graph/Exceptions/GraphCacheException.php
+ D app/Services/Graph/Exceptions/GraphExceptionInterface.php
+ D app/Services/Graph/Exceptions/GraphSnapshotException.php
+ D app/Services/Graph/Exceptions/Neo4jClientException.php
+ D app/Services/Graph/GraphCypherSearch.php
+ D app/Services/Graph/GraphOpsBackend.php
+ D app/Services/Graph/GraphOpsService.php
+ D app/Services/Graph/GraphResultNormalizer.php
+ D app/Services/Graph/GraphSearchService.php
+ D app/Services/Graph/GraphSnapshotService.php
+ D app/Services/Graph/GraphSnapshotStore.php
+ D app/Services/Graph/GraphSourceDocumentResolver.php
+ D app/Services/Graph/Neo4jAdmin.php
+ D app/Services/Graph/Neo4jClient.php
+ D app/Services/Graph/Neo4jGraphExplorer.php
+ D app/Services/Graph/Neo4jQueryClient.php
+ D app/Services/Graph/PythonGraphOpsClient.php
+ D app/Services/Health/HawkiRagSystemGateService.php
+ D app/Services/Pipeline/Clients/PythonTemporalBridgeClient.php
+ D app/Services/Pipeline/Clients/PythonUrlIngestionClient.php
+ D app/Services/Pipeline/CrawlerCallbackBoundary.php
+ D app/Services/Pipeline/Exceptions/CrawlerAuthorityException.php
+ D app/Services/Pipeline/Exceptions/PipelineExceptionInterface.php
+ D app/Services/Pipeline/Exceptions/PipelineRetryException.php
+ D app/Services/Pipeline/Exceptions/PipelineUploadStorageException.php
+ D app/Services/Pipeline/Exceptions/PipelineWorkerEventException.php
+ D app/Services/Pipeline/Exceptions/PipelineWorkerSignatureException.php
+ D app/Services/Pipeline/Health/HttpEndpointHealthCheck.php
+ D app/Services/Pipeline/Health/Neo4jHealthCheck.php
+ D app/Services/Pipeline/Health/PipelineDatabaseHealthCheck.php
+ D app/Services/Pipeline/Health/PipelineHealthResultFactory.php
+ D app/Services/Pipeline/Health/PipelineHealthService.php
+ D app/Services/Pipeline/Health/PipelineSharedStorageHealthCheck.php
+ D app/Services/Pipeline/Health/PipelineTemporalHealthCheck.php
+ D app/Services/Pipeline/Health/PipelineWorkerHealthCheck.php
+ D app/Services/Pipeline/Health/QdrantHealthCheck.php
+ D app/Services/Pipeline/LegacyDrainStatusService.php
+ D app/Services/Pipeline/Logs/PipelineStageLogService.php
+ D app/Services/Pipeline/PipelineCompatibilityBoundary.php
+ D app/Services/Pipeline/PipelineExecutionBackend.php
+ D app/Services/Pipeline/PipelineFileHasher.php
+ D app/Services/Pipeline/PipelineManagedDocumentViewService.php
+ D app/Services/Pipeline/PipelineOwnership.php
+ D app/Services/Pipeline/PipelineRecoveryWorkflowService.php
+ D app/Services/Pipeline/PipelineService.php
+ D app/Services/Pipeline/PipelineWorkerEventService.php
+ D app/Services/Pipeline/PipelineWorkerEventSignatureVerifier.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryAttemptService.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryFailedJobPresenter.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryInputNormalizer.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryListService.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryMetadataService.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryPayloadService.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryRetryCoordinator.php
+ D app/Services/Pipeline/Recovery/PipelineRecoveryService.php
+ D app/Services/Pipeline/Recovery/PipelineRetryResumeService.php
+ D app/Services/Pipeline/Repositories/IngestionSourceRepository.php
+ D app/Services/Pipeline/Repositories/LegacyDrainRepository.php
+ D app/Services/Pipeline/Repositories/PipelineJobCreationRepository.php
+ D app/Services/Pipeline/Repositories/PipelineJobRecoveryRepository.php
+ D app/Services/Pipeline/Repositories/PipelineJobRollupRepository.php
+ D app/Services/Pipeline/Repositories/PipelineJobStateMutationRepository.php
+ D app/Services/Pipeline/Repositories/PipelineOwnershipRepository.php
+ D app/Services/Pipeline/Repositories/PipelineScheduledRunRepository.php
+ D app/Services/Pipeline/Repositories/PipelineSchemaInspector.php
+ D app/Services/Pipeline/Repositories/PipelineStageStateRepository.php
+ D app/Services/Pipeline/Repositories/PipelineStatusRepository.php
+ D app/Services/Pipeline/Repositories/PipelineTaskRepository.php
+ D app/Services/Pipeline/Repositories/PipelineTransactionRepository.php
+ D app/Services/Pipeline/Repositories/PipelineWorkerEventRepository.php
+ D app/Services/Pipeline/Repositories/Queries/ActivePipelineJobsQuery.php
+ D app/Services/Pipeline/Repositories/Queries/FailedPipelineJobsQuery.php
+ D app/Services/Pipeline/Repositories/Queries/PipelineTaskJobsQuery.php
+ D app/Services/Pipeline/Repositories/Queries/PipelineWorkerEventJobQuery.php
+ D app/Services/Pipeline/Repositories/TerminalProjectionRepository.php
+ D app/Services/Pipeline/State/PipelineStageAttributeNormalizer.php
+ D app/Services/Pipeline/State/PipelineStageClaimService.php
+ D app/Services/Pipeline/State/PipelineStageRollupService.php
+ D app/Services/Pipeline/State/PipelineStageStatusPayloadBuilder.php
+ D app/Services/Pipeline/State/PipelineStageTransitionService.php
+ D app/Services/Pipeline/State/PipelineStateService.php
+ D app/Services/Pipeline/Status/PipelineConversionDatasetScanner.php
+ D app/Services/Pipeline/Status/PipelineConversionStageSynchronizer.php
+ D app/Services/Pipeline/Status/PipelineConversionStatusService.php
+ D app/Services/Pipeline/Status/PipelineScrapeStageSynchronizer.php
+ D app/Services/Pipeline/Status/PipelineScrapeStatusService.php
+ D app/Services/Pipeline/Status/PipelineStageEmptyResponseFactory.php
+ D app/Services/Pipeline/Status/PipelineStageStatusMerger.php
+ D app/Services/Pipeline/Status/PipelineStageValueFormatter.php
+ D app/Services/Pipeline/Status/PipelineStatusService.php
+ D app/Services/Pipeline/Status/PipelineWorkflowStatusSynchronizer.php
+ D app/Services/Pipeline/Tasks/IngestSourceWorkflowPayloadFactory.php
+ D app/Services/Pipeline/Tasks/PipelineTaskCancellationService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskCounterService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskInputNormalizer.php
+ D app/Services/Pipeline/Tasks/PipelineTaskJobUpdater.php
+ D app/Services/Pipeline/Tasks/PipelineTaskMetadataService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskPayloadService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskRetryService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskSourceResolver.php
+ D app/Services/Pipeline/Tasks/PipelineTaskStarter.php
+ D app/Services/Pipeline/Tasks/PipelineTaskStatusRefresher.php
+ D app/Services/Pipeline/Tasks/PipelineTaskStatusService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskStorageCleanupService.php
+ D app/Services/Pipeline/Tasks/PipelineTaskTimelineService.php
+ D app/Services/Pipeline/TerminalProjectionReconciliationService.php
+ D app/Services/Pipeline/Uploads/PipelineCustomConverterProfileWriter.php
+ D app/Services/Pipeline/Uploads/PipelineUploadIdentifierFactory.php
+ D app/Services/Pipeline/Uploads/PipelineUploadPayloadService.php
+ D app/Services/Pipeline/Uploads/PipelineUploadPolicy.php
+ D app/Services/Pipeline/Uploads/PipelineUploadResultFactory.php
+ D app/Services/Pipeline/Uploads/PipelineUploadService.php
+ D app/Services/Pipeline/Uploads/PipelineUploadStorage.php
+ D app/Services/Pipeline/Values/LegacyDrainState.php
+ D app/Services/Pipeline/Values/PipelineResumePlan.php
+ D app/Services/Pipeline/Values/PipelineStage.php
+ D app/Services/Pipeline/Values/PipelineStageArtifact.php
+ D app/Services/Pipeline/Values/PipelineStageStatus.php
+ D app/Services/Pipeline/Values/PipelineStoredUpload.php
+ D app/Services/Pipeline/Values/PipelineUploadInput.php
+ D app/Services/Pipeline/Values/PipelineUploadResult.php
+ D app/Services/Pipeline/Values/PipelineWorker.php
+ D app/Services/Pipeline/Values/PipelineWorkerEvent.php
+ D app/Services/Pipeline/Values/TemporalWorkflowExecution.php
+ D app/Services/Pipeline/Values/TerminalProjectionTemporalEvidence.php
+ D app/Services/Profile/ApiTokenService.php
+ D app/Services/Profile/Exceptions/ProfileExceptionInterface.php
+ D app/Services/Profile/Exceptions/ProfileTokenException.php
+ D app/Services/Profile/Values/ApiTokenAbility.php
+ D app/Services/Rag/Clients/PythonQueryClient.php
+ D app/Services/Rag/RagBridgeHealthClient.php
+ D app/Services/Rag/RagGraphConfigReporter.php
+ D app/Services/Rag/RagHealthService.php
+ D app/Services/Rag/RagLatencyTimer.php
+ D app/Services/Rag/RagLatestDocumentGraphReporter.php
+ D app/Services/Rag/RagMonitorArtifactReader.php
+ D app/Services/Rag/RagMonitorArtifactStore.php
+ D app/Services/Rag/RagMonitorService.php
+ D app/Services/Rag/RagProxyService.php
+ D app/Services/Rag/RagQueryService.php
+ D app/Services/Rag/RagStatsService.php
+ D app/Services/Rag/Repositories/RagMonitorArtifactRepository.php
+ D app/Services/RagSearch/Exceptions/RagSearchExceptionInterface.php
+ D app/Services/RagSearch/Exceptions/RagSearcherFailedException.php
+ D app/Services/RagSearch/RagSearchPayloadFactory.php
+ D app/Services/RagSearch/RagSearchResponseFilter.php
+ D app/Services/RagSearch/RagSearchSchemaFactory.php
+ D app/Services/RagSearch/RagSearcher.php
+ D app/Services/Scrape/Clients/ScrapeCrawlerClient.php
+ D app/Services/Scrape/Clients/ScrapeCrawlerHttpClient.php
+ D app/Services/Scrape/Clients/ScrapeCrawlerPayloadNormalizer.php
+ D app/Services/Scrape/Clients/ScrapeCrawlerResponseMapper.php
+ D app/Services/Scrape/Exceptions/ScrapeExceptionInterface.php
+ D app/Services/Scrape/Exceptions/ScrapeResponseException.php
+ D app/Services/Scrape/ScrapeService.php
+ D app/Services/Scrape/Tasks/ScrapeCrawlerTaskFallbackStarter.php
+ D app/Services/Scrape/Tasks/ScrapeCrawlerTaskNormalizer.php
+ D app/Services/Scrape/Tasks/ScrapeTaskNormalizer.php
+ D app/Services/Scrape/Tasks/ScrapeTaskPayloadBuilder.php
+ D app/Services/Scrape/Tasks/ScrapeTaskProfileNormalizer.php
+ D app/Services/Scrape/Tasks/ScrapeTaskService.php
+ D app/Services/Scrape/Tasks/ScrapeTaskStartPayloadBuilder.php
+ D app/Services/Scrape/Tasks/ScrapeTaskStarter.php
+ D app/Services/Scrape/Tasks/ScrapeTaskUiClient.php
+ D app/Services/Scrape/Tasks/ScrapeTaskUiStartWorkflow.php
+ D app/Services/Scrape/Tasks/ScrapeTaskValueNormalizer.php
+ D app/Services/Settings/Repositories/SettingsFileRepository.php
+ D app/Services/Settings/SettingsService.php
+ D app/Services/TextIngestion/Clients/PythonTextIngestionClient.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionDeletionException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionExceptionInterface.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionIdempotencyException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionNotFoundException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionRecoveryException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionSourceBusyException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionStorageException.php
+ D app/Services/TextIngestion/Exceptions/TextIngestionWorkflowStartException.php
+ D app/Services/TextIngestion/TextIngestionArtifactStorage.php
+ D app/Services/TextIngestion/TextIngestionDeletionService.php
+ D app/Services/TextIngestion/TextIngestionIdentifierFactory.php
+ D app/Services/TextIngestion/TextIngestionRecoveryService.php
+ D app/Services/TextIngestion/TextIngestionRequestFingerprint.php
+ D app/Services/TextIngestion/TextIngestionService.php
+ D app/Services/TextIngestion/TextIngestionVectorDeletionService.php
+ D app/Services/TextIngestion/TextIngestionWorkflowPayloadFactory.php
+ D app/Services/TextIngestion/Values/StoredTextArtifact.php
+ D app/Services/TextIngestion/Values/TextContentFormat.php
+ D app/Services/TextIngestion/Values/TextIngestionDeletionResult.php
+ D app/Services/TextIngestion/Values/TextIngestionDeletionTarget.php
+ D app/Services/TextIngestion/Values/TextIngestionInput.php
+ D app/Services/TextIngestion/Values/TextIngestionMode.php
+ D app/Services/TextIngestion/Values/TextIngestionResult.php
+ D app/Services/User/Repositories/UserRepository.php
+ D app/Services/User/Values/UserRole.php
+ D app/Services/WebSearch/Contracts/WebSearchInterface.php
+ D app/Services/WebSearch/Exceptions/WebSearchFailedException.php
+ D app/Services/WebSearch/Implementations/BraveSearch.php
+ D app/Services/WebSearch/Implementations/TavilySearch.php
+ D app/Support/Clock/CarbonClock.php
+ D artisan
+ D bootstrap/app.php
+ D bootstrap/cache/.gitignore
+ D bootstrap/providers.php
+ D composer.json
+ D composer.lock
+ D config/app.php
+ D config/auth.php
+ D config/cache.php
+ D config/config.php
+ D config/cors.php
+ D config/database.php
+ D config/file_converter.php
+ D config/filesystems.php
+ D config/logging.php
+ D config/mail.php
+ D config/mcp.php
+ D config/model_providers.php
+ D config/queue.php
+ D config/sanctum.php
+ D config/scraper.php
+ D config/services.php
+ D config/session.php
+ D config/temporal.php
+ D config/web_search.php
+ D database/.gitignore
+ D database/migrations/0001_01_01_000000_create_users_table.php
+ D database/migrations/0001_01_01_000002_create_jobs_table.php
+ D database/migrations/2025_10_21_141108_create_personal_access_tokens_table.php
+ D database/migrations/2026_04_22_140000_create_documents_table.php
+ D database/migrations/2026_05_29_010000_create_pipeline_state_tables.php
+ D database/migrations/2026_05_29_011000_create_scrape_operational_tables.php
+ D database/migrations/2026_06_02_120000_create_pipeline_tasks_and_extend_pipeline_jobs.php
+ D database/migrations/2026_06_03_000000_simplify_pipeline_task_job_tracking.php
+ D database/migrations/2026_06_05_000000_create_datasets_table.php
+ D database/migrations/2026_06_06_010000_remove_profile_id_from_pipeline_tasks.php
+ D database/migrations/2026_06_12_000000_create_ingestion_sources_and_temporal_columns.php
+ D database/migrations/2026_06_13_000000_create_postgresql_operational_tables.php
+ D database/migrations/2026_06_29_120000_create_ingested_pages_table.php
+ D database/migrations/2026_07_08_150000_create_managed_document_tables.php
+ D database/migrations/2026_07_13_000000_migrate_assistant_document_storage_to_managed_documents.php
+ D database/migrations/2026_07_14_000000_create_dataset_grants_table.php
+ D database/migrations/2026_07_23_000000_add_role_to_users_table.php
+ D database/migrations/2026_07_24_000000_reconcile_pipeline_schema_for_upgrades.php
+ D database/migrations/2026_07_24_010000_finalize_managed_document_storage_upgrade.php
+ D database/migrations/2026_08_03_000000_create_pipeline_worker_events_table.php
+ D database/migrations/2026_08_05_000000_create_rag_monitor_artifact_tables.php
+ D database/migrations/2026_09_16_000000_create_dataset_grant_tokens_table.php
+ D database/migrations/2026_10_09_000000_create_managed_document_deletions_table.php
+ D database/migrations/2026_10_12_000000_add_managed_deletion_recovery_state.php
+ M docker-compose-gpu-override.yml
+ D docker-compose.bff-ca.yml
+ D docker-compose.bff.yml
+ M docker-compose.cutover.local.yml
+ D docker-compose.local.yml
+ M docker-compose.yml
+ M docker/crawler/README.md
+ M docker/crawler/permanent-job-v2.patch
+ M docker/crawler/tests/test_permanent_job_v2.py
+ D docker/env/epoch15c.staging.env.example
+ D docker/laravel.Dockerfile
+ M docker/python_rag/80-rawki-runtime-permissions.sh
+ D docker/rag_app/entrypoint/composer.dev.sh
+ D docker/rag_app/entrypoint/entrypoint.sh
+ D docker/rag_app/nginx/project.prod.conf
+ D docker/rag_app/php/fpm/php-custom.ini
+ D docker/rag_app/supervisor/dataset-cleanup.conf
+ M docs/direct-text-ingestion.md
+ M package-lock.json
+ M package.json
+ D phpunit.xml
+ D public/index.php
+ D public/swagger/README.md
+ D public/swagger/index.html
+ D public/swagger/openapi.yaml
+ M python_backend/.env.example
+ M python_backend/README.md
+ M python_backend/scripts/cutover_readiness.py
+ M python_backend/scripts/query_grants.py
+ D python_backend/scripts/query_readiness.py
+ M python_backend/src/hawki_backend/callbacks.py
+ M python_backend/src/hawki_backend/datasets/service.py
+ M python_backend/src/hawki_backend/main.py
+ M python_backend/src/hawki_backend/managed_documents/artifacts.py
+ M python_backend/src/hawki_backend/managed_documents/service.py
+ M python_backend/src/hawki_backend/url_ingestion/service.py
+ M python_backend/src/hawki_backend/workflow_control/service.py
+ D python_backend/tests/auth/test_php_bff_interoperability.py
+ M python_backend/tests/managed_documents/test_upload_storage.py
+ D python_backend/tests/parity/test_live_operator_guards.py
+ D python_backend/tests/parity/test_live_scope_integration.py
+ M python_backend/tests/test_deployment_configuration.py
+ M python_backend/tests/test_epoch15c_readiness.py
+ M python_backend/tests/test_laravel_off_configuration.py
+ M python_backend/tests/test_qdrant_routing.py
+ M python_backend/tests/test_query_migration.py
+ M python_backend/tests/test_readiness_security.py
+ M python_backend/tests/test_storage_binding.py
+ M python_backend/tests/test_workflow_control.py
+ M python_backend/tests/text_ingestion/test_artifacts.py
+ M python_rag/Dockerfile
+ M python_rag/README.md
+ M python_rag/packages/artifact_store/tests/contract/test_shared_storage.py
+ M python_rag/packages/pipeline_callbacks/README.md
+ M python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/__init__.py
+ M python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/artifact_writer.py
+ M python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/client.py
+ M python_rag/packages/pipeline_callbacks/tests/unit/test_client.py
+ M python_rag/services/README.md
+ M python_rag/services/hawki_bridge/README.md
+ M python_rag/services/hawki_bridge/tests/contract/deployment/test_image_packaging.py
+ M python_rag/services/hawki_bridge/tests/contract/http/test_managed_deletion_api.py
+ M python_rag/services/hawki_bridge/tests/contract/test_boundaries.py
+ M python_rag/services/hawki_converter_worker/src/hawki_converter_worker/adapters/status_callback.py
+ M python_rag/services/hawki_indexer_worker/README.md
+ M python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/activities/deletion.py
+ D python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/laravel_metadata_client.py
+ M python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/managed_writer.py
+ M python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/status_callback.py
+ M python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/index_execution.py
+ M python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/ready_projection.py
+ M python_rag/services/hawki_indexer_worker/tests/contract/test_boundaries.py
+ M python_rag/services/hawki_indexer_worker/tests/unit/activities/test_managed_writer_registration.py
+ M python_rag/services/hawki_indexer_worker/tests/unit/activities/test_text_writer_fence.py
+ M python_rag/services/hawki_indexer_worker/tests/unit/activities/test_url_writer_registration.py
+ M python_rag/services/hawki_scraper_worker/README.md
+ M python_rag/services/hawki_scraper_worker/src/hawki_scraper_worker/adapters/status_callback.py
+ M python_rag/services/hawki_scraper_worker/src/hawki_scraper_worker/settings.py
+ M python_rag/services/hawki_workflow_worker/README.md
+ M resources/js/svelte/README.md
+ D resources/views/svelte-page.blade.php
+ D routes/ai.php
+ D routes/api.php
+ D routes/health.php
+ D routes/web.php
+ D storage/framework/.gitignore
+ D storage/framework/cache/.gitignore
+ D storage/framework/cache/data/.gitignore
+ D storage/framework/sessions/.gitignore
+ D storage/framework/testing/.gitignore
+ D storage/framework/views/.gitignore
+ M tailwind.config.js
+ D tests/Feature/ApiContract/CanonicalApiRouteTest.php
+ D tests/Feature/ApiContract/OpenApiContractTest.php
+ D tests/Feature/Authentication/ApiTokenCommandTest.php
+ D tests/Feature/Authentication/CanonicalApiAccessTest.php
+ D tests/Feature/Authentication/ImplicitSingleUserQueryTest.php
+ D tests/Feature/Authentication/RouteSecurityTest.php
+ D tests/Feature/Authentication/UserManagementCommandTest.php
+ D tests/Feature/Authorization/DatasetAuthorizationGateTest.php
+ D tests/Feature/Authorization/DatasetIngestionAuthorizationTest.php
+ D tests/Feature/Authorization/ListDatasetsRequestAccessTest.php
+ D tests/Feature/Authorization/SelfDatasetIngestionGrantTest.php
+ D tests/Feature/Authorization/SelfDatasetQueryGrantTest.php
+ D tests/Feature/Authorization/UserAccessGateTest.php
+ D tests/Feature/Database/ManagedDeletionPostgresTest.php
+ D tests/Feature/Database/PostgresMigrationUpgradeTest.php
+ D tests/Feature/Datasets/DatasetAuthorityBoundaryTest.php
+ D tests/Feature/Datasets/DatasetDeletionBackgroundTest.php
+ D tests/Feature/Datasets/DatasetManagementTest.php
+ D tests/Feature/Datasets/PythonDatasetBffTest.php
+ D tests/Feature/Documents/CutoverRelayReadinessTest.php
+ D tests/Feature/Documents/DocumentBrowserTest.php
+ D tests/Feature/Documents/DocumentUnifiedApiTest.php
+ D tests/Feature/Documents/ManagedDeletionWriterProofTest.php
+ D tests/Feature/Documents/ManagedDocumentDeletionTest.php
+ D tests/Feature/Documents/ManagedDocumentWriterTest.php
+ D tests/Feature/Documents/ManagedWriterReconciliationTest.php
+ D tests/Feature/Documents/PythonManagedDocumentBffTest.php
+ D tests/Feature/Epoch15aCutoverTest.php
+ D tests/Feature/Graph/DatasetScopedGraphSearchTest.php
+ D tests/Feature/Graph/GraphExactGrantTest.php
+ D tests/Feature/Graph/GraphOpsBoundaryTest.php
+ D tests/Feature/Graph/GraphRequestValidationTest.php
+ D tests/Feature/Graph/GraphSnapshotAuthorizationTest.php
+ D tests/Feature/Graph/Neo4jClearAcknowledgementTest.php
+ D tests/Feature/Graph/Neo4jGraphExplorerPageTest.php
+ D tests/Feature/Graph/Neo4jScopedClearIntegrationTest.php
+ D tests/Feature/Graph/RagLatestDocumentGraphReporterTest.php
+ D tests/Feature/Health/HealthRequestValidationTest.php
+ D tests/Feature/Integration/DirectTextIngestionRecoveryTest.php
+ D tests/Feature/Integration/PythonTextIngestionBffTest.php
+ D tests/Feature/Integration/TextIngestionApiTest.php
+ D tests/Feature/Integration/TextIngestionAuthenticationTest.php
+ D tests/Feature/Integration/TextIngestionDeletionApiTest.php
+ D tests/Feature/Integration/TextIngestionReqTest.php
+ D tests/Feature/Mcp/HawkiRagRegistrationTest.php
+ D tests/Feature/Pipeline/LegacyDrainStatusTest.php
+ D tests/Feature/Pipeline/PipelineControllerDashboardTest.php
+ D tests/Feature/Pipeline/PipelineOperationsCommandTest.php
+ D tests/Feature/Pipeline/PipelineRecoveryRepositoryTest.php
+ D tests/Feature/Pipeline/PipelineRepositoryReadTest.php
+ D tests/Feature/Pipeline/PipelineStateRepositoryTest.php
+ D tests/Feature/Pipeline/PipelineStatusTest.php
+ D tests/Feature/Pipeline/PipelineUploadRepositoryTest.php
+ D tests/Feature/Pipeline/PipelineWorkerEventCallbackTest.php
+ D tests/Feature/Pipeline/PipelineWorkerEventTransportTest.php
+ D tests/Feature/Pipeline/PipelineWorkflowStatusSynchronizerTest.php
+ D tests/Feature/Pipeline/PythonUrlIngestionBffTest.php
+ D tests/Feature/Pipeline/TerminalProjectionReconciliationTest.php
+ D tests/Feature/PythonBffTableIndependenceTest.php
+ D tests/Feature/Query/BrowserDatasetScopedQueryTest.php
+ D tests/Feature/Query/DatasetScopedQueryTest.php
+ D tests/Feature/Query/GraphRetrievalModeTest.php
+ D tests/Feature/Query/HawkiRagPlaygroundPageTest.php
+ D tests/Feature/Query/PythonQueryBoundaryTest.php
+ D tests/Feature/Query/QueryCutoverToolsTest.php
+ D tests/Feature/README.md
+ D tests/Feature/Scraping/ScraperTaskProxyTest.php
+ D tests/Feature/Scraping/ScraperTaskUiProxyTest.php
+ D tests/Feature/Settings/SettingsDashboardTest.php
+ D tests/Feature/Ui/HawkiRagExperienceRouteTest.php
+ D tests/Fixtures/python_managed_upload.fixture
+ D tests/README.md
+ D tests/Support/ManagedWriterFixture.php
+ D tests/Support/QueryBffFixture.php
+ D tests/Support/managed_deletion_ui.php
+ D tests/Support/managed_deletion_wire.php
+ D tests/Support/mint_query_bff_token.php
+ D tests/Support/text_ingestion_parity.php
+ D tests/System/ImplicitSingleUserRagFlowTest.php
+ D tests/System/PdfIngestionFlowTest.php
+ D tests/System/SystemTestCase.php
+ D tests/System/TwoDatasetIsolationTest.php
+ D tests/TestCase.php
+ D tests/Unit/Authorization/AuthorizedDatasetScopeTest.php
+ D tests/Unit/Authorization/QueryTokenSignerTest.php
+ D tests/Unit/Document/ManagedDocumentDeletionReceiptVerifierTest.php
+ D tests/Unit/Graph/GraphResultNormalizerTest.php
+ D tests/Unit/Health/HawkiRagSystemGateServiceTest.php
+ D tests/Unit/PHPUnitDatabaseIsolationTest.php
+ D tests/Unit/Pipeline/IngestSourceWorkflowPayloadFactoryTest.php
+ D tests/Unit/Pipeline/PipelineDatabaseHealthCheckTest.php
+ D tests/Unit/Pipeline/PipelineIndexerLogConfigurationTest.php
+ D tests/Unit/Pipeline/PipelineRecoveryInputNormalizerTest.php
+ D tests/Unit/Pipeline/PipelineRecoveryMetadataServiceTest.php
+ D tests/Unit/Pipeline/PipelineRecoveryPayloadServiceTest.php
+ D tests/Unit/Pipeline/PipelineRetryResumeServiceTest.php
+ D tests/Unit/Pipeline/PipelineSharedStorageHealthCheckTest.php
+ D tests/Unit/Pipeline/PipelineStageStatusMergerTest.php
+ D tests/Unit/Pipeline/PipelineTaskCounterServiceTest.php
+ D tests/Unit/Pipeline/PipelineTaskInputNormalizerTest.php
+ D tests/Unit/Pipeline/PipelineTaskMetadataServiceTest.php
+ D tests/Unit/Pipeline/PipelineTaskPayloadServiceTest.php
+ D tests/Unit/Pipeline/PipelineTaskSourceResolverTest.php
+ D tests/Unit/Pipeline/PipelineTaskStatusServiceTest.php
+ D tests/Unit/Pipeline/PipelineUploadIdentifierFactoryTest.php
+ D tests/Unit/Pipeline/PipelineUploadInputTest.php
+ D tests/Unit/Pipeline/PipelineUploadPayloadServiceTest.php
+ D tests/Unit/Pipeline/PipelineUploadPolicyTest.php
+ D tests/Unit/Pipeline/PipelineUploadStorageTest.php
+ D tests/Unit/Pipeline/PipelineWorkerEventSignatureVerifierTest.php
+ D tests/Unit/Pipeline/PipelineWorkerEventTest.php
+ D tests/Unit/Pipeline/StorePipelineWorkerEventRequestTest.php
+ D tests/Unit/Pipeline/Values/PipelineStageArtifactTest.php
+ D tests/Unit/Rag/PythonQueryClientTest.php
+ D tests/Unit/RagSearch/RagSearcherDatasetScopeTest.php
+ D tests/Unit/Services/RagSearch/RagSearchResponseFilterTest.php
+ D tests/Unit/TextIngestion/StartTextIngestWorkflowClientTest.php
+ D tests/Unit/TextIngestion/TextIngestionArtifactStorageTest.php
+ D tests/Unit/TextIngestion/TextIngestionIdentifierFactoryTest.php
+ D tests/Unit/TextIngestion/TextIngestionInputTest.php
+ D tests/Unit/TextIngestion/TextIngestionRequestFingerprintTest.php
+ D tests/Unit/TextIngestion/TextIngestionResultTest.php
+ D tests/Unit/TextIngestion/TextIngestionWorkflowPayloadFactoryTest.php
+ D tests/bootstrap.php
+ D tests/js/managed-document-deletion-ui.test.js
+ D vite.config.js
+?? .github/workflows/frontend.yml
+?? _documentation/History/
+?? _documentation/Operations/gebuhren_deletion_forensics.md
+?? _documentation/Operations/historical_orphan_graph_acceptance.md
+?? _documentation/Operations/historical_ownership_handoff.md
+?? _documentation/Operations/laravel_removal.md
+?? _documentation/Operations/laravel_removal_files.md
+?? _documentation/Operations/python_runtime.md
+?? docker/crawler/archive_legacy.py
+?? python_backend/HISTORICAL_EPOCHS.md
+?? python_backend/src/hawki_backend/historical_archive.py
+?? python_backend/tests/auth/test_service_issuer_contract.py
+?? python_backend/tests/fixtures/
+?? python_backend/tests/historical/
+?? python_backend/tests/managed_documents/test_artifact_cleanup.py
+?? python_backend/tests/test_historical_archive.py
+?? python_rag/packages/contracts/tests/fixtures/
+?? python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/source_metadata_client.py
+?? scripts/archive_historical_orphan.py
+?? scripts/audit_local_graph.py
+?? scripts/smoke_local_graph.py
+```
+
+## Index and HEAD
+
+```text
+5391cb23 feat(cutover): run RAG without Laravel
+staged files: 0
+```

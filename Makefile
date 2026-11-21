@@ -27,12 +27,11 @@ HOST_OS := $(shell uname -s)
 BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
-LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
+LOCAL_OVERRIDE_COMPOSE ?= docker-compose.cutover.local.yml
 COMPOSE_FILE_SEP ?= :
 PYTHON_UV_CACHE ?= /tmp/rawki-uv-cache
 PYTHON_RERANKER_ENV ?= .venv-reranker
 PYTHON_DATA_PLANE_PACKAGES := \
-	--package hawki-bridge \
 	--package hawki-workflow-worker \
 	--package hawki-scraper-worker \
 	--package hawki-converter-worker \
@@ -52,11 +51,9 @@ endif
 
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
-CRAWLER_CONTAINER ?= crawl4ai-service
 FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
-# Sibling checkouts started by the external tool targets (up-*-tool/down-*-tool).
-CRAWLER_DIR ?= ../CustomCrawler
+# Sibling file-converter checkout; the crawler is pinned in the local overlay.
 FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
 FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
 
@@ -117,9 +114,9 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps system-test migration-test
-.PHONY: network pull-core build-app build-ui publish-ui
-.PHONY: migrate-core migrate-legacy
+.PHONY: clean python-lock python-deps test-backend test-rag test-frontend
+.PHONY: network pull-core build-backend build-ui publish-ui
+.PHONY: migrate-core
 .PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health
 .PHONY: pull-models logs-core
@@ -186,8 +183,8 @@ network: ## Create the external Docker networks when they do not exist.
 pull-core: ## Pull third-party runtime images used directly by the core stack.
 	@$(COMPOSE_CMD) pull postgres temporal hawki_rag_neo4j $(OLLAMA_SERVICE)
 
-build-app: ## Build the Laravel HAWKI RAG application image.
-	@$(COMPOSE_CMD) build hawki_rag_app
+build-backend: ## Build the FastAPI backend and UI gateway image.
+	@$(COMPOSE_CMD) build hawki_backend
 
 # ==============================================================================
 # Frontend assets
@@ -219,23 +216,6 @@ publish-ui: ## Build and replace the standalone Svelte/nginx frontend.
 migrate-core: ## Explicit Python schema migration using an operator-provided migration DSN.
 	@cd python_backend && uv run --frozen alembic upgrade head
 
-migrate-legacy: network ## Explicit legacy-only Laravel migrations (rollback tooling).
-	@echo "Starting the Laravel app for database migrations..."
-	@$(COMPOSE_CMD) up -d postgres temporal hawki_rag_app
-	@echo "Running Laravel migrations..."
-	@attempt=1; \
-	while [ "$$attempt" -le 30 ]; do \
-		if $(COMPOSE_CMD) exec -T hawki_rag_app php artisan migrate --force; then \
-			$(COMPOSE_CMD) exec -T hawki_rag_app php artisan optimize:clear >/dev/null 2>&1 || true; \
-			echo "Laravel migrations are up to date."; \
-			exit 0; \
-		fi; \
-		echo "Migration attempt $$attempt failed; retrying in 2s..."; \
-		attempt=$$((attempt + 1)); \
-		sleep 2; \
-	done; \
-	echo "Laravel migrations failed after 30 attempts."; \
-	exit 1
 # ==============================================================================
 # Stack startup profiles
 # ==============================================================================
@@ -257,7 +237,7 @@ _up-core: network
 		echo "Pulling $$model..."; \
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
-	@for container in "$(CRAWLER_CONTAINER)" "$(FILE_CONVERTER_CONTAINER)"; do \
+	@for container in "$(FILE_CONVERTER_CONTAINER)"; do \
 		if docker container inspect "$$container" >/dev/null 2>&1; then \
 			docker network connect hawki-network "$$container" >/dev/null 2>&1 || true; \
 			echo "$$container is connected to hawki-network."; \
@@ -274,8 +254,8 @@ up-core: _up-core ## Start the stack at http://localhost:8080 using ENV_FILE.
 up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-local: BUILD_STACK = 0
-up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Source-mounted development using $(ENV_FILE).
-up-core-local: _up-core ## Reuse images, source-mount the app, and publish the UI.
+up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Python local development using $(ENV_FILE).
+up-core-local: _up-core ## Reuse the Python local cutover images and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
@@ -348,12 +328,11 @@ health: ## Check required and optional containers plus service endpoints.
 	check_running hawki_qdrant 1; \
 	check_running hawki_rag_neo4j 1; \
 	check_running $(OLLAMA_CONTAINER) 1; \
-	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
-	check_running hawki_rag_temporal_workflow_worker 0; \
-	check_running hawki_rag_temporal_scraper_worker 0; \
-	check_running hawki_rag_temporal_converter_worker 0; \
-	check_running hawki_rag_indexer_worker 0; \
+	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_workflow_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_scraper_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_converter_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_indexer_worker )" 1; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
@@ -361,7 +340,6 @@ health: ## Check required and optional containers plus service endpoints.
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
-	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \
 	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
 	check_url "FastAPI HTTP" "http://127.0.0.1:8080/v1/health" 1; \
 	echo ""; \
@@ -373,24 +351,20 @@ health: ## Check required and optional containers plus service endpoints.
 	fi
 
 # ==============================================================================
-# Laravel automated tests
+# Python and frontend tests
 # ==============================================================================
 
 ##@ Tests
 
-system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
-	@php artisan test --testsuite=System
+test-backend: ## Run the Python API tests.
+	@cd python_backend && uv run --frozen pytest
 
-migration-test: ## Run isolated PostgreSQL migration-upgrade scenarios in the active stack.
-	@$(COMPOSE_CMD) exec -T hawki_rag_app sh -lc '\
-		RUN_POSTGRES_MIGRATION_TESTS=1 \
-		MIGRATION_TEST_ALLOW_SHARED_DATABASE=1 \
-		MIGRATION_TEST_DB_HOST="$${DB_HOST:-postgres}" \
-		MIGRATION_TEST_DB_PORT="$${DB_PORT:-5432}" \
-		MIGRATION_TEST_DB_DATABASE="$${DB_DATABASE:-hawki_rag}" \
-		MIGRATION_TEST_DB_USERNAME="$${DB_USERNAME:-rag_user}" \
-		MIGRATION_TEST_DB_PASSWORD="$${DB_PASSWORD:-}" \
-		php artisan test tests/Feature/Database/PostgresMigrationUpgradeTest.php'
+test-rag: ## Run deterministic Python worker/package tests.
+	@cd python_rag && uv run --frozen pytest -m "not integration"
+
+test-frontend: ## Run the standalone frontend tests and build.
+	@npm test
+	@npm run build
 
 # ==============================================================================
 # Ollama model management
@@ -462,22 +436,13 @@ teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
 
 ##@ External tools
 
-up-crawler-tool: network ## Start the sibling crawler container (UI on port 8041).
-	@set -e; \
-	if [ ! -d "$(CRAWLER_DIR)" ]; then \
-		echo "Missing sibling checkout: $(CRAWLER_DIR) (override with CRAWLER_DIR)."; \
-		exit 1; \
-	fi; \
-	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
-		echo "Creating the external rawki_shared_storage volume..."; \
-		docker volume create rawki_shared_storage; \
-	fi; \
-	echo "Starting the crawler from $(CRAWLER_DIR)..."; \
-	$(MAKE) -C "$(CRAWLER_DIR)" up; \
-	echo "Crawler UI: http://localhost:8041/ui/"
+up-crawler-tool: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+up-crawler-tool: network ## Start the pinned permanent-job-v2 local crawler.
+	@$(COMPOSE_CMD) up -d --build --no-deps rawki_local_crawler
 
-down-crawler-tool: ## Stop the sibling crawler container.
-	@$(MAKE) -C "$(CRAWLER_DIR)" down
+down-crawler-tool: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+down-crawler-tool: ## Stop the local crawler without removing its persisted evidence.
+	@$(COMPOSE_CMD) stop rawki_local_crawler
 
 up-file-converter-tool: network ## Start the sibling file-converter container (health on port 8004).
 	@set -e; \
@@ -524,7 +489,7 @@ up-tools: up-crawler-tool up-file-converter-tool up-monitor-workflows-tool ## St
 	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
 	echo ""; \
 	echo "External tools are starting:"; \
-	echo "  crawler UI:        http://localhost:8041/ui/"; \
+	echo "  crawler:           internal permanent-job-v2 API (use the Python UI boundary)"; \
 	echo "  converter health:  http://localhost:8004/health"; \
 	echo "  temporal UI:       http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
 

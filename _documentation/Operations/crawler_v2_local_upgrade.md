@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](python_runtime.md); the original text is retained as migration history.
+
 # Permanent-job-v2 local crawler upgrade
 
 Verified 21 November 2026 on `feat/laravel-off-cutover`, continuing
@@ -199,7 +201,7 @@ historical workflows have been drained or migrated. Laravel was not restarted.
 ## Review and reproduction
 
 The source patch and exact commands are documented in
-[`docker/crawler/README.md`](../../docker/crawler/README.md).
+`docker/crawler/README.md` (repository reference: `docker/crawler/README.md`).
 Source generation stays under ignored `.local-runtime/`. The seccomp policy is
 explicitly trackable despite the repository's broad JSON ignore rule, with its
 upstream Apache license included. No secret material was generated for this task.

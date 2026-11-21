@@ -20,7 +20,7 @@ if [ -n "$shared_gid" ]; then
     fi
 fi
 
-# Initialize the shared volume without relying on Laravel's entrypoint. Never
+# Initialize the shared volume in the Python entrypoint. Never
 # recursively change historical artifacts or grant access outside this mount.
 if [ -d /shared ]; then
     shared_storage_group="${shared_gid:-$(id -g www-data)}"

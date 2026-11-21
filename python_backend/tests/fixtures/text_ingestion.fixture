@@ -1,0 +1,651 @@
+{
+  "provenance": {
+    "commit": "5391cb23",
+    "oracle": "tests/Support/text_ingestion_parity.php",
+    "captured": "2026-11-21"
+  },
+  "metadata_cases": [
+    {
+      "metadata": {},
+      "expected": {
+        "fingerprint": "dcbc7483903444f817f58bd5c4749751f291ec4cf98a3a0b4f5909852e156733",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":[],\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "[]",
+        "metadata_bytes": 2,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": []\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "nested": {
+          "z": 1,
+          "a": []
+        },
+        "url": "https://example.test/\u00e4"
+      },
+      "expected": {
+        "fingerprint": "6758cc618c9b906fc8a717e078896c424e1134dc90874cc6db5ff9c9ff7b3aa9",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"nested\":{\"a\":[],\"z\":1},\"url\":\"https:\\/\\/example.test\\/\\u00e4\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"nested\":{\"z\":1,\"a\":[]},\"url\":\"https://example.test/\\u00e4\"}",
+        "metadata_bytes": 61,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"nested\": {\n            \"z\": 1,\n            \"a\": []\n        },\n        \"url\": \"https://example.test/\\u00e4\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "n": 1.0,
+        "small": 1e-07,
+        "large": 1e+20
+      },
+      "expected": {
+        "fingerprint": "aeaf146b188ef71cb7ce209f66876e6b4a4c2f063dc846f09fca356acfc79344",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"large\":1.0e+20,\"n\":1,\"small\":1.0e-7},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"n\":1,\"small\":1.0e-7,\"large\":1.0e+20}",
+        "metadata_bytes": 38,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"n\": 1,\n        \"small\": 1.0e-7,\n        \"large\": 1.0e+20\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "empty": {},
+        "numeric": {
+          "0": "a",
+          "1": "b"
+        }
+      },
+      "expected": {
+        "fingerprint": "04f6718a92ad1261d88412fffc531c7a829b0027fcbfd4835f70271958b05324",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"empty\":[],\"numeric\":[\"a\",\"b\"]},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"empty\":[],\"numeric\":[\"a\",\"b\"]}",
+        "metadata_bytes": 32,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"empty\": [],\n        \"numeric\": [\n            \"a\",\n            \"b\"\n        ]\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0000": "\u0000"
+      },
+      "expected": {
+        "fingerprint": "f72d89084f4c9ca11edc00bb236bfe5f296322431ec187b904918856d787ec94",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0000\":\"\\u0000\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0000\":\"\\u0000\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0000\": \"\\u0000\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0001": "\u0001"
+      },
+      "expected": {
+        "fingerprint": "9a2fdefedb26de25088dce180c6b22d50cc39ac65683253093c120162bad078b",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0001\":\"\\u0001\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0001\":\"\\u0001\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0001\": \"\\u0001\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0002": "\u0002"
+      },
+      "expected": {
+        "fingerprint": "44396221b431ba4d50b41114ef0ed28675bdc2855a68c8f7e390b50e1a87e0c9",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0002\":\"\\u0002\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0002\":\"\\u0002\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0002\": \"\\u0002\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0003": "\u0003"
+      },
+      "expected": {
+        "fingerprint": "3c6fd1addeea059a6a3c80a93e7ba41b12d01a28a70726163c53a179c6d78343",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0003\":\"\\u0003\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0003\":\"\\u0003\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0003\": \"\\u0003\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0004": "\u0004"
+      },
+      "expected": {
+        "fingerprint": "a69a9b70763cecbdc8a126f4ba782a543f1640d9935d7d3d644afa80c5047fd7",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0004\":\"\\u0004\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0004\":\"\\u0004\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0004\": \"\\u0004\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0005": "\u0005"
+      },
+      "expected": {
+        "fingerprint": "48d2cb6ee9d6caae4d54a9d49b7acce2075dc3711318701ee5c3768fea461b21",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0005\":\"\\u0005\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0005\":\"\\u0005\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0005\": \"\\u0005\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0006": "\u0006"
+      },
+      "expected": {
+        "fingerprint": "bf99fde5c57bc9acf727d82824d1db47e90f2f74ecc585bc9ed0a236d82f816a",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0006\":\"\\u0006\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0006\":\"\\u0006\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0006\": \"\\u0006\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0007": "\u0007"
+      },
+      "expected": {
+        "fingerprint": "f29e2685d883491410988b2ab1ac91294680ce31996181a4eddb2d6d9040e232",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0007\":\"\\u0007\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0007\":\"\\u0007\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0007\": \"\\u0007\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\b": "\b"
+      },
+      "expected": {
+        "fingerprint": "a84409506e363dc9a3aa7f08f31c02855d419d96961a796aa36df6d855d6e31b",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\b\":\"\\b\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\b\":\"\\b\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\b\": \"\\b\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\t": "\t"
+      },
+      "expected": {
+        "fingerprint": "06050659ba9e243ca048fe338c12a82cafe79732ddd33fc5ceb48a415c08de12",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\t\":\"\\t\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\t\":\"\\t\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\t\": \"\\t\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\n": "\n"
+      },
+      "expected": {
+        "fingerprint": "00876ce034d3ef90e9cd3247f9059762d7caef81fd4c4c7eb7a510486190a9b0",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\n\":\"\\n\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\n\":\"\\n\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\n\": \"\\n\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u000b": "\u000b"
+      },
+      "expected": {
+        "fingerprint": "6a26f0f6c1cf81dec5069a0d1f47f5ee07270acf7725e2bfde7dae062259971a",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u000b\":\"\\u000b\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u000b\":\"\\u000b\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u000b\": \"\\u000b\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\f": "\f"
+      },
+      "expected": {
+        "fingerprint": "c78b6c2ee66b7dd2ab14295e932b28d454788c9063a273d97f5aa17e90c73778",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\f\":\"\\f\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\f\":\"\\f\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\f\": \"\\f\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\r": "\r"
+      },
+      "expected": {
+        "fingerprint": "23b4c74393bb15aa7f36c816d0bb751eac351ba78dac582843c0f52f682b1554",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\r\":\"\\r\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\r\":\"\\r\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\r\": \"\\r\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u000e": "\u000e"
+      },
+      "expected": {
+        "fingerprint": "1a38d0e4a8b16962ea9bbad3372e81ff82f3aa3623385f450ddcae0f81eab024",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u000e\":\"\\u000e\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u000e\":\"\\u000e\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u000e\": \"\\u000e\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u000f": "\u000f"
+      },
+      "expected": {
+        "fingerprint": "7839fa8dda84052814fb0ba5096cb4278bb2569dbc54c510009635881a4958b2",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u000f\":\"\\u000f\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u000f\":\"\\u000f\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u000f\": \"\\u000f\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0010": "\u0010"
+      },
+      "expected": {
+        "fingerprint": "30165bb07079af5e2bf1fee13c904e98c68a5af20852139f63d74c29746987ac",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0010\":\"\\u0010\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0010\":\"\\u0010\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0010\": \"\\u0010\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0011": "\u0011"
+      },
+      "expected": {
+        "fingerprint": "ea41a64b0aac13edc891b5579e478e996ee633adbf0889db636d9c157ef52974",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0011\":\"\\u0011\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0011\":\"\\u0011\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0011\": \"\\u0011\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0012": "\u0012"
+      },
+      "expected": {
+        "fingerprint": "a9a996f1427b4d09b70ff2656eb7c93e27dcde33cd5c9fea888a952c60b38077",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0012\":\"\\u0012\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0012\":\"\\u0012\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0012\": \"\\u0012\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0013": "\u0013"
+      },
+      "expected": {
+        "fingerprint": "f2744faa5953f2380e949de29e5629c3ac3cd91aca6142b8ebc59b1ef7baaaac",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0013\":\"\\u0013\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0013\":\"\\u0013\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0013\": \"\\u0013\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0014": "\u0014"
+      },
+      "expected": {
+        "fingerprint": "8bee6726f85a10fd3fd3a7d8b8cd77b1c213717db8cbada3f40fc7264409d515",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0014\":\"\\u0014\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0014\":\"\\u0014\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0014\": \"\\u0014\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0015": "\u0015"
+      },
+      "expected": {
+        "fingerprint": "1988972f76be367c96833e22283f46a007ea515668d30504ac21e829d45d1aba",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0015\":\"\\u0015\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0015\":\"\\u0015\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0015\": \"\\u0015\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0016": "\u0016"
+      },
+      "expected": {
+        "fingerprint": "4de36958cc0bd609514b6a147efd6b8f9abce7d0ac8eb85e18b78899293af123",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0016\":\"\\u0016\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0016\":\"\\u0016\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0016\": \"\\u0016\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0017": "\u0017"
+      },
+      "expected": {
+        "fingerprint": "f36f85b939b8b402a271726aaab537e14c8e8d0132b2ff362b801a57475c45f4",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0017\":\"\\u0017\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0017\":\"\\u0017\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0017\": \"\\u0017\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0018": "\u0018"
+      },
+      "expected": {
+        "fingerprint": "b76544a9026aadc73e7e0d5ffe788ca837cc5d7002d02125633d8dc4094372d4",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0018\":\"\\u0018\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0018\":\"\\u0018\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0018\": \"\\u0018\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0019": "\u0019"
+      },
+      "expected": {
+        "fingerprint": "5298a32ae2ab209c3a536b42168b4dadbd9e66e1ecbc9d2ccbdb2cd565cbd221",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0019\":\"\\u0019\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0019\":\"\\u0019\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0019\": \"\\u0019\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001a": "\u001a"
+      },
+      "expected": {
+        "fingerprint": "eee6d31fb6d986366109509a3e90cc39458e7c2ddf75439939af6dc6b456210f",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001a\":\"\\u001a\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001a\":\"\\u001a\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001a\": \"\\u001a\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001b": "\u001b"
+      },
+      "expected": {
+        "fingerprint": "ba53febb99b593734dce8be2c49be1fd726ee368c241876ee0b847b6421cf3e7",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001b\":\"\\u001b\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001b\":\"\\u001b\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001b\": \"\\u001b\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001c": "\u001c"
+      },
+      "expected": {
+        "fingerprint": "760b234900882e5b2d7913291f8471177211e5fadcae74a68fdfd2ca7e555f60",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001c\":\"\\u001c\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001c\":\"\\u001c\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001c\": \"\\u001c\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001d": "\u001d"
+      },
+      "expected": {
+        "fingerprint": "f2bae01817cf7431dd2690f066730b201e151e1b8c6b08675793f3bfb380a387",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001d\":\"\\u001d\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001d\":\"\\u001d\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001d\": \"\\u001d\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001e": "\u001e"
+      },
+      "expected": {
+        "fingerprint": "dcb6ec3a0e5f7809ed1dd71d3466b2b12652d94009ab18fcccd0862b5a13b74d",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001e\":\"\\u001e\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001e\":\"\\u001e\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001e\": \"\\u001e\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u001f": "\u001f"
+      },
+      "expected": {
+        "fingerprint": "5b3562d883680c068fd3ca281ac2fe3ec6b0881d530e61d9ab43f9f44b4fc5b8",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u001f\":\"\\u001f\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u001f\":\"\\u001f\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u001f\": \"\\u001f\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key ": " "
+      },
+      "expected": {
+        "fingerprint": "7d4d306a9e24ed413b78bbcd3d597e5e9be621d2810b909fdb9bec617a717453",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key \":\" \"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key \":\" \"}",
+        "metadata_bytes": 12,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key \": \" \"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key/": "/"
+      },
+      "expected": {
+        "fingerprint": "56bf519be48042b0789c07723a8432106863724f92f86b184a065935f2d56a64",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\/\":\"\\/\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key/\":\"/\"}",
+        "metadata_bytes": 12,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key/\": \"/\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\"": "\""
+      },
+      "expected": {
+        "fingerprint": "d196075d910d30e6b803449a9a8bd70975b78caea27e4507ce817f2b08579910",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\\"\":\"\\\"\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\\"\":\"\\\"\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\\"\": \"\\\"\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\\": "\\"
+      },
+      "expected": {
+        "fingerprint": "e2d9a9a09cd23c40376d7cef40152216036bbf201ff2dcb0d2412ad50d787b26",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\\\\":\"\\\\\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\\\\":\"\\\\\"}",
+        "metadata_bytes": 14,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\\\\": \"\\\\\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key~": "~"
+      },
+      "expected": {
+        "fingerprint": "b80d97b01dc1a9f8de02f6b7e90b36a5e1d7c58dcfe2fee9a73eb927512bf847",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key~\":\"~\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key~\":\"~\"}",
+        "metadata_bytes": 12,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key~\": \"~\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u007f": "\u007f"
+      },
+      "expected": {
+        "fingerprint": "4cc75d08b6804b4b9a2b3bd36ca3e55e9f9fd6d33e922e363cc8c4e045acf02c",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\u007f\":\"\u007f\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\u007f\":\"\u007f\"}",
+        "metadata_bytes": 12,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\u007f\": \"\u007f\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u0080": "\u0080"
+      },
+      "expected": {
+        "fingerprint": "fe61b0574bc5a61007d3753d1a8bd9caf13ac443ece2d8e5b3df9d6ee0491048",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u0080\":\"\\u0080\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u0080\":\"\\u0080\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u0080\": \"\\u0080\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u00e9": "\u00e9"
+      },
+      "expected": {
+        "fingerprint": "f91123f9058b09cfbce9a3863403815a75219a61de0e435e66859715cf51de2e",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u00e9\":\"\\u00e9\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u00e9\":\"\\u00e9\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u00e9\": \"\\u00e9\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u2028": "\u2028"
+      },
+      "expected": {
+        "fingerprint": "d666bc233804a1961cb05ebf5cffa39d979f1b97793257423c0afaa3fd702e58",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u2028\":\"\\u2028\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u2028\":\"\\u2028\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u2028\": \"\\u2028\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\u2029": "\u2029"
+      },
+      "expected": {
+        "fingerprint": "cd306eae974a163965ce0498a8d9a217bbaf90c6b5a168133374ea6acc328da5",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\u2029\":\"\\u2029\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\u2029\":\"\\u2029\"}",
+        "metadata_bytes": 22,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\u2029\": \"\\u2029\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "key\ud83c\udf0d": "\ud83c\udf0d"
+      },
+      "expected": {
+        "fingerprint": "d1498e31cfe7c274530543b6f215773599866db7a1b307fcfe8955081d4321e5",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"key\\ud83c\\udf0d\":\"\\ud83c\\udf0d\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"key\\ud83c\\udf0d\":\"\\ud83c\\udf0d\"}",
+        "metadata_bytes": 34,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"key\\ud83c\\udf0d\": \"\\ud83c\\udf0d\"\n    }\n}\n"
+      }
+    },
+    {
+      "metadata": {
+        "keye\u0301": "e\u0301"
+      },
+      "expected": {
+        "fingerprint": "c5709ec1d2b0a39d3cce6c5879c8cb28fff96e3285dcf41265e1a71ce42e15e2",
+        "canonical_json": "{\"content_format\":\"plain_text\",\"dataset_id\":\"dataset-a\",\"display_name\":null,\"external_document_id\":\"doc-1\",\"metadata\":{\"keye\\u0301\":\"e\\u0301\"},\"source_url\":null,\"text\":\"Hello \\u00e4 \\ud83c\\udf0d\\n\"}",
+        "metadata_json": "{\"keye\\u0301\":\"e\\u0301\"}",
+        "metadata_bytes": 24,
+        "passthrough": "{\n    \"ingestion_mode\": \"direct_text\",\n    \"external_document_id\": \"doc-1\",\n    \"display_name\": null,\n    \"content_format\": \"plain_text\",\n    \"metadata\": {\n        \"keye\\u0301\": \"e\\u0301\"\n    }\n}\n"
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "character": "\u007f",
+      "size": 65536,
+      "accepted": true,
+      "fingerprint": "6d19a301f609b75f7f5cbcb627e26ded40f42be97e58e35a14f98d6aa230b94b",
+      "metadata_bytes": 65536
+    },
+    {
+      "character": "\u007f",
+      "size": 65537,
+      "accepted": false,
+      "fingerprint": "b2dabec09f44815d74844f936909226b9b31f0d0a3de5889bf8f58f636d4e0e8",
+      "metadata_bytes": 65537
+    },
+    {
+      "character": "\u00e9",
+      "size": 65536,
+      "accepted": true,
+      "fingerprint": "123791a4fd9c6ee4d6e831788731fe42128552ac6d8371ee7f4b816481ff6a6e",
+      "metadata_bytes": 65536
+    },
+    {
+      "character": "\u00e9",
+      "size": 65537,
+      "accepted": false,
+      "fingerprint": "9b1a9b47483fe06ed1544e000c85834e6cb47472b9ad71880e5f23e8f660e45b",
+      "metadata_bytes": 65537
+    },
+    {
+      "character": "\ud83c\udf0d",
+      "size": 65536,
+      "accepted": true,
+      "fingerprint": "b2d8c5eae5daed9591b91e99ccc1a8c0525f5e1676cbeb9897706611fef2a67b",
+      "metadata_bytes": 65536
+    },
+    {
+      "character": "\ud83c\udf0d",
+      "size": 65537,
+      "accepted": false,
+      "fingerprint": "2559022ec3c2488041ff41c9a02fb7abc1154473d98b07c6a8e378f3f222be2d",
+      "metadata_bytes": 65537
+    },
+    {
+      "character": "\u001f",
+      "size": 65536,
+      "accepted": true,
+      "fingerprint": "fe620ca379946696eb70ae24c6086acc54cf0f6a795eee27b94c0c48356ae1d8",
+      "metadata_bytes": 65536
+    },
+    {
+      "character": "\u001f",
+      "size": 65537,
+      "accepted": false,
+      "fingerprint": "13756cd287c5c831979ee06c029410d2f0b4713dd19e4e2c57d5a3c33c197acc",
+      "metadata_bytes": 65537
+    }
+  ]
+}

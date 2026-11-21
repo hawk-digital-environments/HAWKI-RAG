@@ -1,51 +1,40 @@
 # HAWKI RAG
 
-HAWKI RAG provides retrieval and grounded answers over managed content. Laravel
-owns the public control and security plane; Python performs ingestion and
-retrieval, with Temporal orchestrating durable work.
+HAWKI RAG runs a static Svelte management frontend and Python retrieval/ingestion
+services. Laravel/PHP and its runtime/tooling have been removed.
 
-<img width="2720" height="992" alt="HAWKI RAG Logo green" src="https://github.com/user-attachments/assets/af606f07-185b-4204-bcb8-8db1e8a58766" />
+Browser → nginx frontend → `/ui-api/v1/*` → Python UI gateway → FastAPI.
+HAWKI services call FastAPI with issuer-validated service JWTs. HAWKI owns human
+authentication; the UI gateway keeps service credentials on the server.
 
-## Start here
+FastAPI owns current dataset grants and operational state in PostgreSQL
+`hawki_backend` (Alembic **0009**). Python workers run through Temporal and report
+directly to signed FastAPI callbacks. Qdrant and Neo4j provide vector/graph storage.
+URL ingestion requires the upgraded `permanent-job-v2` crawler.
 
-1. Check [Requirements](_documentation/Getting%20Started/1_requirements.md).
-2. Follow [Installation](_documentation/Getting%20Started/4_installation_zero_to_up.md)
-   for secrets, startup, initial health, user creation, and a smoke test.
-3. Use [Run HAWKI RAG](_documentation/Getting%20Started/2_setup.md)
-   for everyday commands and the differences between local, image, and server modes.
+Start with the [current Python deployment guide](_documentation/Operations/python_runtime.md).
+It covers required schema/role/JWKS/service credentials, local overlays, builds,
+startup and 26-check readiness. Use [Testing](_documentation/Developer/testing.md)
+for Python and frontend commands.
 
-The Docker stack supplies the application, Python roles, stores, workflow
-engine, and local model runtime. Website/file ingestion also uses external
-crawler/converter projects; direct-text ingestion does not require them.
+```sh
+npm ci
+npm test
+npm run build
+make help
+```
 
-## Retrieval Modes
+The existing frontend remains under `resources/js`, `resources/css` and
+`frontend`; it needs no PHP, Blade or Composer. The standalone Vite build is
+served by `docker/frontend.Dockerfile`.
 
-Fast retrieval is the default in the Playground and query API (`fast_mode: true`).
-It uses vector retrieval without graph expansion or KG facts. Select **Deep
-retrieval**, or send `fast_mode: false`, to include available dataset graph data.
-Deep retrieval remains vector-only when the dataset has no ready graph-enabled
-sources or active graph-enabled document outputs.
+Historical `public.*` tables, the `gebuhren` orphan archive and original files,
+and crawler historical archives are preserved evidence. They must not be deleted
+or automatically adopted. See the [custody report](_documentation/Operations/historical_orphan_graph_acceptance.md)
+and [schema history](_documentation/History/public_schema.md). Laravel-era guides
+are marked historical; their old runtime commands are not operational instructions.
 
-Graph ingestion is off by default for file uploads and crawler tasks. Enable it
-explicitly when ingesting content that should populate Neo4j. Direct text
-integration always skips graph ingestion-in this release-. Enabling graph ingestion does not
-change the default retrieval mode.
-
-## Documentation
-
-| Task | Guide |
-|---|---|
-| Understand the system | [Introduction & Architecture](_documentation/Getting%20Started/3_introduction_architecture.md) |
-| Configure models, stores, endpoints, or secrets | [Environment & Configuration](_documentation/Operations/5_environment_db_queue.md) |
-| Understand indexed content | [Ingestion](_documentation/Operations/6_ingestion_embeddings.md) |
-| Understand retrieval and generation | [Query & Retrieval](_documentation/Core%20Concepts/query_retrieval.md) |
-| Understand deployment access boundaries | [Authorization & Dataset Scope](_documentation/Core%20Concepts/authorization_dataset_scope.md) |
-| Integrate text or query clients | [REST APIs](_documentation/Reference/rest_apis.md), [Direct Text Ingestion](_documentation/Reference/direct_text_ingestion.md), [MCP](_documentation/Reference/mcp_query_search_contract.md) |
-| Diagnose operations | [Monitoring](_documentation/Operations/monitoring.md), [Troubleshooting](_documentation/Operations/troubleshooting.md), [Recovery](_documentation/Operations/ingestion_recovery.md) |
-| Change code | [Repository Map](_documentation/Reference/8_repo_map.md), [Testing](_documentation/Developer/testing.md) |
-
-Browse the [documentation site](https://rag.hawki.info) or the
-[source homepage](_documentation/index.md). Release history is in
-[the changelog](_changelog/README.md).
-
-Epoch 15A runtime defaults and the coordinated activation, rollback and legacy drain procedure are documented in the [cutover runbook](_documentation/Operations/epoch15a_cutover.md).
+Fast vector retrieval remains the default. Deep retrieval (`fast_mode: false`)
+includes available graph facts. New dataset graph support is controlled by the
+deployment; managed uploads and URL tasks opt into graph ingestion. Direct text
+retains its existing vector-only behavior.

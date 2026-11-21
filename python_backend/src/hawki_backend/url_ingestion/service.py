@@ -2,6 +2,7 @@
 
 import uuid
 import hashlib
+from hawki_backend.historical_archive import require_unreserved
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,6 +92,7 @@ class UrlIngestionService:
         scheduled: bool = False,
     ) -> tuple[int, dict]:
         self.authorize(principal, body.dataset_id)
+        require_unreserved({"dataset_id": body.dataset_id, "task_id": body.task_id})
         if (
             not self.settings.enabled
             or not self.settings.scraper_url

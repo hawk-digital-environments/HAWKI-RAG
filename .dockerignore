@@ -20,7 +20,7 @@ auth.json
 docker-compose.override.yml
 *.local
 
-# Laravel runtime and build outputs
+# Local historical storage and obsolete generated build outputs
 public/build/
 public/hot
 public/storage/

@@ -3,8 +3,7 @@
 Svelte owns browser page markup. The active shell is `frontend/index.html` and
 `frontend/main.js`; `npm run build` uses `vite.frontend.config.js`. The same
 existing components and DOM runtimes remain in place. nginx serves the built
-shell at the existing page URLs. `npm run build:legacy` retains the Blade asset
-build for rollback.
+shell at the existing page URLs. The frontend build and development server require only Node; PHP/Blade and the legacy build target have been removed.
 
 `playground/urls.js` maps existing UI operation names onto Python `/v1` paths
 through `/ui-api/v1/`. `api.js` supplies the browser CSRF marker and adapts Python
@@ -37,10 +36,6 @@ Current product islands:
 - `apps/DatasetsDashboardPage.svelte`: `/datasets` page shell.
 - `apps/PipelineControllerPage.svelte`: `/pipeline-controller` page shell.
 - `apps/PipelineHealthDashboardPage.svelte`: `/pipeline-health` page shell.
-
-Legacy rollback shell:
-
-- `resources/views/svelte-page.blade.php`: single browser document shell.
 
 Route ownership:
 

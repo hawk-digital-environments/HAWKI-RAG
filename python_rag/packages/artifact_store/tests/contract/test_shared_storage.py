@@ -1,4 +1,4 @@
-"""Compose contracts for app-owned migrations and shared-storage bootstrap."""
+"""Python-owned schema, callback and shared-storage deployment contracts."""
 
 from __future__ import annotations
 
@@ -15,13 +15,12 @@ ROOT = PYTHON_ROOT.parent
 COMPOSE_FILE = ROOT / "docker-compose.yml"
 COMPOSE_FILES = (
     COMPOSE_FILE,
-    ROOT / "docker-compose.local.yml",
+    ROOT / "docker-compose.cutover.local.yml",
     ROOT / "docker-compose-gpu-override.yml",
     ROOT / "docker-compose.ui.yml",
 )
 ENV_EXAMPLE_FILE = ROOT / ".env.example"
 MAKEFILE = ROOT / "Makefile"
-APP_ENTRYPOINT = ROOT / "docker" / "rag_app" / "entrypoint" / "entrypoint.sh"
 NEO4J_ENV_FILE = ROOT / "docker" / "env" / "neo4j.env"
 GRAPH_PREPARE = (
     ROOT
@@ -57,22 +56,20 @@ def test_compose_files_do_not_define_a_migrator_container() -> None:
     assert migrator_name not in MAKEFILE.read_text(encoding="utf-8")
 
 
-def test_make_runs_migrations_inside_the_laravel_app() -> None:
+def test_make_uses_explicit_python_migrations() -> None:
     makefile = MAKEFILE.read_text(encoding="utf-8")
 
-    assert "up -d postgres temporal hawki_rag_app" in makefile
-    assert "exec -T hawki_rag_app php artisan migrate --force" in makefile
+    assert "uv run --frozen alembic upgrade head" in makefile
+    assert "php artisan" not in makefile
+    assert "migrate-legacy" not in makefile
 
 
-def test_app_becomes_healthy_only_after_initialization() -> None:
-    app = _service_block("hawki_rag_app")
-    entrypoint = APP_ENTRYPOINT.read_text(encoding="utf-8")
-
-    assert '["CMD", "test", "-f", "/tmp/hawki-rag-app-ready"]' in app
-    assert 'touch "$APP_READY_MARKER"' in entrypoint
-    assert entrypoint.index('touch "$APP_READY_MARKER"') > entrypoint.index(
-        "php artisan package:discover"
-    )
+def test_backend_requires_live_readiness_and_removed_services_cannot_start() -> None:
+    backend = _service_block("hawki_backend")
+    assert '"hawki_backend.readiness", "--live"' in backend
+    assert "hawki_rag_app:" not in COMPOSE_FILE.read_text()
+    assert "hawki_rag_bridge:" not in COMPOSE_FILE.read_text()
+    assert not (ROOT / "docker/laravel.Dockerfile").exists()
 
 
 def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract() -> (
@@ -88,9 +85,9 @@ def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract()
     assert 'chown -R www-data:www-data "$writable_dir"' in permissions_hook
 
     for name in (
-        "hawki-rag-temporal-scraper-worker",
-        "hawki-rag-temporal-converter-worker",
-        "hawki-rag-indexer-worker",
+        "rawki_local_scraper_worker",
+        "rawki_local_converter_worker",
+        "rawki_local_indexer_worker",
     ):
         service = _service_block(name)
         assert "user:" not in service
@@ -109,8 +106,14 @@ def test_compose_keeps_cutover_security_settings_server_side() -> None:
     backend = _service_block("hawki_backend")
     assert 'HAWKI_BACKEND_SERVICE_ONLY: "true"' in backend
     assert 'HAWKI_BACKEND_REQUIRE_READY_SCHEMA: "true"' in backend
-    for name in ("hawki-rag-temporal-scraper-worker", "hawki-rag-temporal-converter-worker", "hawki-rag-indexer-worker"):
-        assert "http://hawki_backend/internal/pipeline/worker-events" in _service_block(name)
+    for name in (
+        "rawki_local_scraper_worker",
+        "rawki_local_converter_worker",
+        "rawki_local_indexer_worker",
+    ):
+        assert "http://hawki_backend/internal/pipeline/worker-events" in _service_block(
+            name
+        )
     frontend = _service_block("hawki_rag_frontend")
     assert "TOKEN" not in frontend
     assert "SECRET" not in frontend
@@ -129,8 +132,7 @@ def test_neo4j_receives_only_its_server_auth_adapter() -> None:
 def test_legacy_ui_json_artifacts_are_not_configured_or_generated() -> None:
     sources = (
         ENV_EXAMPLE_FILE.read_text(encoding="utf-8"),
-        (ROOT / "config" / "config.php").read_text(encoding="utf-8"),
-        APP_ENTRYPOINT.read_text(encoding="utf-8"),
+        PYTHON_PERMISSIONS_HOOK.read_text(encoding="utf-8"),
         GRAPH_PREPARE.read_text(encoding="utf-8"),
     )
     legacy_names = (

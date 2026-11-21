@@ -1,8 +1,0 @@
-services:
-  hawki_rag_app:
-    volumes:
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    networks: !override
-      - default
-      - hawki-network

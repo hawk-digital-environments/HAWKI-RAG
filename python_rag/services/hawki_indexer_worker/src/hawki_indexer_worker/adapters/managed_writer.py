@@ -10,7 +10,7 @@ from typing import Any
 from temporalio import activity
 from temporalio.exceptions import CancelledError
 
-from hawki_pipeline_callbacks import LaravelCallbackClient, LaravelCallbackSettings
+from hawki_pipeline_callbacks import PipelineCallbackClient, PipelineCallbackSettings
 from hawki_indexer_worker.adapters.neo4j_writer import create_registered_graph_writer
 from hawki_indexer_worker.adapters.qdrant_writer import RegisteredVectorWriter
 from hawki_indexer_worker.domain.ports import VectorWriterPort, GraphWriterPort
@@ -67,8 +67,8 @@ class ManagedWriterRegistration:
                 dataset_id=self.workflow_input["dataset_id"],
                 generation=self.workflow_input["generation"],
             )
-        with LaravelCallbackClient(
-            LaravelCallbackSettings(
+        with PipelineCallbackClient(
+            PipelineCallbackSettings(
                 endpoint=self.settings.callback_url.rsplit("/", 1)[0]
                 + "/managed-writers",
                 secret=self.settings.callback_secret,

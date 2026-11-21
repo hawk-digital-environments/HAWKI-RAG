@@ -23,7 +23,7 @@ def test_url_events_bind_the_operation_dataset_and_generation(tmp_path, monkeypa
     sender.__exit__ = Mock(return_value=False)
     sender.send.return_value = {"success": True, "status": "active", "targets": []}
     monkeypatch.setattr(
-        managed_writer, "LaravelCallbackClient", Mock(return_value=sender)
+        managed_writer, "PipelineCallbackClient", Mock(return_value=sender)
     )
     writer.send("acquire", [])
     event = sender.send.call_args.args[0]

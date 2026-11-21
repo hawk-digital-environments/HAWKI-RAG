@@ -12,15 +12,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_default_compose_runtime_is_independent_of_laravel():
     services = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]
-    assert services["hawki_rag_app"]["profiles"] == ["legacy-laravel"]
+    assert "hawki_rag_app" not in services
+    assert "hawki_rag_bridge" not in services
+    assert all(
+        "legacy-laravel" not in value.get("profiles", []) for value in services.values()
+    )
     for name, service in services.items():
         if name == "hawki_rag_app":
             continue
         assert "hawki_rag_app" not in service.get("depends_on", {})
     for name in (
-        "hawki-rag-temporal-scraper-worker",
-        "hawki-rag-temporal-converter-worker",
-        "hawki-rag-indexer-worker",
+        "rawki_local_scraper_worker",
+        "rawki_local_converter_worker",
+        "rawki_local_indexer_worker",
     ):
         assert (
             services[name]["environment"]["HAWKI_RAG_WORKER_CALLBACK_URL"]

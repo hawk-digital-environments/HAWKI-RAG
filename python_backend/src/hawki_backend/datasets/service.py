@@ -34,6 +34,7 @@ from hawki_backend.persistence.datasets import (
     GrantTokenInvalidError as StoreGrantTokenInvalidError,
 )
 from hawki_backend.persistence.schema import ACTIVE_STATUS, DELETED_STATUS
+from hawki_backend.historical_archive import require_unreserved
 
 from .cleanup import DatasetCleanupCoordinator
 from .errors import (
@@ -122,12 +123,16 @@ class DatasetService:
         embedding_provider: str,
         embedding_model: str,
         cleanup: DatasetCleanupCoordinator | None = None,
+        graph_enabled: bool = False,
     ) -> None:
         self.store = store
         self.catalog = catalog
         self.embedding_provider = _provider(embedding_provider)
         self.embedding_model = _model(embedding_model)
         self._cleanup = cleanup
+        if type(graph_enabled) is not bool:
+            raise ValueError("Dataset graph default must be boolean")
+        self.graph_enabled = graph_enabled
 
     def list(self, tenant_id: str, limit: int = 50) -> list[dict]:
         """Return the tenant's active datasets, newest first."""
@@ -156,6 +161,7 @@ class DatasetService:
         """Create one dataset and issue its bootstrap token exactly once."""
 
         dataset_id = _dataset_id(raw)
+        require_unreserved({"dataset_id": dataset_id})
         _reject_caller_scope(raw)
         explicit_name = _text(raw, "name", _MAX_NAME)
         description = _description(raw)
@@ -186,7 +192,7 @@ class DatasetService:
                 neo4j_namespace=namespace,
                 embedding_provider=self.embedding_provider,
                 embedding_model=self.embedding_model,
-                graph_enabled=False,
+                graph_enabled=self.graph_enabled,
                 requested=requested,
             )
         except StoreConflictError as error:

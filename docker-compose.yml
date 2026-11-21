@@ -69,43 +69,7 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------
-  # Legacy Laravel application (rollback only)
-  # -------------------------------------------------
-  hawki_rag_app:
-    <<: *service_env
-    profiles: ["legacy-laravel"]
-    build:
-      context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST
-        - DOCKER_PROJECT_PATH
-        - DOCKER_PROJECT_PROTOCOL
-    image: hawki-rag-app:local
-    container_name: hawki_rag_app
-    volumes:
-      - shared_storage:/app/shared
-      - shared_storage:/shared
-      - ./storage:/var/www/html/storage
-    networks:
-      - hawki-network
-      - hosting_network
-      - default
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/hawki-rag-app-ready"]
-      interval: 5s
-      timeout: 2s
-      retries: 12
-      start_period: 10s
-
-  # -------------------------------------------------
-  # PostgreSQL for Laravel metadata and Temporal persistence
+  # PostgreSQL: Python operational schema, frozen public history and Temporal
   # -------------------------------------------------
   postgres:
     <<: *service_env
@@ -147,7 +111,7 @@ services:
     container_name: temporal_ui
     restart: unless-stopped
     ports:
-      - "${TEMPORAL_UI_HOST_BIND}:${TEMPORAL_UI_HOST_PORT}:8080"
+      - "${TEMPORAL_UI_HOST_BIND:-127.0.0.1}:${TEMPORAL_UI_HOST_PORT:-8081}:8080"
     depends_on:
       temporal:
         condition: service_started
@@ -222,41 +186,10 @@ services:
       start_period: 20s
 
   # -------------------------------------------------
-  # Legacy FastAPI bridge retained for the Epoch 15A rollback/drain window
-  # -------------------------------------------------
-  hawki_rag_bridge:
-    <<: *service_env
-    profiles: ["legacy-bridge"]
-    build:
-      context: .
-      dockerfile: python_rag/Dockerfile
-      target: bridge-runtime
-    image: hawki-rag-bridge:local
-    pull_policy: never
-    container_name: hawki_rag_bridge
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      hawki_rag_neo4j:
-        condition: service_healthy
-      temporal:
-        condition: service_started
-      ollama:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 40s
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health?runtime=false', timeout=3)"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-
-  # -------------------------------------------------
   # Authenticated public query backend
   #
   # FastAPI owns new traffic. Schema/role and issuer readiness remain mandatory.
-  # No runtime dependency on PHP or Laravel JWT signing.
+  # Service JWT validation and signed Python callbacks are mandatory.
   # -------------------------------------------------
   hawki_backend:
     <<: *service_env
@@ -302,7 +235,7 @@ services:
   # -------------------------------------------------
   # Python Temporal workers send signed callbacks directly to Python.
   # -------------------------------------------------
-  hawki-rag-temporal-workflow-worker:
+  rawki_local_workflow_worker:
     <<: *service_env
     build:
       context: .
@@ -310,7 +243,6 @@ services:
       target: workflow-runtime
     image: hawki-rag-workflow-worker:local
     pull_policy: never
-    container_name: hawki_rag_temporal_workflow_worker
     depends_on:
       temporal:
         condition: service_started
@@ -320,7 +252,7 @@ services:
       - default
       - hawki-network
 
-  hawki-rag-temporal-scraper-worker:
+  rawki_local_scraper_worker:
     <<: *service_env
     environment:
       HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
@@ -330,7 +262,6 @@ services:
       target: scraper-runtime
     image: hawki-rag-scraper-worker:local
     pull_policy: never
-    container_name: hawki_rag_temporal_scraper_worker
     volumes:
       - shared_storage:/shared
     group_add:
@@ -346,7 +277,7 @@ services:
       - default
       - hawki-network
 
-  hawki-rag-temporal-converter-worker:
+  rawki_local_converter_worker:
     <<: *service_env
     environment:
       HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
@@ -356,7 +287,6 @@ services:
       target: converter-runtime
     image: hawki-rag-converter-worker:local
     pull_policy: never
-    container_name: hawki_rag_temporal_converter_worker
     volumes:
       - shared_storage:/shared
     group_add:
@@ -372,7 +302,7 @@ services:
       - default
       - hawki-network
 
-  hawki-rag-indexer-worker:
+  rawki_local_indexer_worker:
     <<: *service_env
     environment:
       HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
@@ -384,7 +314,6 @@ services:
         TORCH_VARIANT: cpu
     image: hawki-rag-indexer-worker:local
     pull_policy: never
-    container_name: hawki_rag_indexer_worker
     volumes:
       - shared_storage:/shared
     group_add:

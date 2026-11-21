@@ -9,14 +9,15 @@ for cross-service behavior and runtime diagrams.
 
 | Member | Responsibility |
 |---|---|
-| [hawki_bridge](hawki_bridge/README.md) | Query/graph reads and health; legacy Temporal controls return 410; no canonical Qdrant/Neo4j ingestion writes |
+| [hawki_bridge](hawki_bridge/README.md) | Historical compatibility library/tests only; no Compose service or runtime image |
 | [hawki_workflow_worker](hawki_workflow_worker/README.md) | Deterministic source and direct-text orchestration |
 | [hawki_scraper_worker](hawki_scraper_worker/README.md) | External crawling or upload staging into raw artifacts |
 | [hawki_converter_worker](hawki_converter_worker/README.md) | Inspection/conversion into Markdown artifacts |
 | [hawki_indexer_worker](hawki_indexer_worker/README.md) | Incremental vectors, optional graph enrichment, terminal callbacks |
 | [hawki_reranker](hawki_reranker/README.md) | Cohere-compatible reranking and model lifecycle |
 
-These services do not own Laravel's application records or public access policy.
+FastAPI owns current service authorization and operational records. The workers
+report directly to its signed internal callbacks. Historical public records are frozen.
 See [Authorization](../../_documentation/Core%20Concepts/authorization_dataset_scope.md)
 and [Ingestion](../../_documentation/Operations/6_ingestion_embeddings.md) for
 those boundaries and the complete ingestion flow.

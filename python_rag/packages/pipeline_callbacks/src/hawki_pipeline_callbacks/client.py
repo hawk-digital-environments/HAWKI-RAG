@@ -1,4 +1,4 @@
-"""Signed, retry-safe callback client for Laravel-owned pipeline state."""
+"""Signed, retry-safe callback client for Python-owned pipeline state."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class CallbackSender(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class LaravelCallbackSettings:
+class PipelineCallbackSettings:
     endpoint: str
     secret: str
     timeout_seconds: float = 10.0
@@ -40,25 +40,25 @@ class LaravelCallbackSettings:
 
     def __post_init__(self) -> None:
         if not self.endpoint.strip():
-            raise ValueError("Laravel callback endpoint must not be empty.")
+            raise ValueError("Pipeline callback endpoint must not be empty.")
         if not self.secret:
-            raise ValueError("Laravel callback secret must not be empty.")
+            raise ValueError("Pipeline callback secret must not be empty.")
         if self.timeout_seconds <= 0:
-            raise ValueError("Laravel callback timeout must be positive.")
+            raise ValueError("Pipeline callback timeout must be positive.")
         if self.retry_attempts < 1:
-            raise ValueError("Laravel callback retry attempts must be at least one.")
+            raise ValueError("Pipeline callback retry attempts must be at least one.")
 
 
-class LaravelCallbackError(RuntimeError):
-    """Raised when Laravel did not durably accept a worker event."""
+class PipelineCallbackError(RuntimeError):
+    """Raised when The callback boundary did not durably accept a worker event."""
 
 
-class LaravelCallbackClient:
+class PipelineCallbackClient:
     """Post immutable events with an HMAC over the exact request body."""
 
     def __init__(
         self,
-        settings: LaravelCallbackSettings,
+        settings: PipelineCallbackSettings,
         *,
         client: httpx.Client | None = None,
     ) -> None:
@@ -74,7 +74,7 @@ class LaravelCallbackClient:
         if self._owns_client:
             self._client.close()
 
-    def __enter__(self) -> LaravelCallbackClient:
+    def __enter__(self) -> PipelineCallbackClient:
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -114,7 +114,7 @@ class LaravelCallbackClient:
                 )
                 conflict_code = self._conflict_code(response)
                 if conflict_code == "pipeline_worker_event_id_collision":
-                    raise LaravelCallbackError(
+                    raise PipelineCallbackError(
                         "Laravel rejected a reused callback event_id with a different payload."
                     )
                 if conflict_code in {
@@ -130,15 +130,15 @@ class LaravelCallbackClient:
                 try:
                     result = response.json()
                 except ValueError:
-                    raise LaravelCallbackError(
-                        "Laravel callback returned invalid JSON."
+                    raise PipelineCallbackError(
+                        "Pipeline callback returned invalid JSON."
                     ) from None
                 if not isinstance(result, dict):
-                    raise LaravelCallbackError(
-                        "Laravel callback returned non-object JSON."
+                    raise PipelineCallbackError(
+                        "Pipeline callback returned non-object JSON."
                     )
                 return cast(dict[str, Any], result)
-            except LaravelCallbackError:
+            except PipelineCallbackError:
                 raise
             except (httpx.TransportError, httpx.HTTPStatusError) as exc:
                 status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -149,7 +149,7 @@ class LaravelCallbackClient:
                 time.sleep(min(2 ** (attempt - 1), 5))
 
         event_id = str(payload["event_id"])
-        raise LaravelCallbackError(
+        raise PipelineCallbackError(
             f"Laravel did not accept worker event {event_id}: {last_failure}."
         ) from None
 
@@ -212,7 +212,7 @@ class LaravelCallbackClient:
 __all__ = [
     "CallbackEvent",
     "CallbackSender",
-    "LaravelCallbackClient",
-    "LaravelCallbackError",
-    "LaravelCallbackSettings",
+    "PipelineCallbackClient",
+    "PipelineCallbackError",
+    "PipelineCallbackSettings",
 ]

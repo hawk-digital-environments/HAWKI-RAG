@@ -38,10 +38,9 @@ def test_environment_example_matches_runtime_settings() -> None:
     "service",
     [
         "hawki_backend",
-        "hawki_rag_app",
-        "hawki-rag-temporal-scraper-worker",
-        "hawki-rag-temporal-converter-worker",
-        "hawki-rag-indexer-worker",
+        "rawki_local_scraper_worker",
+        "rawki_local_converter_worker",
+        "rawki_local_indexer_worker",
     ],
 )
 def test_artifact_services_share_the_configured_persisted_root(service: str) -> None:
@@ -68,7 +67,7 @@ def test_backend_reuses_worker_permissions_after_volume_initialization() -> None
         (REPOSITORY / "docker-compose.yml").read_text(encoding="utf-8")
     )
     backend = compose["services"]["hawki_backend"]
-    worker = compose["services"]["hawki-rag-temporal-converter-worker"]
+    worker = compose["services"]["rawki_local_converter_worker"]
     assert backend["group_add"] == worker["group_add"] == ["${PGID}"]
     assert "hawki_rag_app" not in backend["depends_on"]
     backend_image = (REPOSITORY / "python_backend/Dockerfile").read_text(

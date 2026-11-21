@@ -11,6 +11,7 @@ import pytest
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "historical"))
 import query_readiness as readiness  # noqa: E402
 import query_storage as storage  # noqa: E402
 
@@ -254,22 +255,3 @@ def test_optimized_container_program_rejects_conflict_safely(
         )
     assert error.value.code == 1
     assert json.loads(capsys.readouterr().out) == {"status": "FAIL"}
-
-
-def test_live_inventory_requires_dispatched_probe_success(monkeypatch):
-    from parity import test_live_scope_integration as live
-
-    monkeypatch.setattr(live, "_configured_datasets", lambda: [{"dataset_id": "third"}])
-    monkeypatch.setattr(
-        live, "_bound_target", lambda: ("bound-id", "http://hawki_backend/v1/query")
-    )
-    calls = []
-
-    def probe(backend_id, inventory):
-        calls.append((backend_id, inventory))
-        return False
-
-    monkeypatch.setattr(live, "probe_storage", probe)
-    with pytest.raises(pytest.fail.Exception, match="Bound deployed storage"):
-        live.test_inventory_targets_exist_in_live_storage()
-    assert calls == [("bound-id", [{"dataset_id": "third"}])]

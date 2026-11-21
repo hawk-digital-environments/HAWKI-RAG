@@ -21,8 +21,8 @@ from hawki_rag_contracts.pipeline.temporal import CONVERT_FILES_ACTIVITY
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
     CallbackSender,
-    LaravelCallbackClient,
-    LaravelCallbackSettings,
+    PipelineCallbackClient,
+    PipelineCallbackSettings,
     deterministic_event_id,
 )
 
@@ -91,16 +91,16 @@ def report_status(
         return client.send(event)
 
 
-def create_callback_sender(settings: ConverterSettings) -> LaravelCallbackClient:
+def create_callback_sender(settings: ConverterSettings) -> PipelineCallbackClient:
     """Create a reusable sender from converter-owned callback settings."""
 
-    callback_settings = LaravelCallbackSettings(
+    callback_settings = PipelineCallbackSettings(
         endpoint=settings.callback_url,
         secret=settings.callback_secret,
         timeout_seconds=settings.callback_timeout_seconds,
         retry_attempts=settings.callback_retry_attempts,
     )
-    return LaravelCallbackClient(callback_settings)
+    return PipelineCallbackClient(callback_settings)
 
 
 def _utc_now() -> datetime:

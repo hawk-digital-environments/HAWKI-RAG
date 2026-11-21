@@ -1,3 +1,5 @@
+> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](python_runtime.md); the original text is retained as migration history.
+
 # Epoch 11 remaining-blocker validation — 2026-11-06
 
 Historical report. The external runtime findings below are superseded by the

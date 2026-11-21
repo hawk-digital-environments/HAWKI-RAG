@@ -18,7 +18,7 @@ from hawki_rag_contracts.pipeline.ingestion import (
 from hawki_rag_contracts.pipeline.status import PipelineStageStatus
 from hawki_rag_contracts.pipeline.temporal import INDEX_MARKDOWN_ACTIVITY
 
-from hawki_indexer_worker.adapters.laravel_metadata_client import directory_reference
+from hawki_indexer_worker.adapters.source_metadata_client import directory_reference
 from hawki_indexer_worker.application.context import (
     ActivityExecutionInfo,
     StatusReporter,

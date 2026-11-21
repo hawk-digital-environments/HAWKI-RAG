@@ -1,8 +1,7 @@
-"""Independent PHP parity oracle and immutable publication failure tests."""
+"""Frozen historical parity oracle and immutable publication failure tests."""
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,6 +14,12 @@ from hawki_backend.text_ingestion.validation import TextIngestionRequest
 from hawki_backend.text_ingestion.identity import metadata_bytes, legacy_json
 from .conftest import payload
 
+ORACLE = json.loads(
+    (
+        Path(__file__).resolve().parents[1] / "fixtures/text_ingestion.fixture"
+    ).read_text()
+)
+
 
 def store(root, value=None):
     body = TextIngestionRequest.model_validate(value or payload())
@@ -24,50 +29,11 @@ def store(root, value=None):
     return body, artifact
 
 
-@pytest.mark.parametrize(
-    "metadata",
-    [
-        {},
-        {"nested": {"z": 1, "a": []}, "url": "https://example.test/ä"},
-        {"n": 1.0, "small": 1e-7, "large": 1e20},
-        {"empty": {}, "numeric": {"0": "a", "1": "b"}},
-        *[
-            {"key" + char: char}
-            for char in (
-                *map(chr, range(32)),
-                " ",
-                "/",
-                '"',
-                "\\",
-                "~",
-                "\x7f",
-                "\x80",
-                "é",
-                "\u2028",
-                "\u2029",
-                "🌍",
-                "e\u0301",
-            )
-        ],
-    ],
-)
-def test_real_php_fingerprint_and_artifact_bytes(tmp_path, metadata):
+@pytest.mark.parametrize("case", ORACLE["metadata_cases"])
+def test_historical_fingerprint_and_artifact_bytes(tmp_path, case):
+    metadata = case["metadata"]
     value = {**payload(), "metadata": metadata}
-    oracle = json.loads(
-        subprocess.run(
-            [
-                "php",
-                str(
-                    Path(__file__).resolve().parents[3]
-                    / "tests/Support/text_ingestion_parity.php"
-                ),
-            ],
-            input=json.dumps(value),
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout
-    )
+    oracle = case["expected"]
     body, artifact = store(tmp_path, value)
     assert body.fingerprint() == oracle["fingerprint"]
     assert metadata_bytes(metadata) == oracle["metadata_bytes"]
@@ -146,20 +112,10 @@ def test_php_metadata_limit_at_exact_encoded_boundary(character, size, accepted)
     cost = len(legacy_json(character)) - 2
     count, remainder = divmod(size - 8, cost)
     value = {**payload(), "metadata": {"a": character * count + "x" * remainder}}
-    oracle = json.loads(
-        subprocess.run(
-            [
-                "php",
-                str(
-                    Path(__file__).resolve().parents[3]
-                    / "tests/Support/text_ingestion_parity.php"
-                ),
-            ],
-            input=json.dumps(value),
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout
+    oracle = next(
+        row
+        for row in ORACLE["boundaries"]
+        if row["character"] == character and row["size"] == size
     )
     assert oracle["metadata_bytes"] == metadata_bytes(value["metadata"]) == size
     if accepted:

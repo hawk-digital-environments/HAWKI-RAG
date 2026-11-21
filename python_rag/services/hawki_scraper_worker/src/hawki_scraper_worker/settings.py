@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
-from hawki_pipeline_callbacks import LaravelCallbackSettings
+from hawki_pipeline_callbacks import PipelineCallbackSettings
 from hawki_rag_contracts.pipeline.temporal import SCRAPER_TASK_QUEUE
 from hawki_worker_runtime.settings import (
     WorkerRuntimeSettings,
@@ -39,7 +39,7 @@ class ScraperWorkerSettings:
     """All and only settings required by the scraper worker."""
 
     runtime: WorkerRuntimeSettings
-    callback: LaravelCallbackSettings
+    callback: PipelineCallbackSettings
     task_queue: str
     scraper_url: str
     scraper_start_path: str
@@ -55,8 +55,11 @@ class ScraperWorkerSettings:
         """Load and validate settings before the worker starts polling."""
 
         runtime = load_worker_runtime_settings()
-        callback = LaravelCallbackSettings(
-            endpoint=_environment_value("HAWKI_RAG_WORKER_CALLBACK_URL", "http://hawki_backend/internal/pipeline/worker-events"),
+        callback = PipelineCallbackSettings(
+            endpoint=_environment_value(
+                "HAWKI_RAG_WORKER_CALLBACK_URL",
+                "http://hawki_backend/internal/pipeline/worker-events",
+            ),
             secret=os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
             timeout_seconds=max(
                 0.1,

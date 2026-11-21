@@ -217,7 +217,59 @@
          or any(address in ipaddress.ip_network(prefix) for prefix in tunnels)
 --- a/hawki_crawler/runtime/store.py
 +++ b/hawki_crawler/runtime/store.py
-@@ -175,6 +175,8 @@
+@@ -81,7 +81,7 @@
+                 )
+         # A dead process is not evidence that all its external work drained.
+         for record in self.records():
+-            if not record["sealed"]:
++            if not record["sealed"] and not self.archived_legacy(record):
+                 record.update(
+                     status="unknown",
+                     state="unknown",
+@@ -89,6 +89,32 @@
+                     message="Previous runtime did not prove drainage; reconciliation required",
+                 )
+                 self.save(record)
++
++    def archived_legacy(self, record):
++        """An explicit archive is not a seal and never authorizes artifact cleanup."""
++        manifest = self.directory / "legacy-archive"
++        if not manifest.exists():
++            return False
++        try:
++            archive = json.loads(manifest.read_text(encoding="utf-8"))
++            evidence = archive["records"][record["job_id"]]
++            original = self.root / record["job_id"] / "job_state.json"
++            digest = hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
++            return (
++                archive["version"] == 1
++                and evidence["classification"] == "legacy-archive"
++                and record.get("fingerprint") is None
++                and record.get("metadata") == {}
++                and record["status"] == record["state"] == "unknown"
++                and all(record.get(flag) is False for flag in (
++                    "sealed", "terminal", "quiescent", "writer_admission_closed"
++                ))
++                and record.get("sealed_at") is None
++                and evidence["record_sha256"] == digest
++                and evidence["artifact_state_sha256"] == hashlib.sha256(original.read_bytes()).hexdigest()
++            )
++        except (OSError, ValueError, KeyError, TypeError):
++            return False
+-
++
+     def close(self):
+         self.owner.close()
+@@ -150,7 +176,7 @@
+                 raise ValueError(
+                     "Artifact roots cannot overlap another permanent job identity"
+                 )
+-        if sum(not r["sealed"] for r in self.records()) >= limit:
++        if sum(not r["sealed"] and not self.archived_legacy(r) for r in self.records()) >= limit:
+             raise OverflowError("MAX_CONCURRENT_TASKS capacity exhausted")
+         record = dict(
+             job_id=job_id,
+@@ -175,6 +201,8 @@
              metadata={
                  key: payload.get(key)
                  for key in (

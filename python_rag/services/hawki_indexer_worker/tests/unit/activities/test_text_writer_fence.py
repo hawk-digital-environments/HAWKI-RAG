@@ -9,7 +9,7 @@ import pytest
 from hawki_indexer_worker.adapters import managed_writer
 from hawki_indexer_worker.adapters.managed_writer import ManagedWriterRegistration
 from hawki_indexer_worker.indexing.point_identity import deterministic_point_id
-from hawki_pipeline_callbacks import LaravelCallbackClient
+from hawki_pipeline_callbacks import PipelineCallbackClient
 from hawki_vector_store.client import QdrantHTTP
 from services.hawki_indexer_worker.tests.unit.activities.managed_writer_test_support import (
     registration,
@@ -53,8 +53,8 @@ def test_direct_text_requires_acquire_and_guards_each_sink_admission(
     client = httpx.Client(transport=httpx.MockTransport(receive))
     monkeypatch.setattr(
         managed_writer,
-        "LaravelCallbackClient",
-        lambda settings: LaravelCallbackClient(settings, client=client),
+        "PipelineCallbackClient",
+        lambda settings: PipelineCallbackClient(settings, client=client),
     )
     writer = ManagedWriterRegistration.acquire_for(
         template.settings, template.workflow_input, template.info

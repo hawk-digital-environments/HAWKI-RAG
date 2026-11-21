@@ -14,31 +14,6 @@ WORKDIR /workspace/python_rag
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY python_rag/pyproject.toml python_rag/uv.lock ./
 
-FROM python-builder-base AS bridge-builder
-
-COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
-COPY python_rag/packages/contracts/src packages/contracts/src
-COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
-COPY python_rag/packages/observability/src packages/observability/src
-COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text_processing/README.md packages/text_processing/
-COPY python_rag/packages/text_processing/src packages/text_processing/src
-COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
-COPY python_rag/packages/model_providers/src packages/model_providers/src
-COPY python_rag/packages/graph_store/pyproject.toml python_rag/packages/graph_store/README.md packages/graph_store/
-COPY python_rag/packages/graph_store/src packages/graph_store/src
-COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_store/README.md packages/vector_store/
-COPY python_rag/packages/vector_store/src packages/vector_store/src
-COPY python_rag/packages/retrieval/pyproject.toml python_rag/packages/retrieval/README.md packages/retrieval/
-COPY python_rag/packages/retrieval/src packages/retrieval/src
-COPY python_rag/packages/workflow_control/pyproject.toml python_rag/packages/workflow_control/README.md packages/workflow_control/
-COPY python_rag/packages/workflow_control/src packages/workflow_control/src
-COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_bridge/README.md services/hawki_bridge/
-COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
-RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \
-    uv sync --frozen --no-dev --no-editable --package hawki-bridge \
-    && find .venv -depth -type d \( -name __pycache__ -o -name .pytest_cache -o -name tests -o -name test -o -name build -o -name dist -o -name '*.egg-info' \) -exec rm -rf '{}' + \
-    && find .venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
-
 FROM python-builder-base AS workflow-builder
 
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
@@ -152,14 +127,6 @@ COPY docker/python_rag/10-rawki-runtime.env /container/custom/env/10-rawki-runti
 COPY docker/python_rag/80-rawki-runtime-permissions.sh /container/custom/entrypoint/80-rawki-runtime-permissions.sh
 RUN chmod 0644 /container/custom/env/10-rawki-runtime.env \
     && chmod 0755 /container/custom/entrypoint/80-rawki-runtime-permissions.sh
-
-FROM runtime-base AS bridge-runtime
-
-ENV PYTHON_APP_MODULE=hawki_bridge.main:app \
-    GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker \
-    GUNICORN_WORKERS=1
-COPY --from=bridge-builder --chown=www-data:www-data /workspace/python_rag/.venv/lib/python3.13/site-packages/ /opt/venv/lib/python3.13/site-packages/
-EXPOSE 80
 
 FROM runtime-base AS reranker-runtime
 

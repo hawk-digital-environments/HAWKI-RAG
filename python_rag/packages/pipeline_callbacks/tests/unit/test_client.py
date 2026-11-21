@@ -11,9 +11,9 @@ import httpx
 import pytest
 
 from hawki_pipeline_callbacks import (
-    LaravelCallbackClient,
-    LaravelCallbackError,
-    LaravelCallbackSettings,
+    PipelineCallbackClient,
+    PipelineCallbackError,
+    PipelineCallbackSettings,
 )
 
 
@@ -40,11 +40,11 @@ def _client(
     timeout_seconds: float = 0.75,
     retry_attempts: int = 3,
     secret: str = SECRET,
-) -> LaravelCallbackClient:
+) -> PipelineCallbackClient:
     transport = httpx.MockTransport(handler)
     http_client = httpx.Client(transport=transport)
-    return LaravelCallbackClient(
-        LaravelCallbackSettings(
+    return PipelineCallbackClient(
+        PipelineCallbackSettings(
             endpoint=endpoint,
             secret=secret,
             timeout_seconds=timeout_seconds,
@@ -141,7 +141,7 @@ def test_timeout_is_explicit_and_retried_without_reflecting_secrets(
         lambda seconds: sleeps.append(seconds),
     )
 
-    with pytest.raises(LaravelCallbackError) as caught:
+    with pytest.raises(PipelineCallbackError) as caught:
         _client(time_out, timeout_seconds=0.125, retry_attempts=2).send(
             _event(),
             timestamp=1_775_210_402,
@@ -170,7 +170,7 @@ def test_ordinary_client_errors_are_not_retried(status: int) -> None:
             request=request,
         )
 
-    with pytest.raises(LaravelCallbackError) as caught:
+    with pytest.raises(PipelineCallbackError) as caught:
         _client(reject).send(_event(), timestamp=1_775_210_403)
 
     assert attempts == 1
@@ -198,7 +198,7 @@ def test_exhausted_server_errors_do_not_expose_endpoint_body_or_secret(
         "hawki_pipeline_callbacks.client.time.sleep", lambda _seconds: None
     )
 
-    with pytest.raises(LaravelCallbackError) as caught:
+    with pytest.raises(PipelineCallbackError) as caught:
         _client(
             fail,
             endpoint=f"{ENDPOINT}?access_token={endpoint_secret}",
@@ -228,7 +228,7 @@ def test_conflicting_event_id_is_reported_without_retry() -> None:
             request=request,
         )
 
-    with pytest.raises(LaravelCallbackError, match="reused callback event_id"):
+    with pytest.raises(PipelineCallbackError, match="reused callback event_id"):
         _client(conflict).send(_event(), timestamp=1_775_210_405)
 
     assert attempts == 1
@@ -276,7 +276,7 @@ def test_target_mismatch_conflict_is_not_misreported_or_retried() -> None:
             request=request,
         )
 
-    with pytest.raises(LaravelCallbackError) as caught:
+    with pytest.raises(PipelineCallbackError) as caught:
         _client(reject).send(_event(), timestamp=1_775_210_405)
 
     assert attempts == 1
@@ -299,7 +299,7 @@ def test_success_response_errors_are_safe(
         response.request = request
         return response
 
-    with pytest.raises(LaravelCallbackError, match=message) as caught:
+    with pytest.raises(PipelineCallbackError, match=message) as caught:
         _client(malformed).send(_event(), timestamp=1_775_210_406)
 
     assert caught.value.__cause__ is None
