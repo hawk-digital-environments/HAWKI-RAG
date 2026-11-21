@@ -781,6 +781,22 @@ class ManagedRepository:
                 "accepted": True,
                 "duplicate": False,
                 "ignored": ignored,
+                "stage_event": {
+                    key: value
+                    for key, value in event.model_dump(
+                        mode="json", by_alias=True
+                    ).items()
+                    if key
+                    in {
+                        "event_id",
+                        "stage",
+                        "status",
+                        "timestamp",
+                        "activity_id",
+                        "attempt",
+                        "counts",
+                    }
+                },
             }
             if not ignored:
                 # Ready requires the existing writer's acknowledged manifest/drain

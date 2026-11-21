@@ -1,112 +1,20 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../Operations/python_runtime.md); the original text is retained as migration history.
-
 # REST APIs
 
-Laravel is the public HTTP boundary. Its canonical JSON routes use `/api`.
-The browser uses these same routes. The Python backend owns workflow control
-and opt-in text and managed-file ingestion. URL/crawler ingestion stays in
-Laravel. The separate RAG bridge retains its existing query responsibilities.
+Public service calls use `/v1/*` on FastAPI. Browser calls use `/ui-api/v1/*` through the server-side gateway, which supplies its own service JWT. `/api/*` returns 410; internal callback routes are not published by nginx.
 
-The local Swagger UI is at `http://localhost:8080/swagger`. It loads the
-[checked-in OpenAPI contract](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/public/swagger/openapi.yaml); some UI/internal
-routes deliberately opt out. [Routes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/routes/api.php), request validation,
-and the owning service remain the source of truth for runtime behavior.
+| Family | Current routes / authorization |
+| --- | --- |
+| Retrieval | `/v1/query`, `/v1/query/datasets`; query scope and exact dataset query grant |
+| Datasets | `/v1/datasets`, creation/deletion and self-grants; management/query/ingest scopes according to action |
+| Managed documents | `/v1/documents`, batch/create/read/update/delete and upload download; exact ingest/query grants |
+| Direct text | `/v1/text-ingestions`; ingest scope and dataset grant |
+| Pipeline | `/v1/pipeline/tasks`, start/read/cancel/retire, recovery and stage logs; ingest scope and ownership |
+| Graph/ops | `/v1/ops/*`; query or management scopes, dataset scope where applicable |
 
-## Public surfaces
+Mutations use stable idempotency keys and existing generation/writer barriers. Metadata cannot override tenant or physical storage targets. Read readiness and error bodies without logging credentials. The registered routers under `python_backend/src/hawki_backend` are authoritative for request schemas and optional compatibility routes.
 
-| Surface | Representative routes | Boundary |
-|---|---|---|
-| Dataset retrieval | `GET /api/query/datasets`, `POST /api/query` | Query principal and dataset authorization |
-| Direct text | `POST /api/integrations/text-ingestions`, `DELETE /api/integrations/text-ingestions/{sourceId}` | Explicit token ability and dataset ingestion grant |
-| Dataset management | `GET/POST /api/datasets`, `GET /api/datasets/{datasetId}` | Management API |
-| Documents | `GET/POST /api/documents`, `POST /api/documents/batch`, `GET/PUT/DELETE /api/documents/{documentId}` | Management API |
-| Pipeline | `POST /api/pipeline/tasks/start`, `GET /api/pipeline/tasks/{taskId}`, `POST /api/pipeline/controller/files` | Concrete mutation principal; Python performs final dataset authorization when selected |
-| Recovery/control | Task cancel/retry and `/api/pipeline/recovery/...` routes | Management API |
-| Graph / statistics | `/api/rag/neo4j/...`, `GET /api/rag/stats` | Management API; semantic graph search adds query-principal middleware |
-| Worker events | `POST /api/internal/pipeline/worker-events` | Exact-body HMAC |
-| Health / monitoring | `/up`, `/api/pipeline/health`, `/api/rag/health`, `/api/rag/monitor` | See [Monitoring](../Operations/monitoring.md) |
-
-Managed document mutations and pipeline file uploads require a concrete active
-principal: browser/session or valid Sanctum bearer, with credential-free access
-only for exactly one active user. Python is final INGEST grant authority in
-Python mode. See the [Epoch 10 runbook](../Operations/python_managed_documents.md).
-In that mode, document GET/list use the established browser query principal,
-`rag:query` tokens and exact Python QUERY grants. Python-owned lifecycle is read
-from Python; legacy rows require an explicit ownership/access check before
-Laravel projection. Both sources retain the existing public document URLs.
-The other management APIs do not require blanket Sanctum authentication. Application
-request rate limits are disabled.
-Direct-text and MCP always need their explicit credentials. See
-[Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md)
-before exposing this deployment.
+See [deployment](../Operations/python_runtime.md), [direct text](direct_text_ingestion.md) and [authorization](../Core%20Concepts/authorization_dataset_scope.md).
 
 ## Query request
 
-`POST /api/query` accepts the following validated fields:
-
-| Field | Meaning |
-|---|---|
-| `dataset_id` | Required active authorized dataset; up to 191 characters, restricted identifier syntax |
-| `query` | Required string, maximum 4000 characters |
-| `top_k` | Optional integer 1–100; default 5 |
-| `generate` | Optional boolean; also gated by bridge configuration |
-| `fast_mode`, `smart_lookup`, `is_optimized` | Optional booleans; see retrieval behavior |
-| `preferred_tags` | Up to 20 strings, maximum 80 characters each |
-| `filters` | Up to 20 named metadata predicates with scalar values; reserved scope/model keys rejected |
-
-Collection, namespace, provider, models, and `authorized_scope` cannot be
-selected through this request. Laravel derives them from dataset authorization
-and Settings.
-
-Example with a query-capable token and an already indexed dataset:
-
-```bash
-curl --fail-with-body http://localhost:8080/api/query \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $HAWKI_TOKEN" \
-  -d '{"dataset_id":"docs-smoke","query":"What is the cobalt lighthouse code?","top_k":5,"generate":false}'
-```
-
-Laravel forwards the backend JSON response: typically `hits`, `count`, `kg`,
-`retrieval`, `answer`, and operational metadata. It does not apply the
-[MCP normalization](./mcp_query_search_contract.md). `top_k` is not a strict
-HTTP result-count guarantee: current context selection can retain at least the
-configured context-document count. See [Query & Retrieval](../Core%20Concepts/query_retrieval.md).
-
-Input failures normally return 422 at Laravel. Missing/ineligible explicit
-credentials are rejected; ambiguous implicit identity returns 503. Downstream
-statuses are passed through. Missing Qdrant collections become a
-`dataset_not_ready` 503 instead of creating a collection during a query.
-Transport/invalid-response failures use the proxy's error path and may include
-backend exception details.
-
-## Direct text and pipeline status
-
-The full direct-text request, idempotency, asynchronous status, and deletion
-contract is owned by [Direct Text Ingestion](./direct_text_ingestion.md).
-
-For accepted work use `GET /api/pipeline/tasks/{taskId}` and the returned jobs
-and sources. `GET /api/pipeline/status/{jobId}` is a UI-oriented status route
-excluded from OpenAPI. There is no `GET /api/integrations/text-ingestions/{id}`.
-
-## Internal bridge surface
-
-These routes are internal service contracts, reached through Laravel:
-
-| Method / route | Purpose |
-|---|---|
-| `GET /health` | Liveness and optional runtime information |
-| `POST /query` | Authorized retrieval and optional generation |
-| `POST /graph/related` | Scoped graph reads |
-| `POST /temporal/workflows/ingest` | Start source ingestion |
-| `POST /temporal/workflows/ingest-text` | Start direct-text ingestion |
-| `POST /temporal/schedules/ingest` | Create/replace ingestion schedule |
-| `POST /temporal/schedules/delete` | Delete schedule |
-| `POST /temporal/workflows/cancel` | Cancel workflow |
-| `POST /temporal/workflows/cancel-and-wait` | Request cancellation and wait for closure before direct-text source deletion |
-
-The bridge has no ingestion write route to Qdrant or Neo4j. Its Temporal start
-operations dispatch durable work to activity workers. Its internal trusted
-scope is not a client credential; direct public exposure bypasses Laravel's
-authorization boundary.
-
+Submit the authorized `dataset_id` and `query` to `/v1/query`, or use the browser gateway prefix. Query options such as `top_k`, `generate` and `fast_mode` follow the typed FastAPI schema. Storage scope is resolved server-side.

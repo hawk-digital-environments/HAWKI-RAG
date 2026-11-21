@@ -1,5 +1,3 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../../Operations/python_runtime.md); the original text is retained as migration history.
-
 # Identity & Incremental Ingestion
 
 Incremental ingestion allows the system to recognize documents across multiple indexing runs. It uses three different values for different purposes: **source identity** identifies the same logical document over time, the **content hash** shows whether the document's content has changed, and the **idempotency key** identifies a specific submission or retry. For direct text, the same dataset and `external_document_id` should be kept across revisions. When the content changes, the hash changes and a new idempotency key should be used. The idempotency key belongs to the submission, not to the document itself.
@@ -12,7 +10,7 @@ Each source type has a stable way of identifying a document. Web pages use their
 
 Qdrant is the source of truth for deciding whether a document is new, unchanged, or changed. If the identity is new, the document is indexed normally. If the identity and content hash are unchanged, normal vector and graph processing can be skipped. If the identity is the same but the content has changed, new embeddings are created and the previous vectors are replaced; graph data is also replaced after successful extraction.
 
-Documents that disappear from a later source submission are **not automatically removed**. Internal graph-only indexing can update graph data without updating vectors, but it does not automatically remove stale graph facts. PostgreSQL's `ingested_pages` table is used by Laravel for application and history data and is not used by Python for these incremental indexing decisions. If Qdrant cannot be read reliably, the system does not assume that a document is new and may fail the indexing operation instead.
+Documents that disappear from a later source submission are **not automatically removed**. Internal graph-only indexing can update graph data without updating vectors, but it does not automatically remove stale graph facts. Incremental indexing uses the authorized document identity and store evidence; frozen public-schema history is not runtime ownership. If Qdrant cannot be read reliably, the system does not assume that a document is new and may fail the indexing operation instead.
 
 ## How text ingestion handles retries
 

@@ -2,7 +2,7 @@
 
 This Temporal activity worker owns Markdown chunking, incremental planning,
 embedding, Qdrant writes, Neo4j writes, and RAG-Anything graph extraction. It
-uses deployment-selected queues. The current local cutover polls only
+uses deployment-selected queues. The current local deployment polls only
 `rawki-local-indexer`; historical queue defaults remain wire compatibility.
 
 The worker calls its indexing application logic directly. It has no FastAPI

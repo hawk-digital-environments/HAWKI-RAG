@@ -1,4 +1,4 @@
-# HAWKI RAG Svelte Migration
+# HAWKI RAG Svelte frontend
 
 Svelte owns browser page markup. The active shell is `frontend/index.html` and
 `frontend/main.js`; `npm run build` uses `vite.frontend.config.js`. The same
@@ -7,9 +7,10 @@ shell at the existing page URLs. The frontend build and development server requi
 
 `playground/urls.js` maps existing UI operation names onto Python `/v1` paths
 through `/ui-api/v1/`. `api.js` supplies the browser CSRF marker and adapts Python
-error envelopes. The server-side UI gateway requires HAWKI management approval
-and injects its externally issued service JWT. Browser JavaScript receives no
-service credential, signing key, or Laravel session. Direct HAWKI service traffic
+error envelopes. The server-side UI gateway injects its externally issued service
+JWT. The explicit local profile opens on loopback without browser login or
+credentials; other deployments delegate management approval to HAWKI. Browser
+JavaScript receives no service credential, signing key, or human session. Direct HAWKI service traffic
 uses `/v1/*` with its own JWT.
 
 ## Structure

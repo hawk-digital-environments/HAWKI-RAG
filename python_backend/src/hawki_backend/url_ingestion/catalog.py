@@ -7,6 +7,7 @@ import httpx
 
 from hawki_backend.deployment import http_url
 from .api import Principal, router, service
+from .errors import UrlIngestionError
 
 SETTING_KEYS = (
     "max_pages",
@@ -103,6 +104,21 @@ def catalog(request: Request, principal: Principal):
                     if instance.settings.scraper_token
                     else {},
                 )
+                if (
+                    key == "PROFILES"
+                    and response.status_code == 404
+                    and path == default
+                    and base == instance.settings.scraper_url.rstrip("/")
+                ):
+                    # Saved profiles belong to the optional crawler UI, not
+                    # permanent-job-v2. Confirm the real API is healthy before
+                    # reporting an absent catalog instead of hiding an outage.
+                    instance.crawler.require_safe_fetch([])
+                    return {
+                        "success": True,
+                        "tasks": [],
+                        "message": "This crawler has no saved profile/task catalog. URL ingestion remains available through the pipeline API.",
+                    }
                 if key == "TASKS" and response.status_code == 404:
                     values.append([])
                     continue
@@ -111,5 +127,12 @@ def catalog(request: Request, principal: Principal):
                     raise ValueError("Catalog too large")
                 values.append(entries(response.json(), key.lower()))
         return {"success": True, "tasks": normalize(*values)}
-    except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError):
+    except (
+        httpx.HTTPError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        KeyError,
+        UrlIngestionError,
+    ):
         raise HTTPException(503, "crawler_catalog_unavailable") from None

@@ -27,7 +27,7 @@ working directory or `PYTHONPATH`.
 ### `artifact_store/`
 
 Root-confined shared-volume operations, atomic manifests, and stable artifact
-identity. Laravel allocates paths and owns artifact lifecycle.
+identity. FastAPI allocates paths and owns artifact lifecycle.
 
 ### `contracts/`
 
@@ -59,7 +59,7 @@ It contains no retry, HTTP client, database, or framework behavior.
 ### `pipeline_callbacks/`
 
 Exact-body HMAC signing and retry-classified HTTP delivery for immutable worker
-events sent to Laravel.
+events sent to FastAPI.
 
 ### `text_processing/`
 
@@ -76,7 +76,7 @@ strategies are application-owned.
 ### `worker_runtime/`
 
 Temporal activity-executor construction, heartbeat delivery, retry-delay value
-objects, and worker logging/settings. Laravel callbacks and external jobs live
+objects, and worker logging/settings. FastAPI callbacks and external jobs live
 in their own packages.
 
 ### `retrieval/`

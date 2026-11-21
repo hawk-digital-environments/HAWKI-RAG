@@ -12,7 +12,6 @@ from uuid import uuid4
 
 import httpx
 
-ROOT = Path(__file__).resolve().parents[1]
 BASE = "http://localhost:8080/ui-api/v1"
 REPORT = Path("/tmp/rawki-orphan-graph-smoke.json")
 CONTENT = b"""# Project Cedar acceptance fixture
@@ -43,9 +42,7 @@ def main() -> None:
         save()
         print(json.dumps({name: value}), flush=True)
 
-    operator = (ROOT / ".secrets/ui-service/operator.secret").read_text().strip()
     with httpx.Client(
-        auth=("local-management", operator),
         timeout=240,
         trust_env=False,
         headers={"Origin": "http://localhost:8080", "X-Hawki-Browser": "1"},

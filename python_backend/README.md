@@ -3,12 +3,11 @@
 FastAPI owns the RAG API, dataset grants and new operational state. HAWKI owns
 human authentication. The backend accepts registered **service** JWT identities,
 tenant/scope claims and exact dataset grants; it has no human account, password,
-browser-session or Sanctum implementation.
+browser-session implementation.
 
 The current [deployment guide](../_documentation/Operations/python_runtime.md)
-documents provisioning and startup. Laravel/PHP and the old bridge server are
-removed from Compose and image targets. The [historical epoch notes](HISTORICAL_EPOCHS.md)
-retain the migration rationale and old compatibility contracts.
+documents provisioning and startup. Frozen contract fixtures live under
+`tests/fixtures`; test-only activation models live under `tests/historical`.
 
 ## Boundaries
 
@@ -25,12 +24,20 @@ retain the migration rationale and old compatibility contracts.
 
 ## UI service boundary
 
-Configure `HAWKI_RAG_UI_AUTHORIZATION_URL` to a HAWKI endpoint returning **204 only
+In the default `hawki` access mode, configure `HAWKI_RAG_UI_AUTHORIZATION_URL` to
+a HAWKI endpoint returning **204 only
 when this browser may manage the configured service tenant and dataset grants**.
 Missing configuration, redirects, login pages, errors and all other statuses deny
 access. The gate receives the original Cookie, method and URI; HAWKI owns login
 and policy. Set `HAWKI_RAG_UI_ORIGIN` to the exact browser origin for mutation
-checks. The local overlay uses a separate development access guard.
+checks.
+
+The explicit local overlay instead sets `HAWKI_RAG_UI_ACCESS_MODE=local`: nginx
+binds only `127.0.0.1:8080`, and the gateway requires loopback Host/origin and
+same-origin mutation markers. It has no browser username/password, Basic Auth,
+login, cookie identity or browser token. It still obtains its service JWT on the
+server. `hawki` remains the default access mode for other deployments; it delegates
+human management policy to HAWKI and never forwards browser Authorization.
 
 Mount `HAWKI_RAG_UI_CREDENTIAL_DIR` read-only, outside the checkout in deployments.
 It contains an issuer-rotated `access.jwt`, or `client.secret` plus the HTTPS
@@ -54,8 +61,8 @@ stays enabled and fails closed when its safety contract is unavailable.
 Preserve `/shared/.historical-orphans`, `/shared/.crawler-runtime/legacy-archive`,
 their reserved source identities and all referenced original files. The unresolved
 `gebuhren` orphan has custody UNKNOWN and deletion UNVERIFIED; it is not adopted,
-retried or deleted automatically. See the
-[custody and graph acceptance report](../_documentation/Operations/historical_orphan_graph_acceptance.md).
+retried or deleted automatically. Follow the
+[runtime preservation rules](../_documentation/Operations/python_runtime.md#historical-evidence-and-reservations).
 
 Old signed deletion callbacks and starts remain authenticated refusals. They
 cannot create an owner or receipt. Remaining `user` wire/schema values exist for
@@ -77,7 +84,7 @@ docker compose exec -T hawki_backend python -m hawki_backend.readiness --live
 ```
 
 The current runtime requires 26/26 PASS. Readiness never repairs state or replaces
-authorization. Historical cutover validators are test-only under
+authorization. Compatibility validators are test-only under
 `tests/historical`; they are not runtime/operator tools. Explicit grant migration
 scripts may inspect frozen historical reports, but their old live activation
 switches are retired.

@@ -1,8 +1,8 @@
 import '../resources/css/app.css';
 import '../resources/css/hawki-rag-theme.css';
-import '../resources/css/dashboard-dark-theme.css';
 import '../resources/css/datasets-dashboard.css';
 import '../resources/css/pipeline-health-dashboard.css';
+import '../resources/css/dashboard-dark-theme.css';
 import {apiFetch} from '../resources/js/api.js';
 import {apiUrl} from '../resources/js/playground/urls.js';
 

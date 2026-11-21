@@ -1,8 +1,6 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../Operations/python_runtime.md); the original text is retained as migration history.
-
 # Query & Retrieval
 
-Retrieval finds evidence inside the dataset authorized by Laravel. The bridge
+Retrieval finds evidence inside the dataset authorized by FastAPI. The query service
 combines searches for similar meaning, matching words, and optional graph
 relationships, then selects evidence for an optional model-generated answer.
 
@@ -39,7 +37,7 @@ This page explains the shared execution behavior.
 Users can change `top_k`, `generate`, `fast_mode`, `smart_lookup`, `is_optimized`,
 `preferred_tags`, and permitted metadata `filters` for each `POST /api/query`
 request while the system is running. These options control retrieval or answer
-generation for that query and leave the stored index in place. Laravel supplies
+generation for that query and leave the stored index in place. FastAPI supplies
 the authorized dataset's collection and embedding model. See the
 [query request contract](../Reference/rest_apis.md#query-request) for accepted fields.
 
@@ -52,7 +50,7 @@ the service's generation capability. See
 
 ```mermaid
 flowchart TB
-    Scope["Laravel identity / grant checks<br/>AuthorizedDatasetScope"] --> Prepare["Safety checks and query preparation"]
+    Scope["FastAPI identity / grant checks<br/>AuthorizedDatasetScope"] --> Prepare["Safety checks and query preparation"]
     Prepare --> Rewrite["Optional multimodal rewrite → query embedding"]
     Rewrite --> Dense["Scoped semantic search"]
     Dense --> Lexical["Scoped lexical search and scroll"]
@@ -72,7 +70,7 @@ The implementation entrypoint is
 
 ## 1. Bind trusted scope and prepare the query
 
-Laravel selects one concrete Qdrant collection and embedding provider/model.
+FastAPI selects one concrete Qdrant collection and embedding provider/model.
 The bridge locks the reader to that collection, removes reserved filter keys,
 and adds a mandatory `dataset_id` predicate to every vector and lexical path.
 It does not fall back to an unscoped collection or another embedding provider.
@@ -285,9 +283,8 @@ failure returns an error rather than a successful evidence-only response.
 | Reranking and second pass | Available | Available |
 | Answer generation | Separately controlled | Separately controlled |
 
-Laravel currently hard-codes graph query access on; see the
-[current scope-factory limitation](./authorization_dataset_scope.md#trusted-query-fields).
-That does not prove graph ingestion ran or facts exist.
+Graph query access follows the authorized dataset configuration. Enabling it
+does not prove graph ingestion ran or facts exist.
 
 ## Failures and logging
 
@@ -302,13 +299,10 @@ That does not prove graph ingestion ran or facts exist.
 | Neo4j availability failure | Empty graph evidence |
 | Generation failure | HTTP 502 |
 
-The bridge logs stage counts, timings, provider, dataset and request IDs.
+The query service logs stage counts, timings, provider, dataset and request IDs.
 Rewrite/expansion warnings use exception classes and bounded reasons;
 HTTP error translation redacts sensitive-looking values and returns stable
-messages for known upstream failures. This is not a promise that every log or
-public response is confidential: the MCP catch path logs the full query, and
-the Laravel REST proxy can return transport exception text or an invalid
-upstream body. Those are existing implementation limitations.
+messages for known upstream failures. Keep provider credentials and full document content out of operational logs.
 
 ## Relationship to RAG-Anything
 

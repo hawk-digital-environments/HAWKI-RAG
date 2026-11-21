@@ -1,5 +1,3 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../../Operations/python_runtime.md); the original text is retained as migration history.
-
 # Chunking & Embeddings
 
 A chunk is one retrievable passage. Each successfully embedded chunk becomes a
@@ -40,7 +38,7 @@ See [Batches and partial failures](#batches-and-partial-failures) for more detai
 
 ## Embedding Model Compatibility
 
-Laravel stores the dataset's embedding provider and model and sends them to the
+FastAPI stores the dataset's embedding provider and model and sends them to the
 indexer and query bridge. Indexing and queries must use the same embedding model
 so their vectors share a common meaning. Compatibility depends on the model as
 well as the vector dimension.
@@ -92,7 +90,7 @@ Qdrant writes are performed in batches. If one of the later writes fails, earlie
 successful batches may already be stored. Retrying the ingestion allows the
 system to process the incomplete document again. For direct-text ingestion, the document is considered complete only after all expected points have been written successfully.
 
-See [How text ingestion handles retries](./identity_incremental.md#how-retries-check-whether-direct-text-indexing-is-complete).
+See [How text ingestion handles retries](./identity_incremental.md#how-text-ingestion-handles-retries).
 
 ## System configuration and setup
 

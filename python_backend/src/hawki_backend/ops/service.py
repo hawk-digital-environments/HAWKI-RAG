@@ -176,7 +176,29 @@ class OpsService:
             }
             for name, models in self.settings.models.items()
         ]
+        records = sorted(
+            self.store.active_records(principal.tenant_id),
+            key=lambda row: (row.updated_at, row.created_at, row.dataset_id),
+            reverse=True,
+        )
+        latest = records[0] if records else None
+        provider = (
+            latest.embedding_provider
+            if latest
+            else os.environ.get("HAWKI_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama")
+        )
+        model = self.settings.models.get(provider)
+        runtime = {
+            "engine": "raganything",
+            "query_provider": provider,
+            "query_model": model.chat_model if model else None,
+            "embedding_model": latest.embedding_model
+            if latest
+            else os.environ.get("HAWKI_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"),
+            "latest_dataset": latest.dataset_id if latest else None,
+        }
         return {
+            "runtime": runtime,
             "ok": True,
             "authority": "python",
             "effective": True,

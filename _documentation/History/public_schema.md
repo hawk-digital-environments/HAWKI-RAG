@@ -1,6 +1,6 @@
 # Frozen public-schema history
 
-Read-only inventory on 2026-11-21 before rebuilding the Laravel-free runtime.
+Read-only inventory on 2026-11-21.
 These are retained historical tables, not a schema to create for fresh Python deployments.
 No reverse migration or table/row change was executed. Alembic owns only the new `hawki_backend` schema.
 

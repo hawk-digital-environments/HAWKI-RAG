@@ -1,9 +1,9 @@
-"""Browser transport protected by HAWKI's external management authorization.
+"""Server-side service transport for HAWKI or an explicit loopback-only UI.
 
 This process holds one deployment-owned, tenant-scoped service access token.
 It does not log in users, mint JWTs, create sessions, or resolve human identities.
-HAWKI must explicitly return 204 for an authorized management request. Missing
-configuration, redirects, ordinary login pages and upstream outages deny access.
+The default deployment requires HAWKI's external management approval. The local
+profile trusts its loopback ingress, without human credentials or a login flow.
 """
 
 from collections.abc import AsyncIterator
@@ -42,6 +42,7 @@ def configured_url(name: str, *, origin: bool = False) -> str:
         valid = (
             parts.scheme in {"http", "https"}
             and parts.hostname
+            and parts.port != 0
             and not parts.username
             and not parts.password
             and not parts.query
@@ -167,27 +168,35 @@ def health():
 
 async def authorize_management(request: Request) -> httpx.AsyncClient:
     origin = configured_url("HAWKI_RAG_UI_ORIGIN", origin=True)
-    authorize = configured_url("HAWKI_RAG_UI_AUTHORIZATION_URL")
     if request.method not in {"GET", "HEAD"} and (
         request.headers.get("origin") != origin
         or request.headers.get("x-hawki-browser") != "1"
     ):
         raise HTTPException(403, "ui_origin_refused")
     client = request.app.state.http
+    mode = os.environ.get("HAWKI_RAG_UI_ACCESS_MODE", "hawki")
+    if mode == "local":
+        # This mode is explicitly selected by the loopback-bound local overlay.
+        # Neither browser credentials nor forwarded headers establish trust.
+        loopback = {"localhost", "127.0.0.1", "::1"}
+        if urlsplit(origin).hostname not in loopback:
+            raise HTTPException(503, "ui_boundary_unavailable")
+        if (
+            request.url.hostname not in loopback
+            or request.headers.get("origin", origin) != origin
+            or request.headers.get("sec-fetch-site") == "cross-site"
+        ):
+            raise HTTPException(403, "ui_origin_refused")
+        return client
+    if mode != "hawki":
+        raise HTTPException(503, "ui_boundary_unavailable")
+    authorize = configured_url("HAWKI_RAG_UI_AUTHORIZATION_URL")
     headers = {
         "Cookie": request.headers.get("cookie", ""),
         "X-Original-Method": request.method,
         "X-Original-URI": request.url.path
         + ("?" + request.url.query if request.url.query else ""),
     }
-    # Opt-in for an external Basic access guard, including the explicit local
-    # development overlay. This credential goes only to the authorization gate;
-    # the FastAPI request still uses the independently issued service JWT.
-    authorization = request.headers.get("authorization", "")
-    if os.environ.get(
-        "HAWKI_RAG_UI_FORWARD_BASIC_AUTH", "false"
-    ).lower() == "true" and authorization.lower().startswith("basic "):
-        headers["Authorization"] = authorization
     try:
         gate = await client.get(
             authorize,

@@ -4,13 +4,10 @@ title: MCP Query Search Contract
 slug: /Operations/ragsearcher_triplets_update
 ---
 
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../Operations/python_runtime.md); the original text is retained as migration history.
-
-> Historical contract: Epoch 15A unregistered the RAG tool; Epoch 15B-1 removes
-> its unreachable `HawkiRagSearchTool` wrapper. `/mcp/hawki_rag` exposes only
-> `WebSearchTool`. The sections and wrapper links below describe the retired
-> implementation, not the current MCP surface. `RagSearcher` remains for legacy
-> semantic graph rollback. See [15B-1 preparation](../Operations/epoch15b_preparation.md).
+> **Frozen compatibility contract.** The request/response terminology below
+> describes the historical MCP adapter, not a deployed API. Preserve its wire
+> definitions as reference. Current service endpoints and authorization are in
+> [REST APIs](rest_apis.md) and [deployment](../Operations/python_runtime.md).
 
 # MCP Query Search Contract
 

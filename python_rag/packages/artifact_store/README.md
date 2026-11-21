@@ -7,7 +7,7 @@ object-storage client.
 
 ## Responsibility boundary
 
-Laravel owns the control-plane concerns:
+FastAPI owns the control-plane concerns:
 
 - validating and storing uploads;
 - allocating source, raw, Markdown, and manifest paths;
@@ -18,15 +18,15 @@ Laravel owns the control-plane concerns:
 
 Python workers own only activity-local artifact work:
 
-- copying a Laravel-owned upload into its raw stage directory;
-- resetting the specific retry-local stage directories Laravel supplied;
+- copying a FastAPI-owned upload into its raw stage directory;
+- resetting the specific retry-local stage directories FastAPI supplied;
 - listing and reading converted files;
 - writing the manifest that describes what the indexer actually processed.
 
 ## Supported storage
 
 Only a mounted local shared volume is supported. Every `LocalArtifactStore`
-instance requires the `storage.shared_root` supplied by Laravel, normally
+instance requires the `storage.shared_root` supplied by FastAPI, normally
 `/shared`. The root must be an existing directory and cannot be `/`. Every path
 is resolved, including symlinks, and must remain below that root.
 

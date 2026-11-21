@@ -1,95 +1,9 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](python_runtime.md); the original text is retained as migration history.
-
 # Monitoring & Observability
 
-Start with [Ingestion Recovery's authority table](./ingestion_recovery.md#choose-the-authoritative-system).
-Execution, projected status, indexed content, and graph facts can disagree after
-a partial failure; no single green indicator proves all four are current.
+Use `/ui-api/v1/ops/health` and `/ui-api/v1/ops/stats` through the browser service boundary. Direct `/v1/ops/*` traffic requires its service JWT/scopes. Health reports required runtime probes; stats report actual store counts. A healthy dependency does not prove an individual job completed.
 
-Epoch 15A: follow the [cutover and legacy drain runbook](epoch15a_cutover.md).
-Python is the default runtime authority; Laravel retains callback ingress and
-legacy telemetry. Missing canonical collections block Python stats/system-gate
-readiness. `rag:legacy-drain-status --json` reports work/history counts and
-unresolved retention gates; `safe_to_drop` remains false throughout 15A.
+The pipeline API lists authorized task runs, stage state/counters and preview/download logs. Managed previews expose allowlisted signed stage events, scoped to an authorized task. Earlier receipts without stage details have an intentional empty state. Shared worker stdout is not exposed as task-owned browser logs.
 
-## Choose the evidence
+Compare backend ownership, Temporal workflow/activity history, writer receipts, Qdrant/Neo4j evidence and exact source artifacts. Preserve IDs and timestamps during diagnosis. Do not print provider credentials, service JWTs, callback secrets or database passwords.
 
-| Surface | What it tells you | What it does not prove |
-|---|---|---|
-| `make health` | Container and selected endpoint checks | Successful ingestion or model inference; optional workers can be missing |
-| `GET /up` | Laravel liveness | Store, model, or worker readiness |
-| `GET /api/rag/health` | Selected runtime health report | End-to-end retrieval success |
-| `GET /api/health/system-gate` | Configured combined UI gate | Every source has finished |
-| `GET /api/pipeline/health` | Database, shared storage, Temporal and configured worker checks | All task queues have live pollers |
-| `GET /api/pipeline/tasks/{taskId}` | Task, jobs, sources, and projected stage state | Storage and callback state are synchronized |
-| `GET /api/pipeline/tasks/{taskId}/events` | Recorded pipeline events | Complete Temporal execution history |
-| Temporal UI | Workflow history, pending activities, attempts, task queues | Laravel received the terminal callback |
-| `GET /api/rag/monitor` | Selected runtime/config report plus labeled legacy summary, graph preview and recent failures | A complete per-dataset audit |
-
-`pipeline:workers` prints configured ownership. Workflow/indexer entries in
-`pipeline:health` include configuration-only results. Use Temporal poller/history
-evidence and a [smoke test](../Getting%20Started/2_setup.md#direct-text-smoke-test) to prove work executes.
-
-## Follow one ingestion
-
-1. Capture `task_id`, `job_id`, and `source_id`. Direct-text acceptance also
-   returns `workflow_id`; Laravel job records use `temporal_workflow_id` and
-   `temporal_run_id` for execution correlation.
-2. Inspect `GET /api/pipeline/tasks/{taskId}` for projected task/job/source state,
-   including `index_status` and `ready_at`. Record the last reported stage.
-3. Open that workflow and run in Temporal. Inspect its result, pending activity,
-   task queue, retry attempt, and terminal callback history.
-4. Read logs from the worker that owns the failing activity. Match workflow/run
-   and source identifiers; retain the callback `event_id` when diagnosing delivery.
-5. Check the dataset's Qdrant collection and source/document payloads. Verify
-   expected chunk coverage; for direct text, inspect completion state as well.
-6. When graph ingestion was enabled or required, check canonical Neo4j facts
-   using the dataset ID, namespace, and document provenance. A monitor preview
-   alone is insufficient.
-7. Use [Ingestion Recovery](./ingestion_recovery.md#diagnose-by-completed-boundary)
-   to choose a retry or targeted repair at the last completed boundary.
-
-Read bounded logs before restarting:
-
-```bash
-docker logs --tail=200 hawki_rag_bridge
-docker logs --tail=200 hawki_rag_indexer_worker
-docker logs --tail=200 hawki_rag_temporal_workflow_worker
-```
-
-These are container names from Compose. The general log stream is documented in
-[Run HAWKI RAG](../Getting%20Started/2_setup.md); queue/history diagnostics and
-callback signatures are in [Temporal Operations](./temporal_operations.md).
-
-## Monitor data and retention
-
-Laravel stores ingestion summaries and graph previews as JSONB in
-`rag_ingestion_artifacts`; graph failures live in `rag_graph_failures`.
-The monitor's `postgresql://rag_ingestion_artifacts/...` path is a compatibility
-identifier, not a file to open. The latest summary and latest nonempty graph
-preview can come from different records.
-
-Terminal callbacks persist this evidence. Retention pruning is opportunistic
-during callback handling, with a default of 30 days; a value below one disables
-pruning. It is not a dedicated scheduled cleanup service. See
-[configuration](./5_environment_db_queue.md#postgresql-and-laravel-state).
-
-Do not treat a preview or a summary count as canonical graph/vector state.
-For batch ingestion, counters and the carried batch summary are also different
-levels of aggregation; inspect source results when diagnosing an individual
-document.
-
-## Logging boundaries
-
-The supplied repository provides health/status endpoints, Temporal history,
-container logs, request IDs, and bounded event-logging helpers. It does **not**
-configure an application Prometheus metrics endpoint/scraper, OpenTelemetry
-tracing/exporter, or centralized log collector. Infrastructure services may
-have their own telemetry capabilities; those are not an integrated observability
-pipeline in this Compose stack. Correlate identifiers across the surfaces above.
-
-Python's observability utilities redact common secret keys and bound log values.
-The bridge carries request IDs and returns categorized HTTP failures. This does
-not make every log content-free: exception paths and Laravel MCP logging can
-include query text and backend details. Limit log access and avoid putting
-credentials into queries, metadata, or source URLs.
+Run the 26-check backend readiness and read-only Python deployment audit described in [deployment](python_runtime.md). Use [recovery](ingestion_recovery.md) for scoped retries and cleanup.

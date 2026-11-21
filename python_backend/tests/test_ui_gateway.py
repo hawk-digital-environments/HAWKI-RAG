@@ -1,4 +1,4 @@
-"""The browser boundary requires HAWKI management approval and hides credentials."""
+"""Explicit loopback access and HAWKI policy keep downstream credentials private."""
 
 import asyncio
 
@@ -22,6 +22,7 @@ def boundary(tmp_path, monkeypatch):
     token.write_text("server-only-service-jwt", encoding="utf-8")
     monkeypatch.setenv("HAWKI_RAG_UI_SERVICE_TOKEN_FILE", str(token))
     monkeypatch.delenv("HAWKI_RAG_UI_TOKEN_URL", raising=False)
+    monkeypatch.setenv("HAWKI_RAG_UI_ACCESS_MODE", "hawki")
     app.state.service_tokens = ServiceTokens()
     monkeypatch.setenv("HAWKI_RAG_UI_ORIGIN", "https://rag.test")
     monkeypatch.setenv("HAWKI_RAG_UI_BACKEND_URL", "http://backend.test")
@@ -31,7 +32,15 @@ def boundary(tmp_path, monkeypatch):
     return token
 
 
-def request(*, gate=204, method="GET", path="query/datasets", headers=None, body=None):
+def request(
+    *,
+    gate=204,
+    method="GET",
+    path="query/datasets",
+    headers=None,
+    body=None,
+    base_url="https://rag.test",
+):
     calls = []
 
     async def handler(wire):
@@ -50,7 +59,7 @@ def request(*, gate=204, method="GET", path="query/datasets", headers=None, body
         ) as upstream:
             app.state.http = upstream
             async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app), base_url="https://rag.test"
+                transport=httpx.ASGITransport(app=app), base_url=base_url
             ) as browser:
                 return await browser.request(
                     method, "/ui-api/v1/" + path, headers=headers, content=body
@@ -266,12 +275,132 @@ def test_oauth_service_credentials_are_exchanged_only_on_the_server(
     asyncio.run(run())
 
 
-def test_opt_in_basic_credential_goes_only_to_the_gate(boundary, monkeypatch):
+def test_browser_basic_is_never_forwarded_even_with_retired_flag(boundary, monkeypatch):
     monkeypatch.setenv("HAWKI_RAG_UI_FORWARD_BASIC_AUTH", "true")
     response, calls = request(headers={"Authorization": "Basic bG9jYWw6dGVzdA=="})
     assert response.status_code == 200
-    assert calls[0].headers["Authorization"] == "Basic bG9jYWw6dGVzdA=="
+    assert "authorization" not in calls[0].headers
     assert calls[1].headers["Authorization"] == "Bearer server-only-service-jwt"
     response, calls = request(headers={"Authorization": "Bearer browser-supplied"})
     assert response.status_code == 200
     assert "authorization" not in calls[0].headers
+
+
+@pytest.fixture
+def local_boundary(boundary, monkeypatch):
+    monkeypatch.setenv("HAWKI_RAG_UI_ACCESS_MODE", "local")
+    monkeypatch.setenv("HAWKI_RAG_UI_ORIGIN", "http://localhost:8080")
+    monkeypatch.delenv("HAWKI_RAG_UI_AUTHORIZATION_URL", raising=False)
+    return boundary
+
+
+@pytest.mark.parametrize("path", ["ops/stats", "ops/health", "query/datasets"])
+def test_loopback_ui_needs_no_browser_credentials_or_human_gate(local_boundary, path):
+    response, calls = request(path=path, base_url="http://localhost:8080")
+    assert response.status_code == 200
+    assert len(calls) == 1 and calls[0].url.host == "backend.test"
+    assert calls[0].headers["authorization"] == "Bearer server-only-service-jwt"
+    assert "cookie" not in calls[0].headers
+    assert "www-authenticate" not in response.headers
+    assert "set-cookie" not in response.headers
+    assert "server-only" not in response.text
+
+
+def test_local_mutations_use_origin_marker_and_only_server_bearer(local_boundary):
+    response, calls = request(
+        method="POST",
+        path="query",
+        base_url="http://localhost:8080",
+        headers={
+            "Origin": "http://localhost:8080",
+            "X-Hawki-Browser": "1",
+            "Authorization": "Basic browser-input",
+            "Cookie": "browser=untrusted",
+        },
+        body=b"{}",
+    )
+    assert response.status_code == 200 and len(calls) == 1
+    assert calls[0].headers["authorization"] == "Bearer server-only-service-jwt"
+    assert "cookie" not in calls[0].headers
+
+
+def test_local_multipart_upload_preserves_binary_bytes_boundary_and_length(
+    local_boundary,
+):
+    boundary = "rawki-binary-upload-boundary"
+    body = (
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="dataset_id"\r\n\r\nfiles\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="graph"\r\n\r\ntrue\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="fixture.bin"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        + bytes(range(256)) * 512
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+    content_type = f"multipart/form-data; boundary={boundary}"
+    response, calls = request(
+        method="POST",
+        path="documents",
+        base_url="http://localhost:8080",
+        headers={
+            "Origin": "http://localhost:8080",
+            "X-Hawki-Browser": "1",
+            "Content-Type": content_type,
+            "Idempotency-Key": "upload-one",
+        },
+        body=body,
+    )
+    assert response.status_code == 200 and len(calls) == 1
+    assert calls[0].url.path == "/v1/documents"
+    assert calls[0].content == body
+    assert calls[0].headers["content-type"] == content_type
+    assert int(calls[0].headers["content-length"]) == len(body)
+    assert calls[0].headers["idempotency-key"] == "upload-one"
+    assert calls[0].headers["authorization"] == "Bearer server-only-service-jwt"
+
+
+@pytest.mark.parametrize(
+    "method,headers",
+    [
+        ("GET", {"Origin": "https://attacker.test"}),
+        ("GET", {"Sec-Fetch-Site": "cross-site"}),
+        ("POST", {}),
+        ("DELETE", {"Origin": "http://localhost:8080"}),
+    ],
+)
+def test_local_cross_origin_and_unmarked_mutations_fail_before_service_call(
+    local_boundary, method, headers
+):
+    response, calls = request(
+        method=method, headers=headers, base_url="http://localhost:8080"
+    )
+    assert response.status_code == 403 and calls == []
+
+
+@pytest.mark.parametrize(
+    "origin,host,status",
+    [
+        ("https://rag.test", "http://localhost:8080", 503),
+        ("http://localhost:8080", "https://attacker.test", 403),
+        ("http://localhost:0", "http://localhost:8080", 503),
+    ],
+)
+def test_local_mode_cannot_be_enabled_for_nonloopback_or_invalid_origins(
+    local_boundary, monkeypatch, origin, host, status
+):
+    monkeypatch.setenv("HAWKI_RAG_UI_ORIGIN", origin)
+    response, calls = request(base_url=host)
+    assert response.status_code == status and calls == []
+
+
+def test_local_ui_fails_closed_when_its_service_credential_is_missing(local_boundary):
+    local_boundary.unlink()
+    response, calls = request(base_url="http://localhost:8080")
+    assert response.status_code == 503 and calls == []
+
+
+def test_unknown_ui_access_mode_never_calls_issuer_or_backend(boundary, monkeypatch):
+    monkeypatch.setenv("HAWKI_RAG_UI_ACCESS_MODE", "anonymous")
+    response, calls = request()
+    assert response.status_code == 503 and calls == []

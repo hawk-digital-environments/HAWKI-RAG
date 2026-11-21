@@ -2,6 +2,7 @@
   @component Full-page HAWKI-RAG playground for fast retrieval, source inspection, graph facts, and live system signals.
 -->
 <script lang="ts">
+    import {runtimePresentation} from '../../playground/runtime-presentation.js';
     import {apiFetch as fetch} from '../../api.js';
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
@@ -400,6 +401,7 @@
         const python = payload.authority === 'python';
         const bridge = asRecord(python ? payload.health : payload.bridge);
         const config = asRecord(payload.config);
+        const runtime = runtimePresentation(config.runtime);
         const latest = asRecord(python ? null : payload.latest_document_graph);
         const dataset = asRecord(asArray(config.datasets).find(item => asRecord(item).dataset_id === selectedDatasetId));
         const models = asRecord(asRecord(config.models)[textValue(dataset.embedding_provider)]);
@@ -414,11 +416,11 @@
             notice: python ? 'Python runtime settings are managed by the deployment.' : textValue(config.notice),
             bridgeOk: boolValue(bridge.ok),
             latencyMs: nullableNumber(bridge.latency_ms),
-            graphEngine: python ? 'Python graph ops' : textValue(config.graph_engine, 'unknown'),
-            graphModel: textValue(python ? models.chat_model : config.graph_model, 'unknown'),
-            embeddingModel: textValue(python ? dataset.embedding_model : config.embedding_model, 'unknown'),
+            graphEngine: python ? runtime.engine : textValue(config.graph_engine, 'unknown'),
+            graphModel: textValue(python ? runtime.queryModel : config.graph_model, 'unknown'),
+            embeddingModel: textValue(python ? runtime.embeddingModel : config.embedding_model, 'unknown'),
             latestDocument: textValue(latest.title || latest.document_id, 'none'),
-            latestDataset: textValue(latest.dataset_id, 'none'),
+            latestDataset: python ? runtime.latestDataset : textValue(latest.dataset_id, 'No datasets yet'),
             graphTriplets: nullableNumber(latest.graph_triplets),
             failures,
         };

@@ -1,21 +1,3 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../_documentation/Operations/python_runtime.md); the original text is retained as migration history.
-
 # Direct text ingestion
 
-The maintained API contract, dataset/token setup, executable smoke test,
-asynchronous status, retries, and source deletion are documented in
-[Direct Text Ingestion](../_documentation/Reference/direct_text_ingestion.md).
-
-This pointer preserves the earlier guide's location. A 202 response means
-asynchronous acceptance; readiness must be checked separately.
-
-## Python ownership option (Epoch 9)
-
-The default backend remains Laravel. With `TEXT_INGESTION_BACKEND=python`, the
-public routes and Sanctum `rag:text-ingest` contract remain compatible, while
-Python owns POST, signed completion and direct-text DELETE using internal
-`rag:ingest` plus exact Python dataset INGEST grants. There is no fallback or
-dual execution. See the [coordinated cutover and rollback guide](../_documentation/Operations/python_text_ingestion.md)
-for required real grant backfill, drift freeze, legacy inventory/drain gates and
-interrupted deletion recovery. Managed documents, URL and crawler ingestion
-remain Laravel-owned.
+The [current direct-text API guide](../_documentation/Reference/direct_text_ingestion.md) documents the Python-owned ingestion contract. Use the [deployment guide](../_documentation/Operations/python_runtime.md) for service JWT/JWKS, exact dataset grants, signed callbacks and readiness.

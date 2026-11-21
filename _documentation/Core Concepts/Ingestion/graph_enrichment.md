@@ -1,5 +1,3 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../../Operations/python_runtime.md); the original text is retained as migration history.
-
 # Ingestion with Graph Processing Enabled
 
 When graph processing is enabled for a website or uploaded file, the indexer
@@ -30,7 +28,7 @@ Neo4j, linked to the source document.
 
 Graph processing adds model calls and Neo4j writes to the ingestion work. Vector
 indexing finishes first, followed by graph extraction and storage. The
-[Scope and commits](#scope-and-commits) section explains how failures in that
+[Scope and commits](#scope-and-update-order) section explains how failures in that
 second step affect the stored data and ingestion status.
 
 ## When graph processing runs
@@ -38,7 +36,7 @@ second step affect the stored data and ingestion status.
 Website and uploaded-file ingestion normally use `RAG_INGEST_GRAPH` to control
 graph processing; `true` enables it, and the template default is `false`.
 Supported managed-document and upload requests can supply a `graph` option for
-that ingestion operation; Laravel carries the selection into the workflow input.
+that ingestion operation; FastAPI carries the selection into the workflow input.
 A converted document marked `converter_fallback=raganything_passthrough` also
 enables graph processing for its batch. Direct-text ingestion
 (`IngestTextWorkflow`) sets `graph=false` and performs vector indexing.
@@ -54,7 +52,7 @@ The internal `graph_only=true, graph=true` option is a maintenance mode: it
 extracts graph facts from the supplied documents while preserving existing
 vectors. It processes documents independently of the unchanged-content check.
 Its cleanup behavior and invocation requirements are described under
-[Graph repair and preview](#graph-repair-and-preview).
+[Graph repair and preview](#scope-and-update-order).
 
 ## Sources, documents, chunks, and facts
 
@@ -127,7 +125,7 @@ dataset graph.
 The adapter can clear extraction cache per document and run direct model-provider
 fallback extraction if the library path yields no usable triplets. Filtering can
 leave zero facts. Some adapter errors also produce an empty result, as described
-under [Empty results and extraction failures](#empty-results-and-extraction-failures).
+under [Empty results and extraction failures](#when-graph-extraction-returns-no-facts).
 Cache lifecycle and temporary graph cleanup are internal details.
 
 </details>

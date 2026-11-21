@@ -1,8 +1,7 @@
-"""Explicit local-only HTTPS service issuer and development access guard.
+"""Explicit local-only HTTPS OAuth/JWKS service issuer.
 
-No human identity records or sessions exist here. The development operator
-credential protects only the loopback UI; distinct client credentials obtain
-short-lived service JWTs. Production continues to use its external HAWKI gate.
+Only server-side client credentials obtain short-lived service JWTs. This
+internal service has no browser authorization, human credentials or sessions.
 """
 
 import base64
@@ -15,7 +14,7 @@ from pathlib import Path
 import time
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 import jwt
 
 ISSUER = "https://rawki-local-auth:8443"
@@ -40,7 +39,7 @@ async def lifespan(application: FastAPI):
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
-def credential(request: Request) -> tuple[str, str]:
+def client_credential(request: Request) -> tuple[str, str]:
     values = request.headers.getlist("authorization")
     try:
         if len(values) != 1 or len(values[0]) > 4096:
@@ -48,8 +47,10 @@ def credential(request: Request) -> tuple[str, str]:
         scheme, encoded = values[0].split()
         if scheme.lower() != "basic":
             raise ValueError()
-        user, secret = base64.b64decode(encoded, validate=True).decode().split(":", 1)
-        return user, hashlib.sha256(secret.encode()).hexdigest()
+        client_id, secret = (
+            base64.b64decode(encoded, validate=True).decode().split(":", 1)
+        )
+        return client_id, hashlib.sha256(secret.encode()).hexdigest()
     except (ValueError, UnicodeError):
         raise HTTPException(401, "credential_required") from None
 
@@ -64,21 +65,9 @@ def jwks(request: Request):
     return request.app.state.jwks
 
 
-@app.get("/authorize")
-def authorize(request: Request):
-    user, digest = credential(request)
-    guard = request.app.state.config["operator"]
-    if user != guard["username"] or not hmac.compare_digest(digest, guard["sha256"]):
-        raise HTTPException(401, "management_access_required")
-    path = request.headers.get("x-original-uri", "")
-    if not path.startswith(("/ui-api/v1/", "/ui/")):
-        raise HTTPException(403, "management_access_refused")
-    return Response(status_code=204, headers={"Cache-Control": "no-store"})
-
-
 @app.post("/token")
 async def token(request: Request):
-    client_id, digest = credential(request)
+    client_id, digest = client_credential(request)
     config = request.app.state.config
     client = config["clients"].get(client_id)
     if not client or not hmac.compare_digest(digest, client["sha256"]):

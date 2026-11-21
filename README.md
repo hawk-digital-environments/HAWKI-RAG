@@ -1,7 +1,7 @@
 # HAWKI RAG
 
 HAWKI RAG runs a static Svelte management frontend and Python retrieval/ingestion
-services. Laravel/PHP and its runtime/tooling have been removed.
+services.
 
 Browser → nginx frontend → `/ui-api/v1/*` → Python UI gateway → FastAPI.
 HAWKI services call FastAPI with issuer-validated service JWTs. HAWKI owns human
@@ -30,9 +30,8 @@ served by `docker/frontend.Dockerfile`.
 
 Historical `public.*` tables, the `gebuhren` orphan archive and original files,
 and crawler historical archives are preserved evidence. They must not be deleted
-or automatically adopted. See the [custody report](_documentation/Operations/historical_orphan_graph_acceptance.md)
-and [schema history](_documentation/History/public_schema.md). Laravel-era guides
-are marked historical; their old runtime commands are not operational instructions.
+or automatically adopted. See the [runtime preservation rules](_documentation/Operations/python_runtime.md#historical-evidence-and-reservations)
+and [schema history](_documentation/History/public_schema.md).
 
 Fast vector retrieval remains the default. Deep retrieval (`fast_mode: false`)
 includes available graph facts. New dataset graph support is controlled by the

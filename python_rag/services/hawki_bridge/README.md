@@ -1,41 +1,7 @@
-> **Historical compatibility package only.** No Compose service or Docker target
-> deploys this server. Current API/query/graph operations belong to `hawki_backend`;
-> use the [Python runtime guide](../../../_documentation/Operations/python_runtime.md).
-> The old service description below is retained as migration history.
+# HAWKI bridge compatibility package
 
-# HAWKI bridge
+This package preserves frozen query/graph wire behavior and test dependencies. It is not deployed as a Compose service or image target. Current API/query/graph operations belong to `hawki_backend`; use the [deployment guide](../../../_documentation/Operations/python_runtime.md).
 
-> Epoch 8: `/temporal/*` control endpoints are retired and return 410. Laravel
-> calls the authenticated Python backend instead; there is no bridge fallback.
-> Any Temporal endpoint examples below describe the historical surface. Follow
-> [Python workflow control](../../../_documentation/Operations/python_workflow_control.md)
-> for deployment and rollback. Query and graph reads remain on this bridge.
+Historical contracts and test fixtures may use Laravel-era names or signed control bytes. Keep those identifiers stable for compatibility/security regression tests. They do not create a human identity model or authorize live execution. Current workers use direct signed Python callbacks.
 
-`hawki_bridge` provides Laravel-authorized query/graph-read APIs and health. It does not provide canonical Qdrant/Neo4j ingestion
-writes or resolve the caller's dataset grants.
-
-The handbook owns the full [architecture](../../../_documentation/Getting%20Started/3_introduction_architecture.md),
-[retrieval flow](../../../_documentation/Core%20Concepts/query_retrieval.md),
-[authorization boundary](../../../_documentation/Core%20Concepts/authorization_dataset_scope.md),
-and [HTTP contracts](../../../_documentation/Reference/rest_apis.md).
-
-## Entrypoint
-
-[src/hawki_bridge/main.py](src/hawki_bridge/main.py) exports the ASGI application
-`hawki_bridge.main:app`. The `hawki-bridge` console command declared in
-[pyproject.toml](pyproject.toml) starts it on port 8000 for local execution.
-Use the handbook's [workspace setup](../../../_documentation/Developer/testing.md#python-workspace)
-before running local commands; container startup belongs to
-[Run HAWKI RAG](../../../_documentation/Getting%20Started/2_setup.md).
-
-## Tests
-
-Tests live in [tests/](tests/). From `python_rag`, run:
-
-```bash
-uv run --group test --package hawki-bridge pytest services/hawki_bridge/tests
-```
-
-The `integration/` category requires live Qdrant. See
-[Testing](../../../_documentation/Developer/testing.md) for locked environment
-commands and infrastructure requirements.
+Run applicable package characterization tests through the [workspace testing guide](../../../_documentation/Developer/testing.md). Do not start a separate bridge service for current ingestion.

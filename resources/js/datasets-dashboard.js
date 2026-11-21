@@ -27,23 +27,10 @@ function bootDatasetsDashboard() {
         updated: document.getElementById('datasets-updated'),
         info: document.getElementById('datasets-info'),
         metrics: document.getElementById('datasets-metrics'),
-        taskCount: document.getElementById('datasets-task-count'),
         documentCount: document.getElementById('datasets-document-count'),
         documentSearchForm: document.getElementById('datasets-document-search-form'),
         documentSearch: document.getElementById('datasets-document-search'),
-        documentState: document.getElementById('datasets-document-state'),
-        documentUpdated: document.getElementById('datasets-document-updated'),
-        documentInfo: document.getElementById('datasets-document-info'),
-        documentMetrics: document.getElementById('datasets-document-metrics'),
-        documentPreviewNote: document.getElementById('datasets-document-preview-note'),
-        documentMarkdownPreview: document.getElementById('datasets-document-markdown-preview'),
-        documentJobsCount: document.getElementById('datasets-document-jobs-count'),
-        documentRelatedJobs: document.getElementById('datasets-document-related-jobs'),
-        documentMetadata: document.getElementById('datasets-document-metadata'),
-        ingestionCount: document.getElementById('datasets-ingestion-count'),
-        tasks: document.getElementById('datasets-tasks'),
         documents: document.getElementById('datasets-documents'),
-        ingestionHistory: document.getElementById('datasets-ingestion-history'),
     };
 
     const state = {
@@ -137,21 +124,6 @@ function bootDatasetsDashboard() {
         return pill;
     }
 
-    function isFailedStatus(status) {
-        return String(status || '').toLowerCase() === 'failed';
-    }
-
-    function makeLink(href, text) {
-        if (!href || !text) return valueOrDash(text);
-
-        const link = document.createElement('a');
-        link.href = href;
-        link.textContent = text;
-        link.className = 'table-link';
-
-        return link;
-    }
-
     function syncUrl() {
         const next = new URL(window.location.href);
         next.search = '';
@@ -180,41 +152,14 @@ function bootDatasetsDashboard() {
         return button;
     }
 
-    function retryTaskButton(task) {
-        if (!isFailedStatus(task.status) || !task.task_id) {
-            return '-';
-        }
-
-        return actionButton('Retry', () => retryTask(task.task_id), 'Retry failed.');
-    }
-
-    function retryJobButton(job) {
-        if (!isFailedStatus(job.status) || !job.job_id) {
-            return '-';
-        }
-
-        return actionButton('Retry', () => retryJob(job.job_id), 'Retry failed.');
-    }
-
-    function openDocumentButton(doc) {
-        if (!doc.id) {
-            return '-';
-        }
-
-        const button = actionButton(
-            doc.id === state.selectedDocumentId ? 'Open' : 'Open',
-            () => loadDocument(doc.id),
-            'Document load failed.',
-        );
-        button.disabled = doc.id === state.selectedDocumentId;
-
-        return button;
-    }
-
     function documentActions(doc) {
         const actions = document.createElement('span');
         actions.className = 'evidence-stack';
-        actions.append(openDocumentButton(doc));
+        const download = document.createElement('a');
+        download.className = 'inline-button';
+        download.textContent = 'Download';
+        download.href = apiUrl(`documents/uploads/download?document_id=${encodeURIComponent(doc.id)}`);
+        actions.append(download);
         if (doc.id && doc.status !== 'deleted') {
             actions.append(actionButton(
                 doc.status === 'deleting' ? 'Retry deletion' : 'Delete',
@@ -316,8 +261,6 @@ function bootDatasetsDashboard() {
 
         renderInfo(dataset);
         renderMetrics(dataset);
-        renderTasks(dataset.tasks || []);
-        renderIngestionHistory(dataset.ingestion_history || []);
     }
 
     function renderInfo(dataset) {
@@ -368,17 +311,6 @@ function bootDatasetsDashboard() {
         });
     }
 
-    function renderTasks(tasks) {
-        setText(els.taskCount, `${tasks.length} task${tasks.length === 1 ? '' : 's'}`);
-        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Finished', 'Action'], tasks, (task) => [
-            task.task_id,
-            statusPill(task.status),
-            task.counters?.jobs_total ?? 0,
-            formatDate(task.finished_at),
-            retryTaskButton(task),
-        ]);
-    }
-
     function renderDocuments(documents) {
         setText(els.documentCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
         renderTable(els.documents, ['Document', 'Status', 'Evidence', 'Source', 'Updated', 'Action'], documents, (doc) => [
@@ -391,111 +323,7 @@ function bootDatasetsDashboard() {
         ], 'No documents found for this dataset.');
     }
 
-    function renderDocument(doc) {
-        state.selectedDocumentId = doc.id;
-        localStorage.setItem('hawkiDatasetsDashboardDocumentId', doc.id);
-        setText(els.documentUpdated, `Updated ${formatDate(doc.updated_at || new Date().toISOString())}`);
-        els.documentState.className = `status-pill ${statusClass(doc.status)}`;
-        renderStatusIndicator(els.documentState, doc.status);
-
-        renderDocumentInfo(doc);
-        renderDocumentMetrics(doc);
-        renderMarkdown(doc);
-        renderRelatedJobs(doc.related_jobs || []);
-        setText(els.documentMetadata, JSON.stringify(doc.metadata || {}, null, 2));
-        renderDocuments(state.documents);
-        syncUrl();
-    }
-
-    function renderDocumentInfo(doc) {
-        els.documentInfo.innerHTML = '';
-
-        [
-            ['Document', doc.title || doc.original_filename || doc.id],
-            ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.dataset_id || '')}`, doc.dataset_id)],
-            ['Status', statusPill(doc.status)],
-            ['Source URL', doc.source_url],
-            ['Content type', doc.content_type],
-            ['Ingested at', formatDate(doc.ingested_at)],
-        ].forEach(([label, value]) => {
-            const wrapper = document.createElement('div');
-            const term = document.createElement('dt');
-            const description = document.createElement('dd');
-            term.textContent = label;
-            if (value instanceof HTMLElement) {
-                description.appendChild(value);
-            } else {
-                description.textContent = valueOrDash(value);
-            }
-            wrapper.append(term, description);
-            els.documentInfo.appendChild(wrapper);
-        });
-    }
-
-    function renderDocumentMetrics(doc) {
-        els.documentMetrics.innerHTML = '';
-        [
-            ['Qdrant points', doc.qdrant_point_count ?? '-', doc.qdrant_collection || doc.collection],
-            ['Neo4j entities', doc.neo4j_entity_count ?? '-', doc.neo4j_namespace || doc.neo4j_status],
-            ['Neo4j relations', doc.neo4j_relation_count ?? '-', doc.neo4j_namespace || doc.neo4j_status],
-            ['File size', doc.file_size ? `${doc.file_size} bytes` : '-', doc.content_type],
-        ].forEach(([label, value, caption]) => {
-            const item = document.createElement('div');
-            item.className = 'metric-item';
-            const strong = document.createElement('strong');
-            strong.textContent = valueOrDash(value);
-            const span = document.createElement('span');
-            span.textContent = label;
-            const small = document.createElement('small');
-            small.textContent = valueOrDash(caption);
-            item.append(strong, span, small);
-            els.documentMetrics.appendChild(item);
-        });
-    }
-
-    function renderMarkdown(doc) {
-        const preview = doc.markdown_preview || '';
-        if (preview) {
-            setText(els.documentMarkdownPreview, preview);
-            setText(
-                els.documentPreviewNote,
-                doc.markdown_preview_truncated
-                    ? `Preview is truncated from ${doc.markdown_preview_path || doc.local_path}.`
-                    : `Preview from ${doc.markdown_preview_path || doc.local_path}.`,
-            );
-            els.documentMarkdownPreview.dataset.empty = 'false';
-            return;
-        }
-
-        setText(els.documentMarkdownPreview, doc.markdown_preview_error || 'No extracted Markdown preview is available.');
-        setText(els.documentPreviewNote, doc.markdown_preview_error || 'Preview reads the recorded local path.');
-        els.documentMarkdownPreview.dataset.empty = 'true';
-    }
-
-    function renderRelatedJobs(jobs) {
-        setText(els.documentJobsCount, `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`);
-        renderTable(els.documentRelatedJobs, ['Job', 'Type', 'Status', 'Finished', 'Error', 'Action'], jobs, (job) => [
-            job.job_id,
-            job.job_type,
-            statusPill(job.status),
-            formatDate(job.finished_at),
-            job.error_message,
-            retryJobButton(job),
-        ]);
-    }
-
-    function renderIngestionHistory(history) {
-        setText(els.ingestionCount, `${history.length} ingestion job${history.length === 1 ? '' : 's'} shown`);
-        renderTable(els.ingestionHistory, ['Job', 'Status', 'Finished', 'Error', 'Action'], history, (job) => [
-            job.job_id,
-            statusPill(job.status),
-            formatDate(job.finished_at),
-            job.error_message,
-            retryJobButton(job),
-        ]);
-    }
-
-    function renderTable(container, headers, rows, mapper, emptyMessage = 'Nothing recorded yet.') {
+    function renderTable(container, headers, rows, mapper, emptyMessage = 'No documents found for this dataset.') {
         if (!container) return;
         container.innerHTML = '';
         if (rows.length === 0) {
@@ -625,7 +453,6 @@ function bootDatasetsDashboard() {
         if (!state.selectedDatasetId) {
             state.documents = [];
             renderDocuments([]);
-            clearDocumentDetail();
             return;
         }
 
@@ -649,47 +476,11 @@ function bootDatasetsDashboard() {
         renderDocuments(state.documents);
 
         if (state.selectedDocumentId) {
-            await loadDocument(state.selectedDocumentId, { renderList: false });
+            localStorage.setItem('hawkiDatasetsDashboardDocumentId', state.selectedDocumentId);
         } else {
             localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
-            clearDocumentDetail();
-            syncUrl();
         }
-    }
-
-    async function loadDocument(documentId, { renderList = true } = {}) {
-        if (!documentId) return;
-        state.selectedDocumentId = documentId;
-        localStorage.setItem('hawkiDatasetsDashboardDocumentId', documentId);
-        setStatus(`Loading document ${documentId}...`);
-
-        const data = await requestJson(`documents/${encodeURIComponent(documentId)}`);
-        if (data.document?.dataset_id && data.document.dataset_id !== state.selectedDatasetId) {
-            state.selectedDatasetId = data.document.dataset_id;
-            localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
-        }
-
-        renderDocument(data.document);
-
-        if (renderList) {
-            renderDocuments(state.documents);
-        }
-
-        setStatus(`Showing document ${documentId}.`);
-    }
-
-    async function retryTask(taskId) {
-        setStatus(`Retrying failed jobs for ${taskId}...`);
-        await requestJson(`pipeline/recovery/tasks/${encodeURIComponent(taskId)}/retry-failed`, { method: 'POST' });
-        await loadDataset(state.selectedDatasetId, { renderList: false });
-        setStatus(`Queued retry for ${taskId}.`, 'success');
-    }
-
-    async function retryJob(jobId) {
-        setStatus(`Retrying ${jobId}...`);
-        await requestJson(`pipeline/recovery/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' });
-        await loadDataset(state.selectedDatasetId, { renderList: false });
-        setStatus(`Queued retry for ${jobId}.`, 'success');
+        syncUrl();
     }
 
     async function deleteDocument(doc) {
@@ -730,37 +521,17 @@ function bootDatasetsDashboard() {
         setStatus(data.message || `Dataset ${dataset.dataset_id} is hidden; cleanup continues in the background.`, 'success');
     }
 
-    function clearDocumentDetail() {
-        setText(els.documentUpdated, 'No document loaded.');
-        if (els.documentState) {
-            els.documentState.className = 'status-pill is-idle';
-            renderStatusIndicator(els.documentState, 'idle');
-        }
-        [els.documentInfo, els.documentMetrics, els.documentRelatedJobs].filter(Boolean).forEach((container) => {
-            container.innerHTML = '';
-            renderEmpty(container, 'Nothing to show yet.');
-        });
-        setText(els.documentPreviewNote, 'Preview reads the recorded local path.');
-        setText(els.documentMarkdownPreview, 'No extracted Markdown preview is available.');
-        if (els.documentMarkdownPreview) {
-            els.documentMarkdownPreview.dataset.empty = 'true';
-        }
-        setText(els.documentMetadata, '{}');
-        setText(els.documentJobsCount, '0 jobs');
-    }
-
     function clearDetail() {
         state.selectedDataset = null;
         setStatus('No datasets found.');
         setText(els.updated, 'No dataset loaded.');
-        [els.info, els.metrics, els.tasks, els.documents, els.ingestionHistory]
+        [els.info, els.metrics, els.documents]
             .filter(Boolean)
             .forEach((container) => {
                 container.innerHTML = '';
                 renderEmpty(container, 'Nothing to show yet.');
             });
-        [els.taskCount, els.documentCount, els.ingestionCount].forEach((el) => setText(el, '0'));
-        clearDocumentDetail();
+        setText(els.documentCount, '0');
     }
 
     function startPolling() {

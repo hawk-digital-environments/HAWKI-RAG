@@ -1,13 +1,11 @@
-> **Historical Laravel-era reference.** The application/runtime described below has been removed. Do not run its Laravel/PHP commands. Use the [current Python deployment guide](../Operations/python_runtime.md); the original text is retained as migration history.
-
 # Storage: Vectors, Graphs & Artifacts
 
 Each store answers a different question. They are not interchangeable replicas.
 
 | Store | State | Authority |
 |---|---|---|
-| PostgreSQL application database | Datasets, grants, tasks, sources, jobs, managed documents, worker-event receipts, monitor artifacts | Laravel's application records and operator projections |
-| Temporal persistence | Workflow history and execution state, separate from Laravel tables | Temporal execution truth |
+| PostgreSQL application database | Datasets, grants, tasks, sources, jobs, managed documents, worker-event receipts, monitor artifacts | FastAPI operational records |
+| Temporal persistence | Workflow history and execution state, separate from backend operational tables | Temporal execution truth |
 | Qdrant | Chunk text and metadata alongside embeddings; content hashes and direct-text completion markers | What is indexed and the state used for incremental decisions |
 | Neo4j | Canonical normalized entities/relations with dataset namespace and document provenance | What graph facts exist |
 | Shared volume | Raw uploads/crawl files, Markdown, metadata sidecars, manifests | Artifact handoff and source material for indexing |
@@ -42,18 +40,17 @@ it empty.
 For an existing collection, the indexer confirms its existence and proceeds with
 its stored dimension and distance settings. A dimension mismatch can cause a
 point write to fail. Before changing the embedding model or collection settings,
-follow the [embedding compatibility and migration guidance](./Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant).
+follow the [embedding compatibility and migration guidance](./Ingestion/chunking_embeddings.md#embedding-model-compatibility).
 
-During a query, Laravel supplies the collection selected for the authorized
-dataset. The query bridge searches that collection and applies a mandatory
+During a query, FastAPI supplies the collection selected for the authorized
+dataset. The query service searches that collection and applies a mandatory
 `dataset_id` payload filter to restrict results to that dataset. If the collection
 is missing, the query returns `dataset_not_ready` (HTTP 503); collection creation
 takes place during ingestion.
 
 The indexer also reads source identity, content hashes, and direct-text completion
 markers from Qdrant payloads to decide whether to skip, retry, or replace a
-document. Laravel's PostgreSQL `ingested_pages` records serve application and
-history needs. [Identity & Incremental Ingestion](./Ingestion/identity_incremental.md)
+document. FastAPI stores operational ownership in its dedicated PostgreSQL schema. [Identity & Incremental Ingestion](./Ingestion/identity_incremental.md)
 explains how the indexer uses the stored points to make those decisions.
 
 For a full explanation of Qdrant's concepts, please refer to the official
@@ -83,8 +80,8 @@ documentation.
 
 ## Shared storage
 
-The named Docker volume is `rawki_shared_storage`. Laravel and activity workers
-share `/shared`; Laravel also mounts the volume at `/app/shared`.
+The named Docker volume is `rawki_shared_storage`. FastAPI and activity workers
+share `/shared`.
 The application initializes ownership/permissions at startup.
 
 Paths must stay beneath the configured canonical shared root. The artifact
@@ -93,12 +90,11 @@ Remote object-storage settings do not enable an alternative ingestion handoff.
 
 ## Consistency and backups
 
-Qdrant writes precede graph writes; callbacks update Laravel separately.
+Qdrant writes precede graph writes; signed callbacks update FastAPI state separately.
 A snapshot of only one store is not a full recoverable application backup.
 
 Preserve the application database, Temporal persistence, Qdrant, Neo4j, shared
-artifacts, the host-mounted Laravel `storage/` directory, and installation
-secrets. The repository does not provide a coordinated cross-store backup/restore
+artifacts, protected archive evidence, and installation secrets. The repository does not provide a coordinated cross-store backup/restore
 command. Quiesce ingestion and coordinate snapshots operationally.
 
 For mismatched state, begin with

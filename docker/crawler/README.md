@@ -1,6 +1,6 @@
 # Local permanent-job-v2 crawler
 
-This is the explicit local cutover runtime. It exports CustomCrawler revision
+This is the explicit local crawler runtime. It exports CustomCrawler revision
 `1c327244fed3b6f99ad08ad9203814942bc10f26` from an existing local Git repository
 and applies `permanent-job-v2.patch`. The external checkout, its selected branch,
 the old crawler container and production are untouched.
@@ -70,7 +70,7 @@ docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml \
 
 These workers poll dedicated `rawki-local-*` queues and send the existing signed
 callbacks directly to Python. They cannot consume historical queues. Historical
-worker ownership still requires its separate drain/handoff.
+workers cannot consume these dedicated queues.
 
 Build and run the selected crawler lifecycle/network tests:
 
@@ -132,7 +132,7 @@ docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml \
 Unknown legacy receipts remain unsealed and consume capacity until legitimately
 reconciled. Never delete or mark them drained to create admission capacity.
 
-The historical handoff adds an explicit offline archive sidecar for the four
+The offline archive sidecar preserves frozen records for the four
 inventoried imports. `archive_legacy.py` requires stopped producers and recorded
 empty queues/executions, takes the exclusive runtime lock, and writes only
 `/shared/.crawler-runtime/legacy-archive`. It refuses to overwrite an archive.

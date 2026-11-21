@@ -131,6 +131,7 @@ services:
       SSL_CERT_FILE: /run/local-auth/ca-bundle.pem
       TEMPORAL_CLIENT_IDENTITY: hawki-rag-python-local
       EXTERNAL_SCRAPER_URL: http://rawki-local-crawler:8080
+      CUSTOM_CRAWLER_TASK_UI_URL: http://rawki-local-crawler:8080
       HAWKI_BACKEND_DATASET_GRAPH_ENABLED: "true"
       HAWKI_BACKEND_HISTORICAL_ARCHIVE_ROOT: /shared/.historical-orphans
     volumes:
@@ -145,23 +146,22 @@ services:
     environment:
       SSL_CERT_FILE: /run/local-auth/ca-bundle.pem
       HAWKI_RAG_UI_ORIGIN: http://localhost:8080
-      HAWKI_RAG_UI_AUTHORIZATION_URL: https://rawki-local-auth:8443/authorize
+      HAWKI_RAG_UI_ACCESS_MODE: local
+      HAWKI_RAG_UI_AUTHORIZATION_URL: ""
       HAWKI_RAG_UI_TOKEN_URL: https://rawki-local-auth:8443/token
       HAWKI_RAG_UI_CLIENT_ID: rag-management
-      HAWKI_RAG_UI_FORWARD_BASIC_AUTH: "true"
       HAWKI_RAG_UI_SCOPES: rag:query rag:ingest rag:datasets:manage
       EXTERNAL_SCRAPER_URL: http://rawki-local-crawler:8080
     volumes:
       - ./.secrets/ui-service/ca-bundle.pem:/run/local-auth/ca-bundle.pem:ro
 
   hawki_rag_frontend:
-    # Local access credentials are distinct from API service credentials. The
-    # guard lives in nginx and the development gate, never browser JavaScript.
+    # Browser access trusts only the local loopback ingress. Service credentials
+    # remain in the gateway's server-side OAuth/JWKS boundary.
     ports: !override
       - "127.0.0.1:8080:80"
     volumes:
       - ./.secrets/ui-service/frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./.secrets/ui-service/htpasswd:/run/local-auth/htpasswd:ro
 
 volumes:
   rawki_local_reranker_cache:

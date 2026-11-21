@@ -1,6 +1,8 @@
+import {stageLogPresentation} from './stage-log-presentation.js';
 import {apiFetch as fetch} from '../api.js';
 import { apiUrl } from './urls.js';
 import { createPipelineStarter } from './pipeline-start.js';
+import { grantReadyDatasetQuery } from './upload-dataset.js';
 
 const unavailableTasksMessage = 'Please build the HAWKI-Scraper for getting available tasks.';
 
@@ -36,6 +38,8 @@ let runListPollTimer = null;
 let taskCatalogLoading = false;
 let taskRunLoading = false;
 const retryingPipelineTasks = new Set();
+const queryReadyDatasets = new Set();
+const expandedStageLogs = new Set();
 
 localStorage.removeItem('hawkiPipelineJobId');
 localStorage.removeItem('hawkiPipelineRunTaskId');
@@ -334,6 +338,35 @@ function renderStageCard(name, stage = {}) {
         card.appendChild(errorBox);
     }
 
+    const details = document.createElement('details');
+    details.className = 'pipeline-inline-logs';
+    const toggle = document.createElement('summary');
+    toggle.textContent = 'Stage logs';
+    const preview = document.createElement('pre');
+    preview.className = 'pipeline-stage-log-viewer';
+    preview.textContent = 'Open to load stage events.';
+    details.append(toggle, preview);
+    download.hidden = true;
+    const taskId = activePipelineTaskId;
+    async function refreshPreview() {
+        preview.textContent = 'Loading stage logs...';
+        try {
+            const response = await fetch(apiUrl(stageLogPath(logStage)), {headers: {Accept: 'application/json'}});
+            const data = await parseResponseJson(response);
+            if (!response.ok || !data.success) throw new Error(data.message || `Stage logs failed (${response.status})`);
+            if (taskId !== activePipelineTaskId) return;
+            const view = stageLogPresentation(data.log);
+            preview.textContent = view.text;
+            download.hidden = !view.downloadable;
+        } catch (error) { preview.textContent = error.message || 'Stage logs unavailable.'; }
+    }
+    details.open = expandedStageLogs.has(logStage);
+    details.addEventListener('toggle', () => {
+        if (details.open) { expandedStageLogs.add(logStage); refreshPreview(); }
+        else expandedStageLogs.delete(logStage);
+    });
+    logs.addEventListener('click', () => { details.open = true; });
+    card.appendChild(details);
     updateStageLogActions();
 
     return card;
@@ -1065,6 +1098,10 @@ async function pollPipeline() {
             if (!response.ok || !data.success || !data.task) return;
             renderPipelineTask(data.task);
             updatePipelineTaskRun(data.task);
+            if (data.task.status === 'completed' && !queryReadyDatasets.has(data.task.dataset_id)) {
+                await grantReadyDatasetQuery(data.task);
+                queryReadyDatasets.add(data.task.dataset_id);
+            }
             if (['completed', 'failed', 'cancelled'].includes(data.task.status)) {
                 pushActivity('Pipeline', `task ${data.task.task_id}: ${data.task.status}`);
             }

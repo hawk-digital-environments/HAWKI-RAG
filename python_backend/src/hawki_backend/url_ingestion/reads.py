@@ -102,6 +102,41 @@ def jobs(service, principal, filters):
 
 def timeline(service, principal, task_id, filters):
     payload = task(service, principal, task_id)["task"]
+    if payload.get("owner") == "managed":
+        from hawki_backend.managed_documents.schema import (
+            events as managed_events,
+            revisions,
+        )
+
+        with service.repository.engine.connect() as connection:
+            rows = connection.execute(
+                sa.select(managed_events.c.receipt)
+                .join(
+                    revisions, managed_events.c.revision_id == revisions.c.revision_id
+                )
+                .where(
+                    revisions.c.tenant_id == principal.tenant_id,
+                    revisions.c.task_id == task_id,
+                    managed_events.c.kind == "completion",
+                )
+            ).scalars()
+            result = [
+                receipt["stage_event"]
+                for receipt in rows
+                if not receipt.get("ignored") and receipt.get("stage_event")
+            ]
+        result = [
+            item | {"at": item["timestamp"]}
+            for item in result
+            if not filters.get("stage") or item["stage"] == filters["stage"]
+        ]
+        result.sort(key=lambda item: (item["at"], item["event_id"]))
+        return {
+            "success": True,
+            "task_id": task_id,
+            "events": result[-(filters.get("limit") or 5000) :],
+            "filters": {},
+        }
     operations = [
         job["url_ingestion_operation_id"]
         for job in payload["jobs"]
@@ -315,6 +350,32 @@ def other_tasks(service, principal):
                         "failed": int(failed),
                     },
                 }
+                if owner == "managed":
+                    from hawki_backend.managed_documents.schema import (
+                        events as managed_events,
+                    )
+
+                    stage_events = [
+                        receipt["stage_event"]
+                        for receipt in connection.execute(
+                            sa.select(managed_events.c.receipt).where(
+                                managed_events.c.revision_id == row["revision_id"],
+                                managed_events.c.kind == "completion",
+                            )
+                        ).scalars()
+                        if not receipt.get("ignored") and receipt.get("stage_event")
+                    ]
+                    stage_events.sort(key=lambda event: event["timestamp"])
+                    task["stages"] = {
+                        stage: {"status": "not_tracked", "counts": {"total": 0}}
+                        for stage in ("scrape", "convert", "ingest")
+                    }
+                    for event in stage_events:
+                        state = event["status"]
+                        task["stages"][event["stage"]] = {
+                            "status": state,
+                            "counts": {"total": 1, state: 1},
+                        }
                 result.append(task)
     return result
 

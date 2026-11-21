@@ -3,6 +3,7 @@
 -->
 <script lang="ts">
     import {apiFetch as fetch} from '../../api.js';
+    import {prepareUploadDataset} from '../../playground/upload-dataset.js';
     import type {HTMLAttributes} from 'svelte/elements';
 
     type UploadTone = 'info' | 'warn' | 'error' | 'success';
@@ -152,6 +153,7 @@
         setStatus(customConverterMode ? 'Queueing file through custom converter...' : 'Queueing native RAGAnything ingestion...');
 
         try {
+            await prepareUploadDataset(datasetId.trim() || 'controller-uploads');
             const response = await fetch(endpoint, {
                 method: 'POST',
                 credentials: 'same-origin',

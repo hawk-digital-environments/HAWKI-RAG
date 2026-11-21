@@ -4,7 +4,6 @@ Run with python_backend/.venv/bin/python. This step never connects to a database
 or changes running containers. It refuses remote Docker endpoints.
 """
 
-import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -159,6 +158,28 @@ def certificate_material(private):
     )
 
 
+def local_frontend_config() -> str:
+    """Keep the local UI loopback-only without browser credential handling."""
+    nginx = (ROOT / "docker/frontend/nginx.conf").read_text(encoding="utf-8")
+    return nginx.replace(
+        "    server_name _;",
+        "    server_name localhost 127.0.0.1;\n    if ($host !~ ^(localhost|127\\.0\\.0\\.1)$) { return 444; }",
+    )
+
+
+def remove_browser_guard() -> None:
+    """Retire only the old browser guard; preserve every service credential/key."""
+    write(MATERIAL / "frontend.nginx.conf", local_frontend_config(), 0o644)
+    issuer_config = MATERIAL / "issuer/issuer.json"
+    if issuer_config.exists():
+        config = json.loads(issuer_config.read_text(encoding="utf-8"))
+        if "operator" in config:
+            config.pop("operator")
+            write(issuer_config, json.dumps(config))
+    for name in ("operator.secret", "htpasswd", "curl.conf"):
+        (MATERIAL / name).unlink(missing_ok=True)
+
+
 def env_value(value):
     return "'" + str(value).replace("\\", "\\\\").replace("'", "\\'") + "'"
 
@@ -193,7 +214,6 @@ def main():
     client_secret = secret("client.secret")
     # Readable by the gateway's container user; the host .secrets ancestor is 0700.
     (MATERIAL / "client.secret").chmod(0o644)
-    operator = secret("operator.secret")
     hawki_secret = secret("hawki-client.secret")
     certificate_material(private)
     signing = key(private / "signing.pem")
@@ -205,10 +225,6 @@ def main():
         "issuer": ISSUER,
         "audience": "hawki-backend",
         "kid": KID,
-        "operator": {
-            "username": "local-management",
-            "sha256": hashlib.sha256(operator.encode()).hexdigest(),
-        },
         "clients": {
             name: {
                 "sha256": hashlib.sha256(value.encode()).hexdigest(),
@@ -222,20 +238,7 @@ def main():
         },
     }
     write(private / "issuer.json", json.dumps(config))
-    password_hash = base64.b64encode(
-        hashlib.sha1(operator.encode(), usedforsecurity=False).digest()
-    ).decode()
-    write(MATERIAL / "htpasswd", "local-management:{SHA}" + password_hash + "\n", 0o644)
-    nginx = (ROOT / "docker/frontend/nginx.conf").read_text()
-    nginx = nginx.replace(
-        "    server_name _;",
-        '    server_name localhost 127.0.0.1;\n    if ($host !~ ^(localhost|127\\.0\\.0\\.1)$) { return 444; }\n    auth_basic "RAWKI local development";\n    auth_basic_user_file /run/local-auth/htpasswd;',
-    )
-    nginx = nginx.replace(
-        "    location ^~ /v1/ {", "    location ^~ /v1/ {\n        auth_basic off;"
-    )
-    write(MATERIAL / "frontend.nginx.conf", nginx, 0o644)
-    write(MATERIAL / "curl.conf", 'user = "local-management:' + operator + '"\n')
+    remove_browser_guard()
     values = {}
     for line in (
         (ROOT / "docker/env/epoch15c.cutover.env.example").read_text().splitlines()

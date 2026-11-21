@@ -21,7 +21,7 @@ and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-wo
 | Ownership rules | [Architecture Rules](../_documentation/Developer/architecture_rules.md) |
 
 The current [Python runtime guide](../_documentation/Operations/python_runtime.md)
-supersedes historical Laravel-era deployment instructions. The bridge package is
+covers current deployment requirements. The bridge package is
 retained only for compatibility tests; it has no Compose service or image target.
 
 ## Local development

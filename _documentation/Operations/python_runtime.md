@@ -1,8 +1,6 @@
 # Python RAG deployment
 
-This is the current runtime guide. Laravel/PHP, its routes, scheduler, queues,
-signer, Composer installation and rollback Compose services have been removed.
-Laravel-era guides are marked historical; their commands must not be run.
+This guide covers configuration, startup and operations for the Python RAG system.
 
 ## Architecture and authority
 
@@ -26,8 +24,13 @@ registered service identities using asymmetric JWT validation and HTTPS JWKS,
 then enforces tenant, action/scope and exact dataset grants. It has no mirrored
 human account, password or browser-session implementation.
 
-The UI gateway checks a HAWKI authorization endpoint (204 means management
-approved; all other outcomes deny access) and injects a server-side service JWT.
+The default UI gateway mode checks a HAWKI authorization endpoint (204 means
+management approved; all other outcomes deny access) and injects its own service JWT.
+The explicit local overlay uses `HAWKI_RAG_UI_ACCESS_MODE=local`: loopback-only
+nginx and Host/origin checks form the trusted boundary. The browser supplies no
+username, password, Basic/Bearer token or identity cookie. The internal local
+issuer exposes only HTTPS service token/JWKS/health endpoints; it has no browser
+login or `/authorize` route.
 Service tokens, signing keys, client secrets and database credentials never enter
 frontend JavaScript or browser-visible environment variables. Its exact origin
 check protects mutations. Worker callbacks retain signed HMAC bytes, replay-window
@@ -63,11 +66,10 @@ the direct Python callback policy; it does not enable a removed runtime.
 
 The current base model contains FastAPI, the UI gateway, static frontend, current
 Python workers, PostgreSQL, Temporal, Qdrant, Neo4j, reranker and provider services.
-It has no Laravel or bridge service. Production operators configure the external
-crawler URL; the explicit local overlay supplies the pinned upgraded crawler and
-development HTTPS issuer/access guard.
+Production operators configure the external crawler URL; the explicit local overlay supplies the pinned upgraded crawler and
+development HTTPS service issuer.
 
-For the already-provisioned local cutover:
+For the already-provisioned local deployment:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml config --quiet
@@ -89,8 +91,7 @@ part of routine startup. The local crawler source is prepared reproducibly with
 
 `make up-core-local` selects the Python local overlay. `make up-core` uses the
 base deployment settings; neither runs migrations implicitly. Stop/recreate
-services without deleting persisted volumes. Do not use data-reset targets for
-this migration. When manually replacing backend/gateway containers, reload the
+services without deleting persisted volumes. Avoid data-reset targets on deployments with retained data. When manually replacing backend/gateway containers, reload the
 frontend nginx routing after their replacement if its resolved upstream address
 changed.
 
@@ -106,8 +107,7 @@ npm run dev
 `vite.frontend.config.js` builds `frontend/index.html`, `frontend/main.js` and
 the existing `resources/js` Svelte/DOM modules and `resources/css` into ignored
 `public/frontend`. `docker/frontend.Dockerfile` serves that output and the favicon
-with nginx. There is no Blade rendering, PHP bootstrap state, route generation,
-Laravel Vite plugin, session requirement or Composer step. `/v1/*` intentionally
+with nginx. The frontend uses a standalone Vite build and server-side service credentials. `/v1/*` intentionally
 exposes the authenticated API; `/api/*` returns 410 for obsolete clients.
 
 Use `make test-backend`, `make test-rag`, and `make test-frontend` for the current
@@ -131,8 +131,7 @@ unchanged preserved files and hashes of the original 16 SQL records. It is
 isolated from new admission/dispatch and is not active runtime ownership. Missing
 or corrupted configured archive evidence makes new admission fail closed.
 Historical crawler imports retain their own unsealed state and identity/root
-reservations. See the
-[custody/graph report](historical_orphan_graph_acceptance.md).
+reservations.
 
 ## Acceptance and operations
 
@@ -143,6 +142,19 @@ and deletion run through Python. Graph and URL smoke scripts create unique
 datasets, retire content through the API, then use separate read-only audits to
 verify stores, artifacts and workflow quiescence. Immutable audit/tombstone rows
 are retained by the normal lifecycle.
+
+File uploads prepare their named dataset through the existing creation and
+ingest-grant APIs before posting multipart data. Existing datasets still require
+an exact ingest grant. Completed pipeline tasks request query access through the
+existing readiness-checked self-grant API so indexed documents appear in lists.
+Run `node scripts/smoke_local_ui_upload.mjs` to exercise the real frontend helpers,
+FormData, managed indexing, listing, download and cleanup on a disposable dataset.
+See [the UI API route diagnosis](ui_api_route_fixes.md).
+
+The local crawler provides the permanent-job API without a saved profile/task UI.
+`/ui-api/v1/scraper/tasks` reports an empty catalog with an explanatory message
+only after validating that API's full contract and health. A configured separate
+catalog, custom path, malformed contract or unhealthy upstream still fails closed.
 
 The `hawki_bridge` Python package and historical validators remain only as inert
 compatibility/reference tests. The bridge has no deployment image or service;
