@@ -23,7 +23,7 @@ ENABLE_FLAGS = (
     "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
     "HAWKI_RAG_TEMPORAL_ENABLED",
 )
-REQUIRED_REVISION = "0008"
+REQUIRED_REVISION = "0009"
 
 
 class _ConfigurationScope:
@@ -120,9 +120,11 @@ def configuration_checks(
         checks["callback_replay_window"] = "FAIL"
     checks["callback_url"] = (
         "PASS"
-        if http_url(env.get("HAWKI_RAG_WORKER_CALLBACK_URL", ""))
-        and env["HAWKI_RAG_WORKER_CALLBACK_URL"].endswith(
-            "/api/internal/pipeline/worker-events"
+        if http_url(
+            env.get("HAWKI_RAG_WORKER_CALLBACK_URL", ""),
+            "/internal/pipeline/worker-events"
+            if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF")
+            else "/api/internal/pipeline/worker-events",
         )
         else "FAIL"
     )
@@ -153,6 +155,24 @@ def configuration_checks(
             "control_destination",
         ):
             checks.pop(key, None)
+    if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF"):
+        for key in tuple(checks):
+            if key.startswith("HAWKI_QUERY_BFF_") or key == "bff_auth_agreement":
+                checks.pop(key)
+        checks["service_only"] = (
+            "PASS" if enabled(env, "HAWKI_BACKEND_SERVICE_ONLY") else "FAIL"
+        )
+        try:
+            auth = load_auth_settings(env)
+            checks["service_clients"] = (
+                "PASS"
+                if auth
+                and auth.clients
+                and all(kind is PrincipalKind.SERVICE for kind in auth.clients.values())
+                else "FAIL"
+            )
+        except Exception:
+            checks["service_clients"] = "FAIL"
     return checks
 
 

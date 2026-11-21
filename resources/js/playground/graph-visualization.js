@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from '../api.js';
 import cytoscape from 'cytoscape/dist/cytoscape.esm.min.mjs';
 import elk from 'cytoscape-elk';
 import coseBilkent from 'cytoscape-cose-bilkent';
@@ -69,6 +70,7 @@ function datasetChanged() {
         return;
     }
     loadOverview();
+    loadSnapshotList().catch((error) => setStatus(error.message, 'warn'));
     overviewPollTimer = setInterval(() => loadOverview({ quiet: true, replace: false }), OVERVIEW_POLL_INTERVAL_MS);
 }
 
@@ -94,7 +96,7 @@ function setMeta(message) {
 
 async function requestJson(url, options = {}) {
     const generation = datasetGeneration;
-    const graphAction = url.includes('/rag/neo4j/');
+    const graphAction = url.includes('/ops/graph/');
     if (graphAction && !url.endsWith('/graph/snapshots')) {
         if (!selectedDataset()) throw new Error('Select a dataset first.');
     }

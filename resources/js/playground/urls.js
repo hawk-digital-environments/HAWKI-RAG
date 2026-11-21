@@ -12,9 +12,22 @@ function configuredBasePath() {
 }
 
 export function apiUrl(path) {
-    const relative = String(path || '').replace(/^\/+/, '');
+    let relative = String(path || '').replace(/^\/+/, '');
+    const aliases = {
+        'rag/stats': 'ops/stats',
+        'rag/monitor': 'ops/health',
+        'rag/health': 'health',
+        'pipeline/health': 'ops/health',
+        'health/system-gate': 'ops/health',
+        'settings/config': 'ops/config',
+        'pipeline/controller/files': 'documents',
+        'rag/neo4j/clear': 'ops/graph/clear',
+    };
+    const [pathname, query] = relative.split('?', 2);
+    relative = aliases[pathname] || pathname.replace(/^rag\/neo4j\/graph\//, 'ops/graph/');
+    if (query !== undefined) relative += `?${query}`;
     const baseUrl = new URL(configuredBasePath(), window.location.origin);
-    const apiBaseUrl = new URL('api/', baseUrl);
+    const apiBaseUrl = new URL('ui-api/v1/', baseUrl);
 
     return new URL(relative, apiBaseUrl).toString();
 }

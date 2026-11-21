@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from '../api.js';
 // Retain a frozen submission across uncertain HTTP outcomes. A successful start
 // resolves it; the next intentional start receives a fresh key and body.
 export function createPipelineStarter({ url, payload, csrfToken, fetcher = fetch, key = () => crypto.randomUUID() }) {

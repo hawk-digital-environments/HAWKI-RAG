@@ -132,10 +132,12 @@ async def tick(service, *, limit: int = 100) -> list[dict]:
         )
     for source in due:
         principal = AuthenticatedPrincipal(
-            kind=PrincipalKind.USER,
+            kind=PrincipalKind(source.get("principal_type", "user")),
             subject=source["principal_id"],
             tenant_id=source["tenant_id"],
-            client_id="url-refresh-scheduler",
+            client_id=source["principal_id"]
+            if source.get("principal_type") == "service"
+            else "url-refresh-scheduler",
             scopes=frozenset({"rag:ingest"}),
             issuer="internal:url-refresh",
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),

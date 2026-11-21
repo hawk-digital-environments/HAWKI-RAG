@@ -7,6 +7,9 @@ export default {
         './storage/framework/views/*.php',
         './resources/**/*.blade.php',
         './resources/**/*.js',
+        './resources/**/*.svelte',
+        './resources/**/*.ts',
+        './frontend/**/*.{html,js}',
         './resources/**/*.vue',
     ],
     theme: {

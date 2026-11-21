@@ -1,11 +1,51 @@
 # HAWKI backend — public API boundary
 
-Epoch 15A deployment examples select database-backed Python RAG authority.
-Complete the [coordinated cutover and legacy drain procedure](../_documentation/Operations/epoch15a_cutover.md)
-before changing an existing deployment. Keep the bridge and Laravel HMAC worker
-callback targets during the rollback/drain window. Static-scope examples below
-are retained for explicit compatibility configurations and migration tools.
+The default Compose runtime serves the existing Svelte UI from nginx and sends
+`/v1/*` directly to FastAPI. Laravel and the old bridge are available only under
+`legacy-laravel` and `legacy-bridge` profiles. New workers use signed Python
+callbacks at `/internal/pipeline/*`, which nginx does not publish.
 
+`docker/env/epoch15c.cutover.env.example` is a placeholder template, not a usable
+credential set. Provision schema revision **0009**, a dedicated runtime database
+role, an external asymmetric JWT issuer, query models, and explicit **service**
+dataset grants before startup. `make up-core` does not run PHP or automatically
+migrate a database. `make migrate-core` is an explicit operator command that
+requires a migration DSN; do not give the runtime role DDL permissions. New graph
+views require SELECT/INSERT/DELETE on `hawki_backend.graph_snapshots`.
+
+The UI sends `/ui-api/v1/*` to a separate Python transport. It has no human
+identity store, login, session, or token-signing facility. Set
+`HAWKI_RAG_UI_AUTHORIZATION_URL` to a HAWKI endpoint that returns **204 only when
+the current HAWKI session may manage this service's tenant and dataset grants**;
+ordinary authentication alone is insufficient. It receives the original Cookie,
+`X-Original-URI`, and `X-Original-Method`. All other status codes deny access.
+HAWKI owns this policy and login. A missing gate is a deployment blocker.
+The same boundary retains the read-only `/ui/*` external crawler transport;
+mutations there return 409 and must use the Python pipeline API.
+
+Set `HAWKI_RAG_UI_ORIGIN` to the exact browser origin for mutation CSRF checks.
+Provision `HAWKI_RAG_UI_CREDENTIAL_DIR` outside the checkout and mount it read-only.
+It must contain either an issuer-rotated `access.jwt`, or `client.secret` plus
+`HAWKI_RAG_UI_TOKEN_URL` (HTTPS) and `HAWKI_RAG_UI_CLIENT_ID` for client credentials.
+The gateway caches OAuth tokens until shortly before expiry, rereads JWT files on
+every request, strips browser credentials before calling FastAPI, and never returns
+service credentials to the browser. No real credentials are supplied by this repo.
+FastAPI's deployment forces `HAWKI_BACKEND_SERVICE_ONLY=true`; historical user
+principal support remains only for migration compatibility, never a mirrored user
+model. Grantless query services cannot self-grant access without management scope.
+
+Drain all Laravel-owned workflows, outstanding writer acknowledgements and
+Temporal deletions before stopping Laravel. Python-owned deletions reuse the
+existing family cleanup services, writer barriers and frozen targets. Legacy
+`managed-deletion-events` and writer-proof calls are authenticated and refused
+with 409; they cannot complete a nonexistent Python deletion ledger. Laravel-off
+mode also refuses new legacy `deletion/start` dispatches. Do not adopt these jobs
+or reroute them to a guessed owner. Legacy readiness scripts and source are
+retained for migration/rollback, not default runtime startup.
+
+URL recovery/refresh runs periodically using the existing Python scheduler;
+archived dataset reconciliation retains its existing enable flag and safeguards.
+No new operation requires `php artisan schedule:run`.
 
 `python_backend` hosts the public API. This document describes the
 authentication boundary that protects it, the dataset authorization boundary

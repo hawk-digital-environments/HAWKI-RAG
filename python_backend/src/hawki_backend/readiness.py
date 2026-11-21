@@ -30,6 +30,7 @@ def required_tables(env):
     from .text_ingestion.schema import ingest_text_operations, ingest_text_events
     from .managed_documents.schema import TABLES as managed, documents, revisions
     from .url_ingestion.schema import TABLES as urls, sources, generations
+    from .ops.schema import snapshots
 
     tables = {datasets: {"SELECT"}, dataset_grants: {"SELECT"}}
 
@@ -37,6 +38,7 @@ def required_tables(env):
         tables.setdefault(table, set()).update(privileges)
 
     if env.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE") == "database":
+        require(snapshots, "SELECT", "INSERT", "DELETE")
         require(datasets, "INSERT", "UPDATE")
         require(dataset_grants, "INSERT")
         require(dataset_grant_tokens, "SELECT", "INSERT", "UPDATE")
@@ -295,8 +297,13 @@ def _jwks(env: Mapping[str, str]) -> None:
 
     provider = JwksKeyProvider(load_auth_settings(env))
     try:
-        if provider.get_key(env["HAWKI_QUERY_BFF_KEY_ID"], "RS256") is None:
-            raise ValueError("BFF public key unavailable")
+        name = (
+            "HAWKI_BACKEND_READINESS_JWKS_KEY_ID"
+            if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF")
+            else "HAWKI_QUERY_BFF_KEY_ID"
+        )
+        if provider.get_key(env[name], "RS256") is None:
+            raise ValueError("Configured public signing key unavailable")
     finally:
         provider.close()
 

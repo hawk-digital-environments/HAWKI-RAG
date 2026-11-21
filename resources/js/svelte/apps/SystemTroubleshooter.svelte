@@ -2,6 +2,7 @@
   @component Global HAWKI-RAG troubleshooting panel that checks system health states.
 -->
 <script lang="ts">
+    import {apiFetch as fetch} from '../../api.js';
     import type {HTMLAttributes} from 'svelte/elements';
     import type {HealthCheck, HealthRepairAction, SystemGatePayload} from '../types/health.js';
 
@@ -148,7 +149,7 @@
                 status: 'fail',
                 required: true,
                 detail: error instanceof Error ? error.message : 'System gate request failed.',
-                fix: 'Open Pipeline Health and inspect Laravel or container logs.',
+                fix: 'Open Pipeline Health and inspect Python or container logs.',
             }];
             repairActions = [{label: 'Open Pipeline Health', href: '/pipeline-health', kind: 'health'}];
             setProgress(100, 'Failed');

@@ -49,7 +49,7 @@ class IndexerSettings:
             ),
             callback_url=_env(
                 "HAWKI_RAG_WORKER_CALLBACK_URL",
-                "http://hawki_rag_app/api/internal/pipeline/worker-events",
+                "http://hawki_backend/internal/pipeline/worker-events",
             ),
             callback_secret=os.getenv("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
             callback_timeout_seconds=float(

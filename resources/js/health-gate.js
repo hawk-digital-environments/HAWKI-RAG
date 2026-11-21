@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from './api.js';
 import '../css/health-gate.css';
 import { mount } from 'svelte';
 import SystemTroubleshooter from './svelte/apps/SystemTroubleshooter.svelte';
@@ -157,7 +158,7 @@ function renderFailure(error) {
         title: 'Advisory system readiness',
         status: 'fail',
         detail: error?.message || 'System gate request failed.',
-        fix: 'Run health checks from the terminal and inspect Laravel logs.',
+        fix: 'Run health checks from the terminal and inspect Python logs.',
     }]);
     renderActions([{ label: 'Open Pipeline Health', href: '/pipeline-health' }]);
 

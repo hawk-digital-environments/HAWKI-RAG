@@ -240,7 +240,7 @@ class DatasetService:
         principal: AuthenticatedPrincipal,
         dataset_id: str,
     ) -> DatasetRecord:
-        """Grant the current user query access to one ready active dataset."""
+        """Reconcile a grant; only a manager may bootstrap a service grant."""
 
         record = self._active(principal.tenant_id, dataset_id)
         try:
@@ -252,6 +252,10 @@ class DatasetService:
         if has_grant:
             self._upsert(record, principal, AuthorizationAction.QUERY)
             return record
+        if principal.kind is PrincipalKind.SERVICE and not principal.has_scopes(
+            "rag:datasets:manage"
+        ):
+            raise DatasetNotFoundError()
         scope = record.scope()
         available = self.catalog.available_collections()
         if not scope or available is None or scope.qdrant_collection not in available:
@@ -303,8 +307,6 @@ class DatasetService:
     def query_datasets(self, principal: AuthenticatedPrincipal) -> list[dict[str, str]]:
         """Return exactly the datasets the principal may query right now."""
 
-        if principal.kind is not PrincipalKind.USER:
-            return []
         try:
             records = self.store.list_query_datasets(principal)
         except DatasetStoreUnavailableError:

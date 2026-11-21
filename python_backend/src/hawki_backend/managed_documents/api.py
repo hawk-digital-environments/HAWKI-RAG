@@ -9,7 +9,7 @@ from typing import Annotated, Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 from starlette.datastructures import UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -91,6 +91,48 @@ async def legacy_read_access(
         principal,
         "legacy_read_access",
         [item.model_dump() for item in body.documents],
+    )
+
+
+@router.get("/documents/uploads/download", include_in_schema=False)
+async def download(
+    request: Request,
+    principal: ReadPrincipal,
+    document_id: str,
+    source_url: str | None = None,
+    content_hash: str | None = None,
+):
+    from urllib.parse import quote
+
+    try:
+        stream, filename = await run_in_threadpool(
+            service(request).open_download,
+            principal,
+            document_id,
+            source_url,
+            content_hash,
+        )
+    except ManagedError as error:
+        return error_response(error)
+    except AuthorizationUnavailableError:
+        return error_response(
+            ManagedError(503, "Document authorization is unavailable.")
+        )
+
+    def chunks():
+        with stream:
+            while chunk := stream.read(64 * 1024):
+                yield chunk
+
+    return StreamingResponse(
+        chunks(),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": "attachment; filename*=UTF-8''"
+            + quote(filename, safe=""),
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -177,6 +219,14 @@ async def mutation(
             for key, value in form.items()
             if not isinstance(value, UploadFile)
         }
+        if raw.get("converter_mode") == "custom" and not raw.get("converter_url"):
+            import os
+
+            raw["converter_url"] = os.environ.get("EXTERNAL_CONVERTER_URL")
+            raw["converter_token"] = os.environ.get("EXTERNAL_CONVERTER_TOKEN", "")
+            raw["converter_start_path"] = os.environ.get(
+                "EXTERNAL_CONVERTER_START_PATH", "/extract"
+            )
         # Public Python input is the same normalized form forwarded by the BFF.
         body = ManagedInput.model_validate(raw)
         key = request.headers.get("Idempotency-Key")

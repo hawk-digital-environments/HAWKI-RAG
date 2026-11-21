@@ -211,6 +211,46 @@ def config(request: Request, principal: Manager):
     return execute(lambda: service(request).config(principal))
 
 
+@router.get("/health", include_in_schema=False)
+def runtime_health(request: Request, principal: Manager):
+    from datetime import datetime, timezone
+    import os
+    import time
+    from hawki_backend.readiness import report
+
+    started = time.monotonic()
+    result = report(os.environ, live=True)
+    ready = result["status"] == "PASS"
+    return {
+        "ok": True,
+        "authority": "python",
+        "health": {
+            "ok": ready,
+            "latency_ms": round((time.monotonic() - started) * 1000),
+        },
+        "config": execute(lambda: service(request).config(principal)),
+        "status": "ready" if ready else "degraded",
+        "summary": "Python runtime is ready."
+        if ready
+        else "Runtime checks need attention.",
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+        "enforce": False,
+        "checks": [
+            {
+                "key": name,
+                "title": name.replace("_", " "),
+                "status": "ok" if state == "PASS" else "fail",
+                "required": True,
+                "detail": state,
+            }
+            for name, state in result["checks"].items()
+        ],
+        "repairActions": [
+            {"label": "Pipeline Health", "href": "/pipeline-health", "kind": "health"}
+        ],
+    }
+
+
 @router.get("/graph/scope", include_in_schema=False)
 def scope(request: Request, principal: Reader, dataset_id: Dataset):
     """Internal BFF projection for scoped legacy graph reads."""

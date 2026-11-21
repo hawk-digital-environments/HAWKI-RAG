@@ -28,6 +28,7 @@ requests = sa.Table(
     sa.Column("request_id", sa.String(64), primary_key=True),
     sa.Column("tenant_id", sa.String(128), nullable=False),
     sa.Column("principal_id", sa.String(255), nullable=False),
+    sa.Column("principal_type", sa.String(16), nullable=False, server_default="user"),
     sa.Column("dataset_id", sa.String(191), nullable=False),
     sa.Column("idempotency_key", sa.String(255), nullable=False),
     sa.Column("request_hash", sa.String(64), nullable=False),
@@ -36,7 +37,13 @@ requests = sa.Table(
     sa.Column("body", sa.JSON, nullable=False),
     sa.Column("task_command", sa.JSON),
     *timestamps(),
-    sa.UniqueConstraint("tenant_id", "principal_id", "idempotency_key"),
+    sa.UniqueConstraint(
+        "tenant_id",
+        "principal_type",
+        "principal_id",
+        "idempotency_key",
+        name="uq_url_ingestion_requests_principal_key",
+    ),
     sa.UniqueConstraint("request_id", "tenant_id", "dataset_id"),
     sa.ForeignKeyConstraint(
         ["tenant_id", "dataset_id"], ["datasets.tenant_id", "datasets.dataset_id"]
@@ -50,6 +57,7 @@ sources = sa.Table(
     sa.Column("source_id", sa.String(191), primary_key=True),
     sa.Column("tenant_id", sa.String(128), nullable=False),
     sa.Column("principal_id", sa.String(255), nullable=False),
+    sa.Column("principal_type", sa.String(16), nullable=False, server_default="user"),
     sa.Column("dataset_id", sa.String(191), nullable=False),
     sa.Column("original_url", sa.Text, nullable=False),
     sa.Column("normalized_url", sa.Text, nullable=False),

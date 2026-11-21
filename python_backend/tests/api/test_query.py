@@ -385,6 +385,33 @@ def test_authorized_grant_executes_query() -> None:
     assert provider.vision_model == _VISION_MODEL
 
 
+def test_service_query_uses_exact_tenant_grant_and_server_scope(monkeypatch) -> None:
+    from dataclasses import replace
+
+    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    principal = replace(
+        _principal(), kind=PrincipalKind.SERVICE, client_id="hawki-service"
+    )
+    grant = replace(
+        _grant(), principal_kind=PrincipalKind.SERVICE, principal_id="hawki-service"
+    )
+    dependencies, _, vectors, _ = _dependencies()
+    application = _app(
+        principal=principal,
+        grant_reader=InMemoryGrantReader([grant]),
+        query_dependencies=dependencies,
+    )
+    assert _post_json(application, _body()).status_code == 200
+    assert vectors.search_calls[0]["filters"]["dataset_id"] == _DATASET
+    denied = _app(principal=principal, grant_reader=InMemoryGrantReader([]))
+    assert _post_json(denied, _body()).status_code == 404
+    foreign = _app(
+        principal=replace(principal, tenant_id="other"),
+        grant_reader=InMemoryGrantReader([grant]),
+    )
+    assert _post_json(foreign, _body()).status_code == 404
+
+
 def test_missing_grant_returns_dataset_not_found() -> None:
     app = _app(grant_reader=InMemoryGrantReader())
 

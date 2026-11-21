@@ -112,7 +112,7 @@ def test_database_probe_is_read_only_and_checks_runtime_role(monkeypatch, unsafe
         assert not sql.lower().startswith(
             ("insert", "update", "delete", "create", "alter", "drop")
         )
-        result.scalars.return_value.all.return_value = ["0008"]
+        result.scalars.return_value.all.return_value = ["0009"]
         result.scalar_one.return_value = (
             unsafe == "superuser"
             if "rolsuper" in sql
@@ -286,6 +286,7 @@ def test_disabled_features_have_no_tables_or_network_requirements(monkeypatch):
     assert names == {
         "datasets",
         "dataset_grants",
+        "graph_snapshots",
         "dataset_grant_tokens",
         "workflow_operations",
         "ingest_text_operations",

@@ -72,7 +72,7 @@ class UrlIngestionService:
     def authorize(self, principal: AuthenticatedPrincipal, dataset: str) -> None:
         if self.policy is None:
             raise UrlIngestionError(503, "URL authorization is unavailable.")
-        if principal.kind is not PrincipalKind.USER or not self.policy.decide(
+        if not self.policy.decide(
             AuthorizationRequest(
                 principal=principal,
                 action=AuthorizationAction.INGEST,
@@ -186,9 +186,14 @@ class UrlIngestionService:
         ):
             raise UrlIngestionError(422, "Invalid Idempotency-Key.")
         return dict(
-            request_id=digest([principal.tenant_id, principal.principal_id, key]),
+            request_id=digest(
+                [principal.tenant_id, principal.kind.value, principal.principal_id, key]
+                if principal.kind is PrincipalKind.SERVICE
+                else [principal.tenant_id, principal.principal_id, key]
+            ),
             tenant_id=principal.tenant_id,
             principal_id=principal.principal_id,
+            principal_type=principal.kind.value,
             dataset_id=body["dataset_id"],
             idempotency_key=key,
             request_hash=digest([purpose, body]),
@@ -671,6 +676,7 @@ class UrlIngestionService:
         owner = SimpleNamespace(
             tenant_id=tenant_id,
             principal_id=source["principal_id"],
+            kind=PrincipalKind(source.get("principal_type", "user")),
         )
         values = self._request(
             owner,

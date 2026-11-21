@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from './api.js';
 import './health-gate.js';
 import { mount } from 'svelte';
 import DatasetsDashboardPage from './svelte/apps/DatasetsDashboardPage.svelte';

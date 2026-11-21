@@ -1,6 +1,8 @@
 """Durable dispatch and source evidence; an absent owner is never legacy proof."""
 
 import sqlalchemy as sa
+from pydantic import ValidationError
+from hawki_rag_contracts.pipeline.ingestion import IngestTextWorkflowInput
 
 from hawki_backend.workflow_control.schema import operations
 from hawki_backend.managed_documents.schema import revisions
@@ -97,11 +99,25 @@ def classify(repository, body: dict) -> str:
                 matching = [
                     row for row in text if row["workflow_id"] == control["workflow_id"]
                 ]
-                if (
-                    matching
-                    and matching[0]["request_metadata"].get("workflow_input") != wire
-                ):
-                    raise UrlIngestionError(409, "Text operation ownership conflicts.")
+                if matching:
+                    frozen = matching[0]["request_metadata"].get("workflow_input")
+                    # Earlier Python text rows froze the pre-normalization
+                    # input; only the control ledger held server-selected
+                    # queues. Compare every field after that exact historical
+                    # transformation, without adopting an absent owner.
+                    if isinstance(frozen, dict) and "task_queues" not in frozen:
+                        try:
+                            frozen = IngestTextWorkflowInput.model_validate(
+                                frozen | {"task_queues": wire["task_queues"]}
+                            ).model_dump(mode="json", exclude_unset=True)
+                        except (KeyError, ValidationError):
+                            raise UrlIngestionError(
+                                409, "Text operation ownership conflicts."
+                            ) from None
+                    if frozen != wire:
+                        raise UrlIngestionError(
+                            409, "Text operation ownership conflicts."
+                        )
                 owners.add("text" if matching else "laravel")
             elif wire.get("managed_document_id"):
                 matching = [

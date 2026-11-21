@@ -765,6 +765,8 @@ def test_the_production_application_exposes_health_and_query() -> None:
         "/v1/ops/graph/node",
         "/v1/ops/graph/expand",
         "/v1/ops/graph/semantic-search",
+        "/v1/ops/graph/snapshots",
+        "/v1/ops/graph/snapshots/{snapshot_id}",
         "/v1/ops/graph/clear",
         "/v1/ops/stats",
         "/v1/ops/config",

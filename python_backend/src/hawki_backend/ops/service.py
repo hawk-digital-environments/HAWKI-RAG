@@ -143,6 +143,39 @@ class OpsService:
         }
 
     def config(self, principal: AuthenticatedPrincipal) -> dict:
+        from hawki_backend.managed_documents.input import DEFAULT_EXTENSIONS
+        import os
+
+        extensions = [
+            value.strip().lstrip(".").lower()
+            for value in os.environ.get(
+                "RAGANYTHING_SUPPORTED_UPLOAD_EXTENSIONS", DEFAULT_EXTENSIONS
+            ).split(",")
+            if value.strip()
+        ]
+        providers = [
+            {
+                "key": name,
+                "label": name,
+                "runtimeSupported": True,
+                "embeddingSupported": True,
+                "configurationMode": "environment",
+                "modelSelectionMode": "environment",
+                "apiUrl": "",
+                "apiKeySet": False,
+                "defaultGraphModel": models.chat_model,
+                "defaultEmbeddingModel": next(
+                    (
+                        row.embedding_model
+                        for row in self.store.active_records(principal.tenant_id)
+                        if row.embedding_provider == name
+                    ),
+                    "",
+                ),
+                "defaultVisionModel": models.vision_model,
+            }
+            for name, models in self.settings.models.items()
+        ]
         return {
             "ok": True,
             "authority": "python",
@@ -167,4 +200,23 @@ class OpsService:
             "reranker": self.settings.reranker,
             "rerank_top_n": self.settings.rerank_top_n,
             "limits": {"overview": 300, "search": 50, "expansion": 250, "depth": 3},
+            "uploads": {
+                "nativeExtensions": extensions,
+                "customExtensions": os.environ.get(
+                    "FILE_CONVERTER_SUPPORTED_EXTENSIONS", ""
+                ).split(","),
+                "customConverter": {
+                    "enabled": os.environ.get(
+                        "HAWKI_BACKEND_CUSTOM_UPLOADS_ENABLED", "false"
+                    ).lower()
+                    == "true",
+                    "configured": bool(os.environ.get("EXTERNAL_CONVERTER_URL")),
+                },
+            },
+            "ui": {
+                "effective": False,
+                "managedBy": "deployment",
+                "notice": "Python runtime settings are managed by the deployment. Uploads can select a custom converter per request.",
+                "providers": providers,
+            },
         }

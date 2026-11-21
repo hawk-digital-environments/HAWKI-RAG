@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from hawki_backend.auth.dependencies import require_scopes
-from hawki_backend.auth.models import AuthenticatedPrincipal, PrincipalKind
+from hawki_backend.auth.models import AuthenticatedPrincipal
 
 from .errors import DatasetError, DatasetNotFoundError, DatasetUnavailableError
 from .service import DatasetService
@@ -207,9 +207,8 @@ def grant_self_query(
 ) -> JSONResponse:
     """Grant the current query principal access to one ready dataset."""
 
-    user = _user(principal)
     try:
-        _service(request).grant_query(user, dataset_id)
+        _service(request).grant_query(principal, dataset_id)
     except DatasetError as error:
         return _failure(error)
     return JSONResponse(
@@ -230,10 +229,9 @@ def grant_self_ingest(
 ) -> JSONResponse:
     """Redeem the creator's one-time token into an exact ingest grant."""
 
-    user = _user(principal)
     grant_token = body.grant_token if body is not None else None
     try:
-        replayed = _service(request).grant_ingest(user, dataset_id, grant_token)
+        replayed = _service(request).grant_ingest(principal, dataset_id, grant_token)
     except DatasetError as error:
         return _failure(error)
     return JSONResponse(
@@ -265,12 +263,6 @@ def _service(request: Request) -> DatasetService:
     if service is None:
         raise DatasetUnavailableError()
     return service
-
-
-def _user(principal: AuthenticatedPrincipal) -> AuthenticatedPrincipal:
-    if principal.kind is not PrincipalKind.USER:
-        raise HTTPException(status_code=403, detail="insufficient_scope")
-    return principal
 
 
 def _failure(error: DatasetError) -> JSONResponse:

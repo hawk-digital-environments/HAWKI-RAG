@@ -1,8 +1,17 @@
 # HAWKI RAG Svelte Migration
 
-Svelte is the owner for browser page markup. Laravel keeps routing and one thin
-Blade document shell for CSRF, base-path metadata, Vite tags, and initial JSON
-config.
+Svelte owns browser page markup. The active shell is `frontend/index.html` and
+`frontend/main.js`; `npm run build` uses `vite.frontend.config.js`. The same
+existing components and DOM runtimes remain in place. nginx serves the built
+shell at the existing page URLs. `npm run build:legacy` retains the Blade asset
+build for rollback.
+
+`playground/urls.js` maps existing UI operation names onto Python `/v1` paths
+through `/ui-api/v1/`. `api.js` supplies the browser CSRF marker and adapts Python
+error envelopes. The server-side UI gateway requires HAWKI management approval
+and injects its externally issued service JWT. Browser JavaScript receives no
+service credential, signing key, or Laravel session. Direct HAWKI service traffic
+uses `/v1/*` with its own JWT.
 
 ## Structure
 
@@ -29,12 +38,12 @@ Current product islands:
 - `apps/PipelineControllerPage.svelte`: `/pipeline-controller` page shell.
 - `apps/PipelineHealthDashboardPage.svelte`: `/pipeline-health` page shell.
 
-Laravel shell:
+Legacy rollback shell:
 
 - `resources/views/svelte-page.blade.php`: single browser document shell.
 
 Route ownership:
 
-- Browser pages and aliases stay in `routes/web.php`.
-- Browser and token clients use the canonical service routes in `routes/api.php`.
-- The liveness endpoint and health-dashboard page stay in `routes/health.php`; health JSON uses `routes/api.php`.
+- Active browser pages and aliases are selected in `frontend/main.js`.
+- Active APIs are the existing FastAPI routers under `python_backend`.
+- `/v1/health` is public liveness; authenticated readiness powers the health dashboard.

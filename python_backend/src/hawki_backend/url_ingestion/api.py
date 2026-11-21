@@ -165,6 +165,29 @@ async def stage_logs(task_id: str, stage: str, request: Request, principal: Prin
     return await read(request, principal, "logs", task_id, stage)
 
 
+@router.get(
+    "/pipeline/tasks/{task_id}/stages/{stage}/logs/download", include_in_schema=False
+)
+async def download_logs(
+    task_id: str, stage: str, request: Request, principal: Principal
+):
+    from fastapi.responses import Response
+
+    result = await read(request, principal, "logs", task_id, stage)
+    if result.status_code != 200:
+        return result
+    payload = json.loads(result.body)["log"]
+    return Response(
+        payload["text"],
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": 'attachment; filename="pipeline-stage.log"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post("/pipeline/legacy-access", include_in_schema=False)
 async def legacy_access(request: Request, principal: Principal, body: dict):
     if principal.client_id != "hawki-bff":

@@ -24,11 +24,56 @@ x-ollama-base: &ollama_base
     start_period: 20s
 
 services:
+  # Static Svelte UI and direct service API ingress. Internal callbacks are
+  # intentionally absent from nginx's public routing table.
+  hawki_rag_frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: hawki-rag-frontend:local
+    ports:
+      - "${HAWKI_RAG_HTTP_BIND:-127.0.0.1}:${HAWKI_RAG_HTTP_PORT:-8080}:80"
+    depends_on:
+      hawki_backend:
+        condition: service_healthy
+      hawki_rag_ui_gateway:
+        condition: service_started
+    networks:
+      - default
+      - hawki-network
+      - hosting_network
+    restart: unless-stopped
+
+  hawki_rag_ui_gateway:
+    <<: *service_env
+    image: hawki-backend:local
+    pull_policy: never
+    environment:
+      PYTHON_APP_MODULE: hawki_backend.ui_gateway:app
+      HAWKI_RAG_UI_BACKEND_URL: http://hawki_backend
+      HAWKI_RAG_UI_SERVICE_TOKEN_FILE: /run/ui-service/access.jwt
+      HAWKI_RAG_UI_CLIENT_SECRET_FILE: /run/ui-service/client.secret
+    volumes:
+      - type: bind
+        source: ${HAWKI_RAG_UI_CREDENTIAL_DIR:-./.secrets/ui-service}
+        target: /run/ui-service
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      hawki_backend:
+        condition: service_healthy
+    networks:
+      - default
+      - hawki-network
+    restart: unless-stopped
+
   # -------------------------------------------------
-  # Laravel Application
+  # Legacy Laravel application (rollback only)
   # -------------------------------------------------
   hawki_rag_app:
     <<: *service_env
+    profiles: ["legacy-laravel"]
     build:
       context: .
       dockerfile: docker/laravel.Dockerfile
@@ -181,6 +226,7 @@ services:
   # -------------------------------------------------
   hawki_rag_bridge:
     <<: *service_env
+    profiles: ["legacy-bridge"]
     build:
       context: .
       dockerfile: python_rag/Dockerfile
@@ -209,14 +255,14 @@ services:
   # -------------------------------------------------
   # Authenticated public query backend
   #
-  # Epoch 15A: Python owns new RAG runtime operations behind the Laravel BFF.
-  # Shared env_file preserves explicit rollback overrides; no inline selectors
-  # override deployment settings. Provision DB/imports/JWT keys and complete
-  # _documentation/Operations/epoch15a_cutover.md before sending traffic.
-  # No host port is published. Keep hawki_rag_bridge deployed until Epoch 15B.
+  # FastAPI owns new traffic. Schema/role and issuer readiness remain mandatory.
+  # No runtime dependency on PHP or Laravel JWT signing.
   # -------------------------------------------------
   hawki_backend:
     <<: *service_env
+    env_file:
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
+      - ./docker/env/epoch15c.cutover.env
     build:
       context: .
       dockerfile: python_backend/Dockerfile
@@ -224,14 +270,15 @@ services:
     pull_policy: never
     environment:
       HAWKI_BACKEND_REQUIRE_READY_SCHEMA: "true"
+      HAWKI_BACKEND_SERVICE_ONLY: "true"
+      HAWKI_BACKEND_LARAVEL_OFF: "true"
+      HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
     container_name: hawki_backend
     volumes:
       - shared_storage:/shared
     group_add:
       - "${PGID}"
     depends_on:
-      hawki_rag_app:
-        condition: service_healthy
       postgres:
         condition: service_healthy
       qdrant:
@@ -253,8 +300,7 @@ services:
       start_period: 20s
 
   # -------------------------------------------------
-  # Python Temporal workers: callback targets stay on Laravel throughout 15A.
-  # Do not retarget worker-events, managed-writers or managed-deletion-events.
+  # Python Temporal workers send signed callbacks directly to Python.
   # -------------------------------------------------
   hawki-rag-temporal-workflow-worker:
     <<: *service_env
@@ -276,6 +322,8 @@ services:
 
   hawki-rag-temporal-scraper-worker:
     <<: *service_env
+    environment:
+      HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
     build:
       context: .
       dockerfile: python_rag/Dockerfile
@@ -288,10 +336,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
+      hawki_backend:
+        condition: service_healthy
       temporal:
         condition: service_started
-      hawki_rag_app:
-        condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 15s
     networks:
@@ -300,6 +348,8 @@ services:
 
   hawki-rag-temporal-converter-worker:
     <<: *service_env
+    environment:
+      HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
     build:
       context: .
       dockerfile: python_rag/Dockerfile
@@ -312,10 +362,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
+      hawki_backend:
+        condition: service_healthy
       temporal:
         condition: service_started
-      hawki_rag_app:
-        condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 15s
     networks:
@@ -324,6 +374,8 @@ services:
 
   hawki-rag-indexer-worker:
     <<: *service_env
+    environment:
+      HAWKI_RAG_WORKER_CALLBACK_URL: http://hawki_backend/internal/pipeline/worker-events
     build:
       context: .
       dockerfile: python_rag/Dockerfile
@@ -338,10 +390,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
+      hawki_backend:
+        condition: service_healthy
       temporal:
         condition: service_started
-      hawki_rag_app:
-        condition: service_healthy
       qdrant:
         condition: service_started
       hawki_rag_neo4j:

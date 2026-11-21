@@ -96,19 +96,24 @@ def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract()
         assert "user:" not in service
         assert "dockerfile: python_rag/Dockerfile" in service
         assert "stop_grace_period: 15s" in service
-        assert "hawki_rag_app:" in service
+        assert "hawki_rag_app:" not in service
+        assert "hawki_backend:" in service
         assert "condition: service_healthy" in service
         assert '  - "${PGID}"' in service
 
 
-def test_compose_files_delegate_runtime_environment_to_dotenv() -> None:
-    for compose_file in COMPOSE_FILES:
-        compose = compose_file.read_text(encoding="utf-8")
-        assert re.search(r"(?m)^\s+environment:\s*$", compose) is None
-
+def test_compose_keeps_cutover_security_settings_server_side() -> None:
     base_compose = COMPOSE_FILE.read_text(encoding="utf-8")
     assert "x-service-env: &service_env" in base_compose
     assert "${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}" in base_compose
+    backend = _service_block("hawki_backend")
+    assert 'HAWKI_BACKEND_SERVICE_ONLY: "true"' in backend
+    assert 'HAWKI_BACKEND_REQUIRE_READY_SCHEMA: "true"' in backend
+    for name in ("hawki-rag-temporal-scraper-worker", "hawki-rag-temporal-converter-worker", "hawki-rag-indexer-worker"):
+        assert "http://hawki_backend/internal/pipeline/worker-events" in _service_block(name)
+    frontend = _service_block("hawki_rag_frontend")
+    assert "TOKEN" not in frontend
+    assert "SECRET" not in frontend
 
 
 def test_neo4j_receives_only_its_server_auth_adapter() -> None:

@@ -243,6 +243,7 @@ class ManagedRepository:
                     tenant_id=values["tenant_id"],
                     dataset_id=values["request"]["dataset_id"],
                     principal_id=values["principal_id"],
+                    principal_type=values.get("principal_type", "user"),
                     generation=0,
                     status="pending",
                     attributes={},

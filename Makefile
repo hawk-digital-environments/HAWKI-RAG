@@ -119,7 +119,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: help
 .PHONY: clean python-lock python-deps system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
-.PHONY: migrate-core
+.PHONY: migrate-core migrate-legacy
 .PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health
 .PHONY: pull-models logs-core
@@ -206,12 +206,9 @@ build-ui: ## Build the Svelte/Vite frontend in an isolated Node container.
 	fi
 	@$(UI_NODE_RUN) npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
 
-publish-ui: build-ui ## Publish freshly built frontend assets into the app container.
-	@echo "Publishing HAWKI RAG UI assets to hawki_rag_app..."
-	@docker exec hawki_rag_app sh -lc 'mkdir -p /var/www/built_resources && find /var/www/built_resources -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
-	@docker cp "$(UI_BUILD_DIR)/." hawki_rag_app:/var/www/built_resources/
-	@docker exec hawki_rag_app sh -lc 'chown -R www-data:www-data storage bootstrap/cache /var/www/built_resources'
-	@echo "UI assets are ready at http://localhost:8080"
+publish-ui: ## Build and replace the standalone Svelte/nginx frontend.
+	@$(COMPOSE_CMD) build hawki_rag_frontend
+	@$(COMPOSE_CMD) up -d --no-deps hawki_rag_frontend
 
 # ==============================================================================
 # Database lifecycle
@@ -219,7 +216,10 @@ publish-ui: build-ui ## Publish freshly built frontend assets into the app conta
 
 ##@ Database
 
-migrate-core: network ## Run Laravel migrations with startup retry handling.
+migrate-core: ## Explicit Python schema migration using an operator-provided migration DSN.
+	@cd python_backend && uv run --frozen alembic upgrade head
+
+migrate-legacy: network ## Explicit legacy-only Laravel migrations (rollback tooling).
 	@echo "Starting the Laravel app for database migrations..."
 	@$(COMPOSE_CMD) up -d postgres temporal hawki_rag_app
 	@echo "Running Laravel migrations..."
@@ -250,11 +250,8 @@ _up-core: network
 	else \
 		echo "Reusing existing development images (set BUILD_STACK=1 to rebuild them)."; \
 	fi
-	@echo "Quiescing application writers before database migration..."
-	@$(COMPOSE_CMD) down --remove-orphans
-	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
-	@echo "Launching the migrated stack..."
-	@$(COMPOSE_CMD) up -d --remove-orphans
+	@echo "Starting the Python runtime; pre-provisioned schema, role and JWT readiness are required."
+	@$(COMPOSE_CMD) up -d --wait
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \
@@ -347,7 +344,7 @@ health: ## Check required and optional containers plus service endpoints.
 	echo "Container status"; \
 	check_running hawki_rag_postgres 1; \
 	check_running temporal 1; \
-	check_running hawki_rag_app 1; \
+	check_running hawki_backend 1; \
 	check_running hawki_qdrant 1; \
 	check_running hawki_rag_neo4j 1; \
 	check_running $(OLLAMA_CONTAINER) 1; \
@@ -360,13 +357,13 @@ health: ## Check required and optional containers plus service endpoints.
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
-	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
+	check_exec "FastAPI readiness" hawki_backend "python -m hawki_backend.readiness --live" 1; \
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
 	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \
 	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
-	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
+	check_url "FastAPI HTTP" "http://127.0.0.1:8080/v1/health" 1; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
 		echo "Health checks completed."; \
@@ -414,7 +411,7 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 ##@ Logs
 
 logs-core: ## Follow logs for the complete core stack.
-	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_backend hawki_rag_ui_gateway hawki_rag_frontend hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
 
 # ==============================================================================
 # Stack shutdown and restart

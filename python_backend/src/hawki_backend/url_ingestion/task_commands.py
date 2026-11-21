@@ -102,6 +102,7 @@ def accept(
             "state": "pending",
             "targets": targets,
             "principal_id": principal.principal_id,
+            "principal_type": principal.kind.value,
         }
         connection.execute(
             requests.update()
@@ -124,10 +125,12 @@ async def execute(
     # The accepted command's principal owns its deterministic child requests.
     # The caller above and this principal must both retain their exact grant.
     owner = AuthenticatedPrincipal(
-        kind=PrincipalKind.USER,
+        kind=PrincipalKind(intent.get("principal_type", "user")),
         subject=intent["principal_id"],
         tenant_id=row["tenant_id"],
-        client_id="url-task-command",
+        client_id=intent["principal_id"]
+        if intent.get("principal_type") == "service"
+        else "url-task-command",
         scopes=frozenset({"rag:ingest"}),
         issuer="internal:url-task-command",
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),
@@ -241,10 +244,12 @@ async def reconcile(service: "UrlIngestionService") -> list[dict]:
     result = []
     for row in rows:
         principal = AuthenticatedPrincipal(
-            kind=PrincipalKind.USER,
+            kind=PrincipalKind(row["task_command"].get("principal_type", "user")),
             subject=row["task_command"]["principal_id"],
             tenant_id=row["tenant_id"],
-            client_id="url-task-command",
+            client_id=row["task_command"]["principal_id"]
+            if row["task_command"].get("principal_type") == "service"
+            else "url-task-command",
             scopes=frozenset({"rag:ingest"}),
             issuer="internal:url-task-command",
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=1),

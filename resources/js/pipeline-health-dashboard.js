@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from './api.js';
 import './health-gate.js';
 import { mount } from 'svelte';
 import PipelineHealthDashboardPage from './svelte/apps/PipelineHealthDashboardPage.svelte';
@@ -107,7 +108,7 @@ function bootPipelineHealthDashboard() {
 
         els.state.className = `status-pill ${statusClass(status)}`;
         setText(els.state, status);
-        setText(els.updated, `Checked ${formatDate(payload.checkedAt)} from Laravel health checks.`);
+        setText(els.updated, `Checked ${formatDate(payload.checkedAt)} from Python readiness checks.`);
         setStatus(
             status === 'ok' ? 'Ingestion services look healthy.' : 'One or more ingestion services need attention.',
             status === 'ok' ? 'success' : status === 'fail' ? 'error' : 'warning',

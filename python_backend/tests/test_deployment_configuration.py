@@ -70,7 +70,7 @@ def test_backend_reuses_worker_permissions_after_volume_initialization() -> None
     backend = compose["services"]["hawki_backend"]
     worker = compose["services"]["hawki-rag-temporal-converter-worker"]
     assert backend["group_add"] == worker["group_add"] == ["${PGID}"]
-    assert backend["depends_on"]["hawki_rag_app"]["condition"] == "service_healthy"
+    assert "hawki_rag_app" not in backend["depends_on"]
     backend_image = (REPOSITORY / "python_backend/Dockerfile").read_text(
         encoding="utf-8"
     )

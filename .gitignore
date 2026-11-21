@@ -3,6 +3,9 @@ node_modules/
 /vendor/
 
 # Environment and secrets
+/docker/env/epoch15c.cutover.env
+/.secrets/
+/public/frontend/
 .env
 .env.backup
 .env.production
@@ -101,3 +104,7 @@ refacor_code*.md
 # Local OpenCode config
 opencode.json
 .opencode/
+
+# Reproducible local-only crawler source exported by prepare_local_crawler.py.
+/.local-runtime/
+!docker/crawler/browser-seccomp.json

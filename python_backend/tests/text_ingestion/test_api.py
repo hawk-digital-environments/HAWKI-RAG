@@ -221,6 +221,64 @@ def test_unsigned_event_rejected(env):
     assert env.repository.find("default", "key-1")["lifecycle_status"] == "started"
 
 
+def test_service_text_ingestion_and_callback_need_no_laravel(env, monkeypatch):
+    from hawki_backend.auth.models import PrincipalKind
+    from hawki_backend.persistence.schema import metadata
+
+    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    principal = replace(
+        env.principal, kind=PrincipalKind.SERVICE, client_id="hawki-service"
+    )
+    env.authenticator.authenticate.return_value = principal
+    metadata.create_all(env.engine)
+    with env.engine.begin() as connection:
+        connection.execute(
+            dataset_grants.insert().values(
+                tenant_id="default",
+                dataset_id="dataset-a",
+                principal_type="service",
+                principal_id="hawki-service",
+                permission="ingest",
+            )
+        )
+    env.app.state.workflow_control = env.control
+    env.app.state.workflow_control_secret = "event-test-secret"
+    assert send(env).status_code == 202
+    row = env.repository.find("default", "key-1")
+    assert row["principal_type"] == "service"
+    from hawki_backend.url_ingestion.ownership import classify
+    from hawki_backend.url_ingestion.repository import UrlRepository
+
+    assert (
+        classify(UrlRepository(env.engine), {"workflow_id": row["workflow_id"]})
+        == "text"
+    )
+    wire = event_wire(row)
+    assert send(env, path="/internal/pipeline/worker-events", **wire).status_code == 202
+    assert send(env, path="/internal/pipeline/worker-events", **wire).status_code == 200
+    with env.engine.begin() as connection:
+        current = env.repository.find("default", "key-1")["request_metadata"]
+        current["workflow_input"].pop("task_queues")
+        connection.execute(
+            ingest_text_operations.update().values(request_metadata=current)
+        )
+    assert (
+        classify(UrlRepository(env.engine), {"workflow_id": row["workflow_id"]})
+        == "text"
+    )
+    with env.engine.begin() as connection:
+        current["workflow_input"]["ingestion"]["collection"] = (
+            "different-physical-scope"
+        )
+        connection.execute(
+            ingest_text_operations.update().values(request_metadata=current)
+        )
+    from hawki_backend.url_ingestion.errors import UrlIngestionError
+
+    with pytest.raises(UrlIngestionError):
+        classify(UrlRepository(env.engine), {"workflow_id": row["workflow_id"]})
+
+
 @pytest.mark.parametrize(
     "raw",
     [

@@ -71,7 +71,7 @@ class ManagedService:
     def authorize(self, principal: AuthenticatedPrincipal, dataset: str) -> None:
         if self.policy is None:
             raise ManagedError(503, "Managed document authorization is unavailable.")
-        if principal.kind is not PrincipalKind.USER or not self.policy.decide(
+        if not self.policy.decide(
             AuthorizationRequest(
                 principal=principal,
                 action=AuthorizationAction.INGEST,
@@ -83,7 +83,7 @@ class ManagedService:
     def can_read(self, principal: AuthenticatedPrincipal, dataset: str) -> bool:
         if self.policy is None:
             raise ManagedError(503, "Managed document authorization is unavailable.")
-        return principal.kind is PrincipalKind.USER and self.policy.decide(
+        return self.policy.decide(
             AuthorizationRequest(
                 principal=principal,
                 action=AuthorizationAction.QUERY,
@@ -98,6 +98,44 @@ class ManagedService:
         if not self.can_read(principal, doc["dataset_id"]):
             raise ManagedError(404, "Document was not found.")
         return {"success": True, "document": self.read_payload(doc)}
+
+    def open_download(
+        self,
+        principal: AuthenticatedPrincipal,
+        document_id: str,
+        source_url: str | None,
+        content_hash: str | None,
+    ):
+        """Open only the authorized revision's exact, checksum-verified upload."""
+        import hmac
+        from urllib.parse import unquote
+
+        doc = self.read_document(principal, document_id)["document"]
+        upload = doc.get("upload")
+        if not upload:
+            raise ManagedError(404, "Uploaded source was not found.")
+        filename = upload["filename"]
+        if source_url and unquote(source_url) != "upload://" + filename:
+            raise ManagedError(404, "Uploaded source was not found.")
+        if content_hash and content_hash.lower() != upload["sha256"]:
+            raise ManagedError(404, "Uploaded source was not found.")
+        try:
+            root = self.storage.root.resolve(strict=True)
+            candidate = root / upload["relative_path"]
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+            if not resolved.is_file():
+                raise ValueError()
+            stream = resolved.open("rb")
+        except (OSError, ValueError):
+            raise ManagedError(404, "Uploaded source was not found.") from None
+        try:
+            if not hmac.compare_digest(hash_upload(stream), upload["sha256"]):
+                raise ManagedError(409, "Uploaded source integrity check failed.")
+        except BaseException:
+            stream.close()
+            raise
+        return stream, filename
 
     def read_payload(self, doc: dict, *, detail: bool = True) -> dict:
         # A prepared replacement is not current until publication. Initial
@@ -255,7 +293,16 @@ class ManagedService:
         )
         target = document_id or "create"
         mutation_id = digest(
-            [principal.tenant_id, principal.principal_id, purpose, target, key]
+            [
+                principal.tenant_id,
+                principal.kind.value,
+                principal.principal_id,
+                purpose,
+                target,
+                key,
+            ]
+            if principal.kind is PrincipalKind.SERVICE
+            else [principal.tenant_id, principal.principal_id, purpose, target, key]
         )
         doc_id = document_id or "adoc_" + uuid.uuid4().hex
         canonical = body.canonical()
@@ -281,6 +328,7 @@ class ManagedService:
             mutation_id=mutation_id,
             tenant_id=principal.tenant_id,
             principal_id=principal.principal_id,
+            principal_type=principal.kind.value,
             idempotency_key=key,
             purpose=purpose,
             target=target,
@@ -584,18 +632,20 @@ class ManagedService:
         fingerprint_input = body.model_dump(mode="json")
         fingerprint_input["metadata_json"] = body.metadata_json or []
         key = "delete:" + str(doc["generation"])
+        identity = [
+            tenant_id,
+            doc["principal_id"],
+            "delete",
+            doc["managed_document_id"],
+            key,
+        ]
+        if doc.get("principal_type") == "service":
+            identity.insert(1, "service")
         values = dict(
-            mutation_id=digest(
-                [
-                    tenant_id,
-                    doc["principal_id"],
-                    "delete",
-                    doc["managed_document_id"],
-                    key,
-                ]
-            ),
+            mutation_id=digest(identity),
             tenant_id=tenant_id,
             principal_id=doc["principal_id"],
+            principal_type=doc.get("principal_type", "user"),
             idempotency_key=key,
             purpose="delete",
             target=doc["managed_document_id"],

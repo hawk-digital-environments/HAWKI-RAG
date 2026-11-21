@@ -14,8 +14,10 @@ from hawki_backend.api.v1.health import router as health_router
 from hawki_backend.api.v1.query import router as query_router
 from hawki_backend.ops.api import router as ops_router
 from hawki_backend.ops.service import OpsService
+from hawki_backend.ops import snapshots as _snapshots  # noqa: F401 - register routes
 from hawki_backend.auth.jwks import JwksKeyProvider, KeyProvider
 from hawki_backend.auth.jwt import JwtAuthenticator
+from hawki_backend.callbacks import router as callback_router
 from hawki_backend.authorization import (
     AuthorizationPort,
     DatasetGrantReader,
@@ -72,6 +74,7 @@ from hawki_backend.url_ingestion.api import (
 )
 from hawki_backend.url_ingestion.service import UrlIngestionService
 from hawki_backend.url_ingestion.repository import UrlRepository
+from hawki_backend.url_ingestion import catalog as _catalog  # noqa: F401 - register routes
 from hawki_backend.url_ingestion.settings import load_url_ingestion_settings
 from hawki_rag_retrieval import QueryDependencies, build_query_dependencies
 from hawki_backend.workflow_control.api import router as workflow_router
@@ -298,6 +301,7 @@ def create_app(
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         """Recover archived deletions and release the resources we own."""
         cleanup_task: asyncio.Task[None] | None = None
+        url_task: asyncio.Task[None] | None = None
         if (
             os.environ.get("HAWKI_BACKEND_REQUIRE_READY_SCHEMA", "false").lower()
             == "true"
@@ -319,13 +323,23 @@ def create_app(
             cleanup_task = asyncio.create_task(
                 _reconcile_periodically(resolved_dataset_service)
             )
+        if (
+            resolved_url_service is not None
+            and os.environ.get("HAWKI_BACKEND_URL_RECONCILE_ENABLED", "true").lower()
+            == "true"
+        ):
+            url_task = asyncio.create_task(
+                _reconcile_urls_periodically(resolved_url_service)
+            )
         try:
             yield
         finally:
-            if cleanup_task is not None:
-                cleanup_task.cancel()
+            for task in (cleanup_task, url_task):
+                if task is None:
+                    continue
+                task.cancel()
                 with suppress(asyncio.CancelledError):
-                    await cleanup_task
+                    await task
             if owned_provider is not None:
                 owned_provider.close()
             if owned_engine is not None:
@@ -340,6 +354,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.include_router(health_router, prefix="/v1")
+    application.include_router(callback_router)
     application.include_router(query_router, prefix="/v1")
     application.include_router(ops_router, prefix="/v1")
     if resolved_dataset_service is not None:
@@ -402,6 +417,18 @@ async def _reconcile_periodically(service: DatasetService) -> None:
     while True:
         await asyncio.sleep(interval)
         await _reconcile_once(service)
+
+
+async def _reconcile_urls_periodically(service: UrlIngestionService) -> None:
+    from hawki_backend.url_ingestion.scheduler import tick
+
+    interval = _positive_int("HAWKI_BACKEND_URL_RECONCILE_INTERVAL_SECONDS", 30)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.to_thread(lambda: asyncio.run(tick(service)))
+        except Exception as error:
+            logger.warning("URL reconciliation failed error=%s", type(error).__name__)
 
 
 def _dataset_source() -> Literal["environment", "database"]:

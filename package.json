@@ -2,7 +2,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build --config vite.frontend.config.js",
+        "build:legacy": "vite build",
         "dev": "vite"
     },
     "devDependencies": {

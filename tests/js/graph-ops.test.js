@@ -40,8 +40,8 @@ test('graph reads and mutations always carry the selected dataset', async () => 
         return {ok: true, json: async () => ({ok: true})};
     });
     app.controls.get('graph-semantic-dataset').value = 'dataset-a';
-    await app.run("requestJson('http://test/api/rag/neo4j/graph/overview?limit=80')");
-    await app.run("requestJson('http://test/api/rag/neo4j/graph/expand', {method:'POST', body:JSON.stringify({node_id:'stable'})})");
+    await app.run("requestJson('http://test/ui-api/v1/ops/graph/overview?limit=80')");
+    await app.run("requestJson('http://test/ui-api/v1/ops/graph/expand', {method:'POST', body:JSON.stringify({node_id:'stable'})})");
     assert.equal(new URL(calls[0].url).searchParams.get('dataset_id'), 'dataset-a');
     assert.equal(JSON.parse(calls[1].options.body).dataset_id, 'dataset-a');
 });
@@ -50,7 +50,7 @@ test('a response arriving after a dataset switch cannot enter the graph scene', 
     let complete;
     const app = workspace(() => new Promise(resolve => {complete = resolve;}));
     app.controls.get('graph-semantic-dataset').value = 'dataset-a';
-    const response = app.run("requestJson('http://test/api/rag/neo4j/graph/overview')");
+    const response = app.run("requestJson('http://test/ui-api/v1/ops/graph/overview')");
     app.controls.get('graph-semantic-dataset').value = 'dataset-b';
     app.run('datasetGeneration += 1');
     complete({ok: true, json: async () => ({ok: true, nodes: [{id: 'foreign'}]})});

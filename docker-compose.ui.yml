@@ -1,4 +1,2 @@
-services:
-  hawki_rag_app:
-    ports:
-      - "8080:80"
+# The standalone frontend publishes the configurable local HTTP port.
+services: {}

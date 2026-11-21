@@ -29,6 +29,7 @@ documents = sa.Table(
     sa.Column("tenant_id", sa.String(128), nullable=False),
     sa.Column("dataset_id", sa.String(191), nullable=False),
     sa.Column("principal_id", sa.String(255), nullable=False),
+    sa.Column("principal_type", sa.String(16), nullable=False, server_default="user"),
     sa.Column("generation", sa.Integer, nullable=False, server_default="0"),
     sa.Column("current_revision_id", sa.String(64)),
     sa.Column("pending_revision_id", sa.String(64)),
@@ -87,6 +88,7 @@ mutations = sa.Table(
     sa.Column("mutation_id", sa.String(64), primary_key=True),
     sa.Column("tenant_id", sa.String(128), nullable=False),
     sa.Column("principal_id", sa.String(255), nullable=False),
+    sa.Column("principal_type", sa.String(16), nullable=False, server_default="user"),
     sa.Column("idempotency_key", sa.String(255), nullable=False),
     sa.Column("purpose", sa.String(16), nullable=False),
     sa.Column("target", sa.String(64), nullable=False),
@@ -100,7 +102,13 @@ mutations = sa.Table(
     sa.Column("receipt", sa.JSON),
     *timestamps(),
     sa.UniqueConstraint(
-        "tenant_id", "principal_id", "purpose", "target", "idempotency_key"
+        "tenant_id",
+        "principal_type",
+        "principal_id",
+        "purpose",
+        "target",
+        "idempotency_key",
+        name="uq_managed_document_mutations_principal_key",
     ),
     sa.ForeignKeyConstraint(
         ["tenant_id", "managed_document_id"],

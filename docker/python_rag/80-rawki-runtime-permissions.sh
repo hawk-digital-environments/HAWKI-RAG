@@ -20,6 +20,14 @@ if [ -n "$shared_gid" ]; then
     fi
 fi
 
+# Initialize the shared volume without relying on Laravel's entrypoint. Never
+# recursively change historical artifacts or grant access outside this mount.
+if [ -d /shared ]; then
+    shared_storage_group="${shared_gid:-$(id -g www-data)}"
+    chown "www-data:$shared_storage_group" /shared
+    chmod 2775 /shared
+fi
+
 for writable_dir in /home/rawki /app/public /app/rag_storage; do
     if [ -d "$writable_dir" ]; then
         chown -R www-data:www-data "$writable_dir"

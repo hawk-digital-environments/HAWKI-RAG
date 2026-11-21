@@ -1,0 +1,27 @@
+# Disposable target network. No production network policy or address allowlist
+# changes: the broker still validates every approved numeric connection.
+services:
+  crawler_smoke_fixture:
+    image: hawki-backend:local
+    pull_policy: never
+    entrypoint: ["python", "/opt/smoke/fixture.py"]
+    environment:
+      RAWKI_CRAWLER_SMOKE_FIXTURE: "true"
+    volumes:
+      - ./scripts/crawler_smoke_fixture.py:/opt/smoke/fixture.py:ro
+    networks:
+      crawler_smoke:
+        ipv4_address: 93.184.216.34
+
+  rawki_local_crawler:
+    networks:
+      default:
+        aliases: [rawki-local-crawler]
+      crawler_smoke: {}
+
+networks:
+  crawler_smoke:
+    internal: true
+    ipam:
+      config:
+        - subnet: 93.184.216.0/24

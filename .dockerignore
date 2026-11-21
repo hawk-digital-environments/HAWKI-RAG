@@ -13,6 +13,9 @@ vendor/
 # Environment, secrets, and local overrides
 .env
 .env.*
+docker/env/epoch15c.cutover.env
+
+.local-runtime
 auth.json
 docker-compose.override.yml
 *.local
@@ -68,3 +71,6 @@ docs/
 *.log
 npm-debug.log
 yarn-error.log
+
+# Server-side UI service credentials never enter a build context.
+.secrets/

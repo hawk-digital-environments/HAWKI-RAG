@@ -421,3 +421,18 @@ def test_existing_empty_canonical_collections_are_healthy(env):
     assert response.status_code == 200
     assert response.json()["qdrant"]["ok"] is True
     assert all(row["count"] == 0 for row in response.json()["qdrant"]["collections"])
+
+
+def test_frontend_monitor_uses_effective_python_health_and_config(env, monkeypatch):
+    monkeypatch.setattr(
+        "hawki_backend.readiness.report",
+        lambda *args, **kwargs: {"status": "PASS", "checks": {"database": "PASS"}},
+    )
+    result = call(env, "health", token="manager")
+    assert result.status_code == 200
+    payload = result.json()
+    assert payload["authority"] == "python"
+    assert payload["health"]["ok"] is True
+    assert payload["config"]["models"]["ollama"]["chat_model"] == "chat"
+    assert payload["checks"][0]["status"] == "ok"
+    assert call(env, "health", token="reader").status_code == 403

@@ -549,13 +549,24 @@ def test_query_datasets_fail_closed_when_the_catalog_is_unknown() -> None:
     assert service.query_datasets(user_principal()) == []
 
 
-def test_query_datasets_are_empty_for_a_service_principal() -> None:
+def test_query_datasets_respect_a_service_principals_grants() -> None:
     store = FakeDatasetStore()
     store.add(record())
     store.grants.add((TENANT, "dataset-a", "service", "hawki-bff", "query"))
     service = _service(store)
 
-    assert service.query_datasets(service_principal(scopes=("rag:query",))) == []
+    assert service.query_datasets(service_principal(scopes=("rag:query",))) == [
+        {"dataset_id": "dataset-a", "name": "Dataset A"}
+    ]
+
+
+def test_query_services_cannot_self_grant_unowned_datasets() -> None:
+    store = FakeDatasetStore()
+    store.add(record())
+    service = _service(store)
+    with pytest.raises(DatasetNotFoundError):
+        service.grant_query(service_principal(scopes=("rag:query",)), "dataset-a")
+    assert not store.grants
 
 
 def test_query_datasets_do_not_cross_tenants() -> None:

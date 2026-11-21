@@ -50,7 +50,7 @@ def require_grant(
             datasets.c.tenant_id == principal.tenant_id,
             datasets.c.dataset_id == dataset,
             datasets.c.status == "active",
-            dataset_grants.c.principal_type == "user",
+            dataset_grants.c.principal_type == principal.kind.value,
             dataset_grants.c.principal_id == principal.principal_id,
             dataset_grants.c.permission == "ingest",
         )
@@ -212,6 +212,7 @@ class UrlRepository:
                         source_id=source_id,
                         tenant_id=principal.tenant_id,
                         principal_id=principal.principal_id,
+                        principal_type=principal.kind.value,
                         dataset_id=values["dataset_id"],
                         original_url=original,
                         normalized_url=url,
@@ -300,6 +301,7 @@ class UrlRepository:
                     .where(sources.c.source_id == source_id)
                     .values(
                         principal_id=principal.principal_id,
+                        principal_type=principal.kind.value,
                         refresh_cadence=(
                             None
                             if values["purpose"] == "delete"

@@ -345,14 +345,14 @@ def test_delete_refuses_an_unknown_dataset() -> None:
 # ------------------------------------------------------------- self-grant query
 
 
-def test_query_self_grant_requires_a_user_query_principal() -> None:
+def test_query_self_grant_accepts_a_service_query_principal() -> None:
     service = FakeDatasetService()
     app = _app(service_principal(scopes=(ADMIN, "rag:query")), service)
 
     response = _request(app, "POST", "/v1/datasets/dataset-a/query-grants/self")
 
-    assert response.status_code == 403
-    assert response.json() == {"detail": "insufficient_scope"}
+    assert response.status_code == 200
+    assert service.calls[0][1].kind.value == "service"
 
 
 def test_query_self_grant_returns_the_exact_legacy_envelope() -> None:

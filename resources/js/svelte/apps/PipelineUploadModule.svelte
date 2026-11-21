@@ -2,6 +2,7 @@
   @component Pipeline controller upload module with native RAGAnything validation and settings-backed custom converter support.
 -->
 <script lang="ts">
+    import {apiFetch as fetch} from '../../api.js';
     import type {HTMLAttributes} from 'svelte/elements';
 
     type UploadTone = 'info' | 'warn' | 'error' | 'success';
@@ -11,6 +12,7 @@
         message?: string;
         taskId?: string;
         jobId?: string;
+        pipeline?: {task_id?: string; job_id?: string};
     }
 
     interface CustomConverterDefaults {
@@ -51,6 +53,7 @@
     let status = $state(initialStatus());
     let tone = $state<UploadTone>('info');
     let fileInput: HTMLInputElement | undefined = $state();
+    let pendingUpload: {file: File; options: string; key: string} | undefined;
 
     const normalizedNativeExtensions = $derived(normalizeExtensions(nativeExtensions));
     const normalizedCustomExtensions = $derived(
@@ -140,6 +143,10 @@
         formData.set('graph', graph ? 'true' : 'false');
         formData.set('converter_mode', customConverterMode ? 'custom' : 'native');
         formData.set('file', selectedFile);
+        const options = JSON.stringify([datasetId.trim(), graph, customConverterMode]);
+        if (!pendingUpload || pendingUpload.file !== selectedFile || pendingUpload.options !== options) {
+            pendingUpload = {file: selectedFile, options, key: crypto.randomUUID()};
+        }
 
         busy = true;
         setStatus(customConverterMode ? 'Queueing file through custom converter...' : 'Queueing native RAGAnything ingestion...');
@@ -151,17 +158,21 @@
                 headers: {
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
+                    'Idempotency-Key': pendingUpload.key,
                 },
                 body: formData,
             });
             const data = await parseResponse(response);
+            const taskId = data.pipeline?.task_id;
+            const jobId = data.pipeline?.job_id || '';
 
-            if (!response.ok || !data.success || !data.task_id) {
+            if (!response.ok || !data.success || !taskId) {
                 throw new Error(data.message || `File pipeline start failed (${response.status})`);
             }
 
-            setStatus(`Queued ${customConverterMode ? 'custom converter' : 'native'} pipeline ${data.job_id || data.task_id}.`, 'success');
-            onqueued?.(data.task_id, data.job_id || '');
+            pendingUpload = undefined;
+            setStatus(`Queued ${customConverterMode ? 'custom converter' : 'native'} pipeline ${jobId || taskId}.`, 'success');
+            onqueued?.(taskId, jobId);
         } catch (error) {
             setStatus(error instanceof Error ? error.message : 'File pipeline start failed.', 'error');
         } finally {

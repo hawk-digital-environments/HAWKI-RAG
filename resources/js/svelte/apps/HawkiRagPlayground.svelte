@@ -2,6 +2,7 @@
   @component Full-page HAWKI-RAG playground for fast retrieval, source inspection, graph facts, and live system signals.
 -->
 <script lang="ts">
+    import {apiFetch as fetch} from '../../api.js';
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
     import {answerCitationLabel, parseAnswerCitations} from '../../playground/citations.js';
@@ -399,18 +400,18 @@
         const python = payload.authority === 'python';
         const bridge = asRecord(python ? payload.health : payload.bridge);
         const config = asRecord(payload.config);
-        const legacy = asRecord(payload.legacy_telemetry);
         const latest = asRecord(python ? null : payload.latest_document_graph);
         const dataset = asRecord(asArray(config.datasets).find(item => asRecord(item).dataset_id === selectedDatasetId));
         const models = asRecord(asRecord(config.models)[textValue(dataset.embedding_provider)]);
-        const failures = asArray(python ? legacy.graph_failures : payload.graph_failures)
-            .map((item) => textValue(asRecord(item).error || asRecord(item).message))
+        const failures = asArray(python ? payload.checks : payload.graph_failures)
+            .filter((item) => !python || asRecord(item).status !== 'ok')
+            .map((item) => textValue(asRecord(item).error || asRecord(item).message || asRecord(item).title))
             .filter(Boolean)
             .slice(0, 3);
 
         return {
             authority: python ? 'python' : config.effective === false ? 'legacy Laravel telemetry' : 'laravel',
-            notice: python ? 'Effective Python configuration is deployment-managed. Laravel artifacts are legacy telemetry.' : textValue(config.notice),
+            notice: python ? 'Python runtime settings are managed by the deployment.' : textValue(config.notice),
             bridgeOk: boolValue(bridge.ok),
             latencyMs: nullableNumber(bridge.latency_ms),
             graphEngine: python ? 'Python graph ops' : textValue(config.graph_engine, 'unknown'),

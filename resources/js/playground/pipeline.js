@@ -1,3 +1,4 @@
+import {apiFetch as fetch} from '../api.js';
 import { apiUrl } from './urls.js';
 import { createPipelineStarter } from './pipeline-start.js';
 

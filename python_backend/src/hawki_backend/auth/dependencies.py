@@ -7,6 +7,7 @@ ever echoed back to a caller.
 """
 
 from collections.abc import Callable
+import os
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -16,6 +17,7 @@ from hawki_backend.auth.errors import (
     AuthenticationUnavailableError,
 )
 from hawki_backend.auth.models import AuthenticatedPrincipal
+from hawki_backend.auth.models import PrincipalKind
 
 _BEARER_CHALLENGE = "Bearer"
 _INVALID_TOKEN_CHALLENGE = 'Bearer error="invalid_token"'
@@ -34,7 +36,7 @@ def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
         raise _unavailable()
     token = _read_bearer_token(request)
     try:
-        return authenticator.authenticate(token)
+        principal = authenticator.authenticate(token)
     except AuthenticationUnavailableError:
         raise _unavailable() from None
     except AuthenticationError:
@@ -43,6 +45,12 @@ def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
             detail="invalid_token",
             headers={"WWW-Authenticate": _INVALID_TOKEN_CHALLENGE},
         ) from None
+    if (
+        os.environ.get("HAWKI_BACKEND_SERVICE_ONLY", "false").lower() == "true"
+        and principal.kind is not PrincipalKind.SERVICE
+    ):
+        raise _invalid_token()
+    return principal
 
 
 def require_scopes(

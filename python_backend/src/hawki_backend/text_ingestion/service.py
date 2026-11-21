@@ -251,8 +251,10 @@ class TextIngestionService:
 
         # Freeze the server-selected physical targets and wire input with the
         # operation. Configuration drift cannot redirect a retry or cleanup.
-        values["request_metadata"]["workflow_input"] = self._payload(
-            values, scope, models
+        values["request_metadata"]["workflow_input"] = (
+            self._workflow_control.trusted_input(
+                "text", self._payload(values, scope, models)
+            )
         )
         values["request_metadata"].update(
             {

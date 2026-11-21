@@ -56,7 +56,7 @@ class ScraperWorkerSettings:
 
         runtime = load_worker_runtime_settings()
         callback = LaravelCallbackSettings(
-            endpoint=_environment_value("HAWKI_RAG_WORKER_CALLBACK_URL", ""),
+            endpoint=_environment_value("HAWKI_RAG_WORKER_CALLBACK_URL", "http://hawki_backend/internal/pipeline/worker-events"),
             secret=os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
             timeout_seconds=max(
                 0.1,

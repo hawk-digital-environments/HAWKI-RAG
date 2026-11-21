@@ -1,0 +1,287 @@
+--- a/hawki_crawler/app/main.py
++++ b/hawki_crawler/app/main.py
+@@ -4,6 +4,7 @@
+ from contextlib import asynccontextmanager
+ 
+ from fastapi import FastAPI
++from fastapi.openapi.utils import get_openapi
+ from fastapi.middleware.cors import CORSMiddleware
+ 
+ from hawki_crawler.app import job_lifecycle
+@@ -66,6 +67,20 @@
+ app.include_router(scrape_router)
+ 
+ 
++def permanent_job_openapi() -> dict:
++    if app.openapi_schema is None:
++        schema = get_openapi(
++            title=app.title, version=app.version, description=app.description,
++            routes=app.routes,
++        )
++        schema["x-hawki-crawler-contract"] = "permanent-job-v2"
++        app.openapi_schema = schema
++    return app.openapi_schema
++
++
++app.openapi = permanent_job_openapi
++
++
+ if __name__ == "__main__":
+     import uvicorn
+     uvicorn.run(app, host="0.0.0.0", port=8000)
+--- a/hawki_crawler/app/routes/jobs.py
++++ b/hawki_crawler/app/routes/jobs.py
+@@ -4,7 +4,10 @@
+ from fastapi import APIRouter, HTTPException, Path
+ from fastapi.responses import FileResponse
+ 
++from pydantic import ValidationError
++
+ from hawki_crawler.app import job_lifecycle
++from hawki_crawler.crawler.models import CrawlReceipt
+ from hawki_crawler.crawler.storage.storage_manager import StorageManager
+ 
+ router = APIRouter()
+@@ -18,7 +21,7 @@
+     return StorageManager(job_id, base_path=str(FilePath(record["output_directory"]).parent))
+ 
+ 
+-@router.get("/status/{job_id}")
++@router.get("/status/{job_id}", response_model=CrawlReceipt)
+ async def get_status(job_id: JobId):
+     """
+     Get the status of a crawl job.
+@@ -27,7 +30,10 @@
+     if not job:
+         raise HTTPException(status_code=404, detail="Job not found")
+ 
+-    return job
++    try:
++        return CrawlReceipt.model_validate(job)
++    except ValidationError:
++        raise HTTPException(409, "Legacy receipt requires ownership reconciliation") from None
+ 
+ 
+ @router.get("/jobs")
+--- a/hawki_crawler/crawler/models.py
++++ b/hawki_crawler/crawler/models.py
+@@ -1,22 +1,38 @@
+ from datetime import datetime
+-from typing import Optional
++from typing import Annotated, Literal, Optional
+ 
+-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
++from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl, StrictBool, model_validator
+ 
+ 
+-class CrawlConfig(BaseModel):
+-    """Configuration for crawl job"""
++JOB_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,190}$"
++JobId = Annotated[str, Field(pattern=JOB_PATTERN)]
++LifecycleState = Literal[
++    "pending", "running", "paused", "cancelling", "unknown",
++    "completed", "failed", "cancelled",
++]
++
++
++class CrawlOwnership(BaseModel):
++    """Immutable owner identity echoed from admission through durable retirement."""
++
++    dataset_id: str = Field(min_length=1, max_length=191)
++    task_id: str = Field(min_length=1, max_length=191)
++    source_id: str = Field(min_length=1, max_length=191)
++    source_url: str = Field(min_length=1, max_length=4104)
++    generation: int = Field(strict=True, ge=1, le=2**31 - 1)
++    url_ingestion_operation_id: str = Field(min_length=1, max_length=191)
++
++
++class CrawlConfig(CrawlOwnership):
++    """Permanent owned crawl request; physical output remains server-confined."""
++
+     model_config = ConfigDict(populate_by_name=True)
+ 
+-    job_id: str = Field(..., pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,190}$", description="Permanent crawl identity; never reused")
+-    source_id: Optional[str] = None
+-    source_url: Optional[str] = None
+-    generation: Optional[int] = None
+-    url_ingestion_operation_id: Optional[str] = None
++    job_id: JobId
+     metadata: Optional[dict] = None
+-    url: HttpUrl = Field(..., description="The starting URL to crawl")
++    url: str = Field(min_length=1, max_length=4104)
++    output_dir: str = Field(min_length=1)
+     max_pages: int = Field(default=100, ge=0, description="Maximum number of pages to crawl (0 = unlimited)")
+-    output_dir: str = Field(default="output", description="Directory to store crawled data")
+     label: Optional[str] = Field(default=None, description="Label for this crawl job (auto-generated if not provided)")
+     skip_images: bool = Field(default=False, description="Skip downloading images")
+     max_images_per_page: int = Field(default=30, ge=0, le=50, description="Maximum number of images to download per page")
+@@ -35,7 +51,7 @@
+     min_word_count: int = Field(default=20, ge=0, description="Minimum word count for content quality (0 disables filter)")
+     max_link_density: float = Field(default=0.4, ge=0.0, le=1.0, description="Max link density before content is treated as navigation")
+     max_link_density_words: int = Field(default=200, ge=0, description="Max words to consider for link density filtering")
+-    sitemap_base: Optional[str] = Field(default=None, description="Base URL for the sitemap pages")
++    sitemap_base: str = Field(default="", description="Base URL for the sitemap pages")
+     sitemap_output: Optional[str] = Field(default=None, description="Output path for the scraped sitemap JSON")
+     site_profile_path: Optional[str] = Field(default=None, description="Optional JSON file with site-specific extractor overrides")
+     sitemap_start_page: Optional[int] = Field(default=None, description="Starting page for sitemap pagination")
+@@ -46,7 +62,8 @@
+     @model_validator(mode="after")
+     def _network_input(self):
+         from hawki_crawler.runtime.network import approve_url
+-        approve_url(str(self.url))
++        approve_url(self.url)
++        approve_url(self.source_url)
+         if self.sitemap_base:
+             approve_url(self.sitemap_base)
+         return self
+@@ -72,19 +89,58 @@
+     completed_at: Optional[datetime] = None
+ 
+ 
++class CrawlAdmissionData(BaseModel):
++    sealed: StrictBool
++    status: LifecycleState
++    message: str
++
++
+ class CrawlResponse(BaseModel):
+-    """
+-    Response for crawl job submission.
++    """Admission is idempotent; a replay can report an already sealed job."""
+ 
+-    Structure uses a simple API event envelope:
+-    - event: The type of event (e.g., "job_submitted")
+-    - data: Object containing status, message, and other metadata
+-    - timestamp: ISO-8601 timestamp
+-    """
+-    job_id: str
+-    event: str
+-    data: dict
++    job_id: JobId
++    event: Literal["job_submitted", "job_exists"]
++    data: CrawlAdmissionData
+     timestamp: str
++
++
++def receipt_schema(schema: dict) -> None:
++    # This annotation is optional; the consumer requires an exact nullable timestamp.
++    schema["properties"]["sealed_at"].pop("title", None)
++
++
++class CrawlReceipt(BaseModel):
++    """A terminal receipt is sealed only after all job writers have drained."""
++
++    model_config = ConfigDict(extra="allow", json_schema_extra=receipt_schema)
++
++    job_id: JobId
++    external_job_id: JobId
++    status: LifecycleState
++    state: LifecycleState
++    terminal: StrictBool
++    sealed: StrictBool
++    sealed_at: AwareDatetime | None
++    quiescent: StrictBool
++    writer_admission_closed: StrictBool
++    output_directory: str = Field(min_length=1)
++    metadata: CrawlOwnership
++    pages_crawled: int = Field(ge=0)
++
++    @model_validator(mode="after")
++    def consistent(self) -> "CrawlReceipt":
++        terminal = self.status in {"completed", "failed", "cancelled"}
++        if (
++            self.job_id != self.external_job_id
++            or self.state != self.status
++            or self.terminal != terminal
++        ):
++            raise ValueError("Inconsistent permanent job identity or state")
++        if self.sealed and not (
++            terminal and self.quiescent and self.writer_admission_closed and self.sealed_at
++        ):
++            raise ValueError("Sealed job lacks drainage evidence")
++        return self
+ 
+ 
+ class QuickScrapeRequest(BaseModel):
+--- a/hawki_crawler/runtime/network.py
++++ b/hawki_crawler/runtime/network.py
+@@ -27,7 +27,8 @@
+         approve_address(str(address.ipv4_mapped))
+     tunnels = ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32")
+     if (
+-        not address.is_global
++        str(address) == "168.63.129.16"
++        or not address.is_global
+         or address.is_multicast
+         or address.is_reserved
+         or any(address in ipaddress.ip_network(prefix) for prefix in tunnels)
+--- a/hawki_crawler/runtime/store.py
++++ b/hawki_crawler/runtime/store.py
+@@ -175,6 +175,8 @@
+             metadata={
+                 key: payload.get(key)
+                 for key in (
++                    "dataset_id",
++                    "task_id",
+                     "source_id",
+                     "source_url",
+                     "generation",
+--- a/tests/test_browser_egress.py
++++ b/tests/test_browser_egress.py
+@@ -342,6 +342,13 @@
+             "/crawl",
+             json={
+                 "job_id": "protected-browser",
++                "dataset_id": "browser-test",
++                "task_id": "browser-test-task",
++                "source_id": "browser-test-source",
++                "source_url": website.url(),
++                "generation": 1,
++                "url_ingestion_operation_id": "browser-test-operation",
++                "output_dir": "output",
+                 "url": website.url(),
+                 "skip_images": True,
+                 "max_pages": 1,
+@@ -385,6 +392,13 @@
+             "/crawl",
+             json={
+                 "job_id": "cancel-browser",
++                "dataset_id": "browser-test",
++                "task_id": "browser-test-task",
++                "source_id": "browser-test-source",
++                "source_url": website.url(),
++                "generation": 1,
++                "url_ingestion_operation_id": "browser-test-operation",
++                "output_dir": "output",
+                 "url": website.url("/slow"),
+                 "skip_images": True,
+                 "max_pages": 1,
+--- a/tests/test_runtime_contract.py
++++ b/tests/test_runtime_contract.py
+@@ -40,7 +40,10 @@
+         url="https://example.com/",
+         max_pages=1,
+         output_dir="output",
++        dataset_id="runtime-contract",
++        task_id="runtime-contract-task",
+         source_id="source-11",
++        source_url="https://example.com/",
+         generation=11,
+         url_ingestion_operation_id="operation-11",
+     )
+--- a/tests/test_safe_network.py
++++ b/tests/test_safe_network.py
+@@ -318,6 +318,13 @@
+                 "/crawl",
+                 json={
+                     "job_id": "http-file",
++                    "dataset_id": "file-test",
++                    "task_id": "file-test-task",
++                    "source_id": "file-test-source",
++                    "source_url": base + "/sample.pdf",
++                    "generation": 1,
++                    "url_ingestion_operation_id": "file-test-operation",
++                    "output_dir": "output",
+                     "url": base + ("/sitemap.xml" if via_sitemap else "/sample.pdf"),
+                     "skip_images": True,
+                     "max_pages": 1,
