@@ -549,3 +549,34 @@ def test_large_conversion_result_stays_below_temporal_payload_limit(
     result = convert_activity.inspect_and_convert_files(activity_payload(tmp_path))
     assert result["markdown_files_created"] == 10000
     assert len(json.dumps(result).encode()) < 4096
+
+
+def test_converter_prepares_direct_upload_without_scraper(tmp_path, monkeypatch):
+    payload = activity_payload(tmp_path)
+    upload = tmp_path / "uploads" / "fixture.md"
+    upload.parent.mkdir()
+    upload.write_text("# Direct upload\n")
+    payload["workflow_input"].update(
+        managed_upload_protocol=2,
+        managed_document_id="doc-a",
+        upload={"local_path": str(upload), "target_name": "fixture.md"},
+    )
+    from hawki_converter_worker.application import source_conversion
+
+    # Inspect the converter boundary after real root-confined file preparation.
+    def inspect(*args, **kwargs):
+        assert (tmp_path / "raw" / "fixture.md").read_bytes() == upload.read_bytes()
+        raise RuntimeError("converter reached")
+
+    monkeypatch.setattr(source_conversion, "_run_converter", inspect)
+    dependencies = ConversionDependencies(
+        artifact_store_factory=LocalArtifactStore,
+        direct_extract_client_factory=lambda _: None,
+        external_converter_client_factory=lambda _: None,
+    )
+    with pytest.raises(RuntimeError, match="converter reached"):
+        execute_source_conversion(
+            ConvertActivityInput.model_validate(payload),
+            settings=settings(),
+            dependencies=dependencies,
+        )

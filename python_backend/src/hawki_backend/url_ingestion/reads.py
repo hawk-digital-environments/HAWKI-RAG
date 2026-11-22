@@ -376,6 +376,12 @@ def other_tasks(service, principal):
                             "status": state,
                             "counts": {"total": 1, state: 1},
                         }
+                    if wire.get("managed_upload_protocol") == 2:
+                        task["stages"]["scrape"] = {
+                            "status": "skipped",
+                            "counts": {"total": 1, "skipped": 1},
+                            "message": "Uploaded file goes directly to conversion.",
+                        }
                 result.append(task)
     return result
 

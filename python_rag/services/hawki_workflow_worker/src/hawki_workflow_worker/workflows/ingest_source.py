@@ -180,7 +180,22 @@ class IngestSourceWorkflow:
         start_stage = resume.stage if resume else "scrape"
 
         scrape_result: dict[str, Any] = {}
-        if start_stage == "scrape":
+        direct_upload = (
+            workflow_input.get("managed_upload_protocol") == 2
+            and workflow_input.get("managed_document_id")
+            and isinstance(workflow_input.get("upload"), dict)
+            and workflow_input.get("owner") != "url"
+        )
+        if start_stage == "scrape" and direct_upload:
+            # Explicit input version preserves command sequences of old histories.
+            # The converter stages the local upload; no scraper task is scheduled.
+            scrape_result = {
+                "source_id": source_id,
+                "status": "success",
+                "raw_dir": workflow_input["raw_output_path"],
+                "files_found": 1,
+            }
+        elif start_stage == "scrape":
             scrape_result = await workflow.execute_activity(
                 SCRAPE_SOURCE_ACTIVITY,
                 workflow_input,

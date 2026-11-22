@@ -346,3 +346,53 @@ def test_workflow_module_is_deterministic_and_service_package_is_exactly_pinned(
 
     for source in (SERVICE_ROOT / "src" / "hawki_workflow_worker").rglob("*.py"):
         assert len(source.read_text(encoding="utf-8").splitlines()) < 600, source
+
+
+def test_new_managed_upload_schedules_converter_without_scraper(monkeypatch):
+    runtime = _WorkflowRuntime(
+        [
+            {"status": "success", "markdown_dir": "/shared/markdown"},
+            {"status": "success", "documents_indexed": 1},
+            {"status": "ready", "source_id": "source-a"},
+        ]
+    )
+    monkeypatch.setattr(ingest_source, "workflow", runtime)
+    asyncio.run(
+        IngestSourceWorkflow().run(
+            {
+                "source_id": "source-a",
+                "managed_document_id": "doc-a",
+                "managed_upload_protocol": 2,
+                "upload": {"local_path": "/shared/uploads/a.pdf"},
+                "raw_output_path": "/shared/raw",
+            }
+        )
+    )
+    assert [call[0] for call in runtime.calls] == [
+        CONVERT_FILES_ACTIVITY,
+        INDEX_MARKDOWN_ACTIVITY,
+        MARK_SOURCE_READY_ACTIVITY,
+    ]
+    assert runtime.calls[0][1]["scrape_result"]["raw_dir"] == "/shared/raw"
+
+
+def test_historical_upload_without_protocol_keeps_scrape_command(monkeypatch):
+    runtime = _WorkflowRuntime(
+        [
+            {"status": "success", "raw_dir": "/shared/raw"},
+            {"status": "success", "markdown_dir": "/shared/markdown"},
+            {"status": "success", "documents_indexed": 1},
+            {"status": "ready", "source_id": "source-a"},
+        ]
+    )
+    monkeypatch.setattr(ingest_source, "workflow", runtime)
+    asyncio.run(
+        IngestSourceWorkflow().run(
+            {
+                "source_id": "source-a",
+                "managed_document_id": "doc-a",
+                "upload": {"local_path": "/shared/uploads/a.pdf"},
+            }
+        )
+    )
+    assert runtime.calls[0][0] == SCRAPE_SOURCE_ACTIVITY

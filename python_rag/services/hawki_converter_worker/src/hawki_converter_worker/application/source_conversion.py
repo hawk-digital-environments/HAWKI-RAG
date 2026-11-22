@@ -52,6 +52,18 @@ def execute_source_conversion(
     artifact_store = dependencies.artifact_store_factory(
         shared_storage_root(workflow_input)
     )
+    if workflow_input.get("managed_upload_protocol") == 2:
+        if workflow_input.get("owner") == "url" or not workflow_input.get(
+            "managed_document_id"
+        ):
+            raise RuntimeError("Direct upload conversion requires a managed document")
+        from hawki_artifact_store.uploads import LocalUploadArtifactStager
+
+        staged = LocalUploadArtifactStager().stage(
+            workflow_input, source_id, raw_dir, artifact_store
+        )
+        if staged is None:
+            raise RuntimeError("Direct upload conversion requires a local upload")
     config = build_converter_endpoint_config(
         workflow_input,
         settings,

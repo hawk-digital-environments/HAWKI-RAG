@@ -1,3 +1,4 @@
+import {reconcileStageCards, resetStageCards} from './stage-card-renderer.js';
 import {stageLogPresentation} from './stage-log-presentation.js';
 import {apiFetch as fetch} from '../api.js';
 import { apiUrl } from './urls.js';
@@ -206,8 +207,12 @@ async function loadStageLogs(stage, { quiet = false } = {}) {
         stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.line_count ?? 0} lines${refreshedAt}`;
     }
     if (stageLogViewerEl) {
-        stageLogViewerEl.textContent = log.text || 'No log lines found for this stage yet.';
-        stageLogViewerEl.scrollTop = stageLogViewerEl.scrollHeight;
+        const text = log.text || 'No log lines found for this stage yet.';
+        if (stageLogViewerEl.textContent !== text) {
+            const atBottom = stageLogViewerEl.scrollTop + stageLogViewerEl.clientHeight >= stageLogViewerEl.scrollHeight - 8;
+            stageLogViewerEl.textContent = text;
+            if (atBottom) stageLogViewerEl.scrollTop = stageLogViewerEl.scrollHeight;
+        }
     }
     updateStageLogActions();
 }
@@ -315,28 +320,27 @@ function renderStageCard(name, stage = {}) {
 
     const metrics = document.createElement('div');
     metrics.className = 'pipeline-metrics';
-    const counts = stage.counts || {};
-    Object.entries(counts).forEach(([key, value]) => appendMetric(metrics, key, value));
-
-    if (stage.retry) {
-        appendMetric(metrics, 'retry', stage.retry.retry_count);
-        appendMetric(metrics, 'max retries', stage.retry.max_retries);
-    }
-
-    if (stage.started_at) appendMetric(metrics, 'started', formatDate(stage.started_at));
-    if (stage.completed_at) appendMetric(metrics, 'completed', formatDate(stage.completed_at));
-    card.appendChild(metrics);
-
-    const errors = Array.isArray(stage.errors) ? stage.errors : [];
-    if (errors.length > 0) {
-        const errorBox = document.createElement('div');
-        errorBox.className = 'pipeline-stage-errors';
-        errorBox.textContent = errors
-            .slice(0, 3)
-            .map((error) => typeof error === 'string' ? error : (error.message || error.error_message || JSON.stringify(error)))
-            .join(' | ');
-        card.appendChild(errorBox);
-    }
+    const errorBox = document.createElement('div');
+    errorBox.className = 'pipeline-stage-errors';
+    card.append(metrics, errorBox);
+    card.updateStage = (next) => {
+        card.className = `pipeline-stage-card ${stageStatusClass(next.status)}`;
+        status.textContent = String(next.status || 'queued').replace(/_/g, ' ');
+        summary.textContent = stageSummary(next);
+        metrics.replaceChildren();
+        Object.entries(next.counts || {}).forEach(([key, value]) => appendMetric(metrics, key, value));
+        if (next.retry) {
+            appendMetric(metrics, 'retry', next.retry.retry_count);
+            appendMetric(metrics, 'max retries', next.retry.max_retries);
+        }
+        if (next.started_at) appendMetric(metrics, 'started', formatDate(next.started_at));
+        if (next.completed_at) appendMetric(metrics, 'completed', formatDate(next.completed_at));
+        const errors = Array.isArray(next.errors) ? next.errors : [];
+        errorBox.hidden = errors.length === 0;
+        errorBox.textContent = errors.slice(0, 3).map(error => typeof error === 'string'
+            ? error : (error.message || error.error_message || JSON.stringify(error))).join(' | ');
+    };
+    card.updateStage(stage);
 
     const details = document.createElement('details');
     details.className = 'pipeline-inline-logs';
@@ -348,18 +352,29 @@ function renderStageCard(name, stage = {}) {
     details.append(toggle, preview);
     download.hidden = true;
     const taskId = activePipelineTaskId;
+    let previewLoaded = false;
+    let previewLoading = false;
     async function refreshPreview() {
-        preview.textContent = 'Loading stage logs...';
+        if (!details.open || previewLoading || taskId !== activePipelineTaskId) return;
+        previewLoading = true;
+        if (!previewLoaded) preview.textContent = 'Loading stage logs...';
         try {
             const response = await fetch(apiUrl(stageLogPath(logStage)), {headers: {Accept: 'application/json'}});
             const data = await parseResponseJson(response);
             if (!response.ok || !data.success) throw new Error(data.message || `Stage logs failed (${response.status})`);
-            if (taskId !== activePipelineTaskId) return;
+            if (taskId !== activePipelineTaskId || !card.isConnected) return;
             const view = stageLogPresentation(data.log);
-            preview.textContent = view.text;
+            if (preview.textContent !== view.text) preview.textContent = view.text;
+            previewLoaded = true;
+            preview.title = '';
             download.hidden = !view.downloadable;
-        } catch (error) { preview.textContent = error.message || 'Stage logs unavailable.'; }
+        } catch (error) {
+            if (taskId !== activePipelineTaskId || !card.isConnected) return;
+            preview.title = error.message || 'Stage logs unavailable.';
+            if (!previewLoaded) preview.textContent = preview.title;
+        } finally { previewLoading = false; }
     }
+    card.refreshStageLogs = refreshPreview;
     details.open = expandedStageLogs.has(logStage);
     details.addEventListener('toggle', () => {
         if (details.open) { expandedStageLogs.add(logStage); refreshPreview(); }
@@ -507,12 +522,10 @@ function renderPipelineTask(task) {
         taskRunEl.hidden = false;
     }
 
-    stagesEl.innerHTML = '';
     const explicitStages = explicitStageEntries(task);
     if (explicitStages) {
-        explicitStages.forEach(([label, stage]) => {
-            stagesEl.appendChild(renderStageCard(label, stage));
-        });
+        reconcileStageCards(stagesEl, `task:${activePipelineTaskId || task.task_id}`, explicitStages, renderStageCard);
+        updateStageLogActions();
         followCurrentStageLogs(task, explicitStages);
         return;
     }
@@ -529,9 +542,8 @@ function renderPipelineTask(task) {
         }];
     });
 
-    fallbackStages.forEach(([label, stage]) => {
-        stagesEl.appendChild(renderStageCard(label, stage));
-    });
+    reconcileStageCards(stagesEl, `task:${activePipelineTaskId || task.task_id}`, fallbackStages, renderStageCard);
+    updateStageLogActions();
     followCurrentStageLogs(task, fallbackStages);
 }
 
@@ -678,7 +690,7 @@ function renderPipeline(data) {
         if (stageLogStatusEl) stageLogStatusEl.textContent = 'Select Scrape, Convert, or Ingest logs from a stage card.';
         if (stageLogViewerEl) stageLogViewerEl.textContent = 'No stage log selected.';
         clearTaskRun();
-        stagesEl.innerHTML = '';
+        resetStageCards(stagesEl);
         updateStageLogActions();
         return;
     }
@@ -692,10 +704,7 @@ function renderPipeline(data) {
     if (updatedAtEl) updatedAtEl.textContent = data.updated_at ? `Updated ${formatDate(data.updated_at)}` : '';
 
     const stages = data.stages || {};
-    stagesEl.innerHTML = '';
-    ['scrape', 'convert', 'ingest'].forEach((name) => {
-        stagesEl.appendChild(renderStageCard(name, stages[name] || {}));
-    });
+    reconcileStageCards(stagesEl, `job:${data.job_id}`, ['scrape', 'convert', 'ingest'].map(name => [name, stages[name] || {}]), renderStageCard);
     updateStageLogActions();
 }
 

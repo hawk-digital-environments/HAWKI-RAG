@@ -224,7 +224,6 @@ class ManagedService:
             ),
         }
 
-
     async def mutate(
         self,
         principal: AuthenticatedPrincipal,
@@ -531,6 +530,7 @@ class ManagedService:
             "dataset_id": dataset,
             "managed_document_id": doc_id,
             "managed_writer_protocol": 1,
+            "managed_upload_protocol": 2,
             "task_id": task,
             "job_id": "job_" + digest([task, source])[:32],
             "upload": {

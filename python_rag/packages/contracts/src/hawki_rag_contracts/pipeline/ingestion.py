@@ -133,6 +133,7 @@ class IngestSourceWorkflowInput(BaseModel):
     job_id: str | None = Field(default=None, max_length=191)
     managed_document_id: str | None = Field(default=None, max_length=191)
     managed_writer_protocol: Literal[1] | None = None
+    managed_upload_protocol: Literal[2] | None = None
     owner: Literal["url"] | None = None
     url_ingestion_operation_id: str | None = Field(
         default=None, min_length=1, max_length=64
@@ -151,6 +152,21 @@ class IngestSourceWorkflowInput(BaseModel):
     ingestion: IngestionOptions
     external_services: dict[str, JsonValue] = Field(default_factory=dict)
     resume: SourceWorkflowResume | None = None
+
+    @model_validator(mode="after")
+    def validate_managed_upload(self) -> "IngestSourceWorkflowInput":
+        if self.managed_upload_protocol is not None and (
+            self.owner == "url"
+            or self.url_ingestion_operation_id is not None
+            or not self.managed_document_id
+            or self.managed_writer_protocol != 1
+            or not self.upload
+            or not self.upload.get("local_path")
+        ):
+            raise ValueError(
+                "Direct upload conversion requires an exclusive managed upload"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_url_owner(self) -> "IngestSourceWorkflowInput":

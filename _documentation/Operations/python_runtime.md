@@ -188,3 +188,13 @@ request, or URL source history may lack its collection. Any ingestion history,
 including pending, failed, cancelled, or deleted records, requires the canonical
 collection to exist. Unavailable database evidence or invalid metadata fails
 readiness; this exception does not recreate or repair missing collections.
+
+New managed file uploads carry `managed_upload_protocol=2` and start directly
+with conversion, followed by indexing and ready projection. The converter
+prepares the local raw artifact through the shared root-confined upload stager;
+no scraper activity or external crawler is invoked. The pipeline UI projects
+Scrape as skipped and has no scraper events for these uploads. URL ingestion
+keeps its crawler stage, while direct text starts at indexing. Upload histories
+without the version field retain their recorded scraper staging sequence for
+Temporal replay. Deploy converter/workflow workers before enabling new backend
+uploads; existing history and upload metadata are not rewritten.
