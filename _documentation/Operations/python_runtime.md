@@ -179,3 +179,12 @@ remain unchanged. The hidden graph clear admission/receipt routes remain because
 an uncertain durable `graph_clear` operation can require receipt reconciliation;
 removing them without verified closure could strand its dataset fence. Legacy
 deletion rejection handlers and ownership checks also remain fail-closed.
+
+
+Qdrant collections are created lazily on first indexing. Live readiness still
+probes every configured Qdrant client, but an active dataset with valid canonical
+collection metadata and no tenant-matched managed-document, direct-text, URL
+request, or URL source history may lack its collection. Any ingestion history,
+including pending, failed, cancelled, or deleted records, requires the canonical
+collection to exist. Unavailable database evidence or invalid metadata fails
+readiness; this exception does not recreate or repair missing collections.

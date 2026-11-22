@@ -405,22 +405,52 @@ def _qdrant_inventory(env: Mapping[str, str], consumer: str) -> set[str]:
         return {row["name"] for row in response.json()["result"]["collections"]}
 
 
+def _required_qdrant_collections(connection: sa.Connection) -> set[str]:
+    """Require collections once any tenant-scoped ingestion history exists.
+
+    Collections are created lazily by the indexer. Retained failed/deleted rows
+    still count as history; lack of current documents is not proof of an unused
+    dataset. Include URL requests that have not published a source yet.
+    """
+    from .persistence.schema import datasets
+    from .managed_documents.schema import documents
+    from .text_ingestion.schema import ingest_text_operations
+    from .url_ingestion.schema import requests, sources
+
+    history = sa.or_(
+        *(
+            sa.exists().where(
+                table.c.tenant_id == datasets.c.tenant_id,
+                table.c.dataset_id == datasets.c.dataset_id,
+            )
+            for table in (documents, ingest_text_operations, requests, sources)
+        )
+    )
+    rows = connection.execute(
+        sa.select(datasets.c.qdrant_collection, history.label("has_ingestion")).where(
+            datasets.c.status == "active"
+        )
+    )
+    required = set()
+    for collection, has_ingestion in rows:
+        # Missing canonical metadata is invalid even for an unused dataset.
+        if not isinstance(collection, str) or not collection.strip():
+            raise ValueError("Canonical collection unavailable")
+        if has_ingestion:
+            required.add(collection)
+    return required
+
+
 def _qdrant(env: Mapping[str, str], consumer: str = "query") -> None:
     names = _qdrant_inventory(env, consumer)
     engine = build_engine(load_database_settings(env))
     try:
         with engine.connect() as connection, connection.begin():
             connection.execute(sa.text("SET TRANSACTION READ ONLY"))
-            required = set(
-                connection.execute(
-                    sa.text(
-                        "SELECT qdrant_collection FROM hawki_backend.datasets WHERE status='active'"
-                    )
-                ).scalars()
-            )
+            required = _required_qdrant_collections(connection)
     finally:
         engine.dispose()
-    if not required <= names or None in required or "" in required:
+    if not required <= names:
         raise ValueError("Canonical collection unavailable")
 
 
