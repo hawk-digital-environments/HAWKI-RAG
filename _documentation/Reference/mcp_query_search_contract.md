@@ -279,7 +279,7 @@ catch path logs the query and exception; those logs still require access control
 | Bridge call and timeout | `app/Services/RagSearch/RagSearcher.php` |
 | Inner response normalization | `app/Services/RagSearch/RagSearchResponseFilter.php` |
 | Advertised output schema | `app/Services/RagSearch/RagSearchSchemaFactory.php` |
-| FastAPI request validation | `python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py` |
+| Historical FastAPI request validation | Former `hawki_bridge/http/schemas.py`; current API validation lives in `python_backend` |
 | Raw query execution and response | `python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py` |
 
 The existing `RagSearcherDatasetScopeTest` protects server-derived dataset

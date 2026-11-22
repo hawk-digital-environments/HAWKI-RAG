@@ -31,8 +31,9 @@ def test_workspace_has_one_root_lock_and_no_nested_workspace_metadata() -> None:
     ]
 
     assert workspace_owners == [ROOT / "pyproject.toml"]
-    # Includes the extracted retrieval package and the Epoch 8 control adapter.
-    assert len(_members()) == 18
+    # Current shared packages and deployable workers; the retired bridge is absent.
+    assert len(_members()) == 17
+    assert not (ROOT / "services" / "hawki_bridge").exists()
     assert list(ROOT.rglob("uv.lock")) == [ROOT / "uv.lock"]
     assert list((ROOT / "packages").rglob(".python-version")) == []
     assert list((ROOT / "services").rglob(".python-version")) == []

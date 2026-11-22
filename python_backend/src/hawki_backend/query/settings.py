@@ -1,11 +1,9 @@
 """Strict, startup-validated query scope and model configuration.
 
-The registry is a *migration-time* source of physical dataset scope. It is
-populated by an operator from the deployment's dataset inventory, never from
-Laravel's ``public`` tables, and this service never writes it. It exists so
-the Python query API can resolve trusted Qdrant and Neo4j targets before
-Python owns dataset metadata itself; it is expected to be replaced by a
-Python-owned dataset registry in a later migration epoch.
+Database-backed dataset authority resolves tenant-scoped physical targets in
+current deployments. The static registry remains an explicit alternative for
+isolated environments and tests; it cannot be combined with database authority.
+Neither source reads historical ``public`` tables.
 
 Only server-side configuration is read. A client can never supply a
 collection, namespace, provider or model through the public query contract.
@@ -90,8 +88,8 @@ class DatasetScopeResolver(Protocol):
 
     A resolver is the database-backed authority. It is injected into
     `QuerySettings` when the deployment selects Python dataset authority. The
-    static mapping stays available for tests and for the pre-cutover
-    environment source; the two are never active at the same time.
+    static mapping stays available for tests and the explicit environment
+    source; the two are never active at the same time.
     """
 
     def resolve_scope(
@@ -256,8 +254,8 @@ def _env_name(suffix: str) -> str:
 def _dataset_source(source: Mapping[str, str]) -> str:
     """Return the selected dataset authority: ``environment`` or ``database``.
 
-    The selector is explicit and defaults to the environment registry, which is
-    the pre-cutover behavior. Any other value fails startup: a deployment must
+    The selector defaults to the environment registry for isolated use.
+    Current deployments explicitly select database authority. Any other value fails startup: a deployment must
     never guess which store owns dataset scope.
     """
 

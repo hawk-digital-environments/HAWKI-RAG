@@ -61,22 +61,6 @@ def test_tasks_jobs_status_events_and_logs_share_authorized_python_state(env):
     )
 
 
-def test_legacy_read_authorization_deduplicates_python_authority(env):
-    row = generation(env, create(env))
-    response = request(
-        env,
-        "/v1/pipeline/legacy-access",
-        {
-            "candidates": [
-                {"field": "job_id", "identity": row["job_id"], "dataset_id": "web"},
-                {"field": "job_id", "identity": "legacy", "dataset_id": "web"},
-                {"field": "task_id", "identity": "denied", "dataset_id": "other"},
-            ]
-        },
-    )
-    assert response.json() == {"success": True, "identities": ["legacy"]}
-
-
 def test_recovery_inventory_respects_task_dataset_filters(env):
     row = generation(env, create(env))
     fail(env, row)

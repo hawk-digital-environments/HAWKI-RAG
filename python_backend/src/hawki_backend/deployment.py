@@ -7,15 +7,6 @@ from .query.settings import DatasetScope, load_query_settings
 from .auth.models import PrincipalKind
 from .settings import load_auth_settings, load_database_settings
 
-SELECTORS = (
-    "HAWKI_QUERY_BACKEND",
-    "TEXT_INGESTION_BACKEND",
-    "MANAGED_DOCUMENT_BACKEND",
-    "CRAWLER_INGESTION_BACKEND",
-    "PIPELINE_EXECUTION_BACKEND",
-    "DATASET_BACKEND",
-    "GRAPH_OPS_BACKEND",
-)
 ENABLE_FLAGS = (
     "HAWKI_WORKFLOW_CONTROL_ENABLED",
     "HAWKI_BACKEND_URL_INGESTION_ENABLED",
@@ -53,9 +44,7 @@ def http_url(value: str, path: str | None = None, *, https: bool = False) -> boo
         return False
 
 
-def configuration_checks(
-    env: Mapping[str, str], phase: str = "runtime"
-) -> dict[str, str]:
+def configuration_checks(env: Mapping[str, str]) -> dict[str, str]:
     """Return status only; exception text can contain DSNs and must never escape."""
     checks = {}
     for name, loader in (
@@ -79,32 +68,6 @@ def configuration_checks(
         and "HAWKI_BACKEND_QUERY_DATASETS" not in env
         else "FAIL"
     )
-    if phase in {"staging", "cutover"}:
-        for name in ENABLE_FLAGS:
-            checks[name] = "PASS" if enabled(env, name) else "FAIL"
-    for name in (
-        "HAWKI_QUERY_BFF_ISSUER",
-        "HAWKI_QUERY_BFF_AUDIENCE",
-        "HAWKI_QUERY_BFF_CLIENT_ID",
-        "HAWKI_QUERY_BFF_TENANT",
-        "HAWKI_QUERY_BFF_PRIVATE_KEY_PATH",
-        "HAWKI_QUERY_BFF_KEY_ID",
-    ):
-        checks[name] = "PASS" if env.get(name, "").strip() else "FAIL"
-    try:
-        auth = load_auth_settings(env)
-        checks["bff_auth_agreement"] = (
-            "PASS"
-            if auth
-            and auth.issuer == env.get("HAWKI_QUERY_BFF_ISSUER")
-            and auth.audience == env.get("HAWKI_QUERY_BFF_AUDIENCE")
-            and auth.clients.get(env.get("HAWKI_QUERY_BFF_CLIENT_ID"))
-            == PrincipalKind.USER
-            and "RS256" in auth.algorithms
-            else "FAIL"
-        )
-    except Exception:
-        checks["bff_auth_agreement"] = "FAIL"
     checks["callback_secret"] = (
         "PASS" if env.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", "").strip() else "FAIL"
     )
@@ -122,32 +85,28 @@ def configuration_checks(
         "PASS"
         if http_url(
             env.get("HAWKI_RAG_WORKER_CALLBACK_URL", ""),
-            "/internal/pipeline/worker-events"
-            if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF")
-            else "/api/internal/pipeline/worker-events",
+            "/internal/pipeline/worker-events",
         )
         else "FAIL"
     )
     checks["control_destination"] = (
         "PASS" if http_url(env.get("HAWKI_WORKFLOW_CONTROL_URL", ""), "") else "FAIL"
     )
-    if phase in {"staging", "cutover"}:
-        expected = "laravel" if phase == "staging" else "python"
-        for name in SELECTORS:
-            checks[name] = "PASS" if env.get(name) == expected else "FAIL"
-    if phase == "staging":
-        checks["archived_cleanup_staged"] = (
+    checks["service_only"] = (
+        "PASS" if enabled(env, "HAWKI_BACKEND_SERVICE_ONLY") else "FAIL"
+    )
+    try:
+        auth = load_auth_settings(env)
+        checks["service_clients"] = (
             "PASS"
-            if env.get("HAWKI_BACKEND_DATASET_CLEANUP_ENABLED") == "false"
+            if auth
+            and auth.clients
+            and all(kind is PrincipalKind.SERVICE for kind in auth.clients.values())
             else "FAIL"
         )
-    if phase == "cutover":
-        checks["query_all_disabled"] = (
-            "PASS"
-            if env.get("HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT", "").lower() == "false"
-            else "FAIL"
-        )
-    if phase == "runtime" and not any(enabled(env, name) for name in ENABLE_FLAGS[:4]):
+    except Exception:
+        checks["service_clients"] = "FAIL"
+    if not any(enabled(env, name) for name in ENABLE_FLAGS[:4]):
         for key in (
             "callback_secret",
             "callback_replay_window",
@@ -155,24 +114,6 @@ def configuration_checks(
             "control_destination",
         ):
             checks.pop(key, None)
-    if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF"):
-        for key in tuple(checks):
-            if key.startswith("HAWKI_QUERY_BFF_") or key == "bff_auth_agreement":
-                checks.pop(key)
-        checks["service_only"] = (
-            "PASS" if enabled(env, "HAWKI_BACKEND_SERVICE_ONLY") else "FAIL"
-        )
-        try:
-            auth = load_auth_settings(env)
-            checks["service_clients"] = (
-                "PASS"
-                if auth
-                and auth.clients
-                and all(kind is PrincipalKind.SERVICE for kind in auth.clients.values())
-                else "FAIL"
-            )
-        except Exception:
-            checks["service_clients"] = "FAIL"
     return checks
 
 

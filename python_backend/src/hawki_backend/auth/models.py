@@ -15,7 +15,10 @@ from enum import StrEnum
 
 
 class PrincipalKind(StrEnum):
-    """The kind of caller a token authenticates."""
+    """Persisted principal kinds; live JWT authentication accepts only SERVICE.
+
+    USER remains for historical records and rejection tests.
+    """
 
     SERVICE = "service"
     USER = "user"

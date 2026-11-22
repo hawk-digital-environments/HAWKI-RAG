@@ -156,8 +156,26 @@ The local crawler provides the permanent-job API without a saved profile/task UI
 only after validating that API's full contract and health. A configured separate
 catalog, custom path, malformed contract or unhealthy upstream still fails closed.
 
-The `hawki_bridge` Python package and historical validators remain only as inert
-compatibility/reference tests. The bridge has no deployment image or service;
-old live BFF activation tooling is retired. Current deployment validation is
+Current deployment validation is
 `python -m hawki_backend.readiness --live` and the Python-only
 `python_backend/scripts/cutover_readiness.py --live`.
+
+
+## Runtime validation and retained reconciliation
+
+Run `python -m hawki_backend.readiness --live` without a phase selector.
+Readiness no longer supports Laravel staging/cutover modes or BFF signing-key
+configuration. Set `HAWKI_BACKEND_READINESS_JWKS_KEY_ID` to an active public
+service-issuer key ID. Keep `HAWKI_BACKEND_SERVICE_ONLY=true`; registered user
+clients are rejected by the JWT authenticator even if that flag is false.
+Tenant, scopes, exact dataset grants, cryptographic validation, and callback
+HMAC checks remain mandatory. Old `*_BACKEND` authority selectors and
+`HAWKI_QUERY_BFF_*` settings are not required by readiness.
+
+The removed `scripts/query_storage.py` was an unused migration probe. Use the
+current live readiness checks for configured storage destinations and access.
+Historical principal values, identity encodings, fixtures, and schema migrations
+remain unchanged. The hidden graph clear admission/receipt routes remain because
+an uncertain durable `graph_clear` operation can require receipt reconciliation;
+removing them without verified closure could strand its dataset fence. Legacy
+deletion rejection handlers and ownership checks also remain fail-closed.

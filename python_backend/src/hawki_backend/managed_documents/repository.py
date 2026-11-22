@@ -115,17 +115,6 @@ class ManagedRepository:
             for row in rows:
                 yield dict(row)
 
-    def owned_ids(self, ids: list[str]) -> set[str]:
-        # IDs are globally unique. Even a different-tenant owner must prevent
-        # legacy projection; do not expose which tenant owns it.
-        with self.engine.connect() as connection:
-            return set(
-                connection.execute(
-                    sa.select(documents.c.managed_document_id).where(
-                        documents.c.managed_document_id.in_(ids)
-                    )
-                ).scalars()
-            )
 
     def list_blocking_documents(self, tenant: str, dataset_id: str) -> list[dict]:
         """Return undeleted documents of one dataset for internal cleanup."""

@@ -9,7 +9,6 @@ for cross-service behavior and runtime diagrams.
 
 | Member | Responsibility |
 |---|---|
-| [hawki_bridge](hawki_bridge/README.md) | Historical compatibility library/tests only; no Compose service or runtime image |
 | [hawki_workflow_worker](hawki_workflow_worker/README.md) | Deterministic source and direct-text orchestration |
 | [hawki_scraper_worker](hawki_scraper_worker/README.md) | External crawling or upload staging into raw artifacts |
 | [hawki_converter_worker](hawki_converter_worker/README.md) | Inspection/conversion into Markdown artifacts |

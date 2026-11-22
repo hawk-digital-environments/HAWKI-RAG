@@ -81,44 +81,6 @@ async def read(request, principal, method, *args, **kwargs):
         return failure(UrlIngestionError(503, "URL authorization is unavailable."))
 
 
-@router.get("/pipeline/start-request", include_in_schema=False)
-def start_request(request: Request, principal: Principal, key: str):
-    """Resolve a lost start response before a selector rollback admits new work."""
-    import sqlalchemy as sa
-    from .identity import digest
-    from .schema import requests
-
-    if principal.client_id != "hawki-bff":
-        return failure(UrlIngestionError(403, "Forbidden."))
-    try:
-        instance = service(request)
-        with instance.repository.engine.connect() as connection:
-            row = (
-                connection.execute(
-                    sa.select(requests).where(
-                        requests.c.request_id
-                        == digest(
-                            [principal.tenant_id, principal.principal_id, key.strip()]
-                        )
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
-        if row is None:
-            return {"success": True, "owner": "absent"}
-        instance.authorize(principal, row["dataset_id"])
-        if row["purpose"] != "start":
-            raise UrlIngestionError(
-                409, "The idempotency key belongs to another operation."
-            )
-        return {"success": True, "owner": "url", "task_id": row["task_id"]}
-    except UrlIngestionError as error:
-        return failure(error)
-    except AuthorizationUnavailableError:
-        return failure(UrlIngestionError(503, "URL authorization is unavailable."))
-
-
 @router.get("/pipeline/tasks", include_in_schema=False)
 async def task_list(
     request: Request, principal: Principal, limit: int = Query(30, ge=1, le=250)
@@ -139,7 +101,6 @@ async def failed_jobs(
 @router.get("/pipeline/recovery/candidates", include_in_schema=False)
 async def recovery_candidates(request: Request, principal: Principal):
     # Mutation inventory is complete, never the first page of a display list.
-    # The authenticated BFF partitions these IDs with its own legacy candidates.
     from . import reads
 
     try:
@@ -186,38 +147,6 @@ async def download_logs(
             "X-Content-Type-Options": "nosniff",
         },
     )
-
-
-@router.post("/pipeline/legacy-access", include_in_schema=False)
-async def legacy_access(request: Request, principal: Principal, body: dict):
-    if principal.client_id != "hawki-bff":
-        return failure(UrlIngestionError(403, "Forbidden."))
-    from .ownership import classify
-    from .reads import allowed
-
-    try:
-        candidates = body.get("candidates")
-        if not isinstance(candidates, list) or len(candidates) > 250:
-            raise UrlIngestionError(422, "Invalid compatibility candidates.")
-        accepted = []
-        for candidate in candidates:
-            field = candidate["field"]
-            if field not in {"task_id", "job_id"}:
-                raise UrlIngestionError(422, "Invalid compatibility identity.")
-            owner = await run_in_threadpool(
-                classify, service(request).repository, {field: candidate["identity"]}
-            )
-            if owner in {"absent", "laravel"} and await run_in_threadpool(
-                allowed, service(request), principal, candidate["dataset_id"]
-            ):
-                accepted.append(candidate["identity"])
-        return JSONResponse(content={"success": True, "identities": accepted})
-    except UrlIngestionError as error:
-        return failure(error)
-    except (KeyError, TypeError, ValueError):
-        return failure(UrlIngestionError(422, "Invalid compatibility candidates."))
-    except AuthorizationUnavailableError:
-        return failure(UrlIngestionError(503, "URL authorization is unavailable."))
 
 
 @router.get("/pipeline/tasks/{task_id}")

@@ -161,5 +161,5 @@ def auth_settings() -> AuthSettings:
         issuer="https://issuer.example",
         audience="hawki-api",
         jwks_url="https://issuer.example/.well-known/jwks.json",
-        clients={"hawki-console": PrincipalKind.USER},
+        clients={"hawki-console": PrincipalKind.SERVICE},
     )

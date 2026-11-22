@@ -88,7 +88,7 @@ def test_bad_text_credential_controls_overall_readiness(
         return None
 
     monkeypatch.setattr(readiness, "_temporal", temporal)
-    report = readiness.report(qdrant.env, "runtime", live=True)
+    report = readiness.report(qdrant.env, live=True)
     assert report["checks"]["qdrant.query"] == "PASS"
     assert report["checks"].get("qdrant.text_deletion") == (
         "FAIL" if text_enabled else None
@@ -209,24 +209,14 @@ def test_graph_dependency_uses_canonical_dataset_scopes(monkeypatch, scope, requ
 @pytest.mark.parametrize(
     "capability",
     [
-        "GRAPH_OPS_BACKEND",
         "HAWKI_WORKFLOW_CONTROL_ENABLED",
         "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
         "HAWKI_BACKEND_URL_INGESTION_ENABLED",
-        "cutover",
     ],
 )
 def test_graph_capabilities_keep_neo4j_required(capability):
-    env = (
-        environment()
-        | dict.fromkeys(ENABLE_FLAGS, "false")
-        | {"GRAPH_OPS_BACKEND": "laravel"}
-    )
-    if capability != "cutover":
-        env[capability] = "python" if capability == "GRAPH_OPS_BACKEND" else "true"
-    assert readiness.graph_required(
-        env, "cutover" if capability == "cutover" else "runtime"
-    )
+    env = environment() | dict.fromkeys(ENABLE_FLAGS, "false") | {capability: "true"}
+    assert readiness.graph_required(env)
 
 
 @pytest.mark.parametrize("graph", [False, True, None])
@@ -274,7 +264,7 @@ def test_cutover_keeps_graph_dependency_when_neo4j_is_down(monkeypatch):
     monkeypatch.setattr(
         readiness, "_graph", lambda _: (_ for _ in ()).throw(ConnectionError())
     )
-    result = readiness.report(env, "cutover", live=True)
+    result = readiness.report(env, live=True)
     assert result["status"] == "FAIL"
     assert result["checks"]["neo4j"] == "FAIL"
 

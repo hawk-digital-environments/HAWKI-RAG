@@ -119,7 +119,8 @@ class AuthSettings:
 
     Every field is server-side configuration. The client registry maps known
     client identifiers to the kind of principal they authenticate as; the
-    kind is never taken from a token.
+    kind is never taken from a token. Live authentication refuses every
+    registry entry whose kind is not SERVICE.
 
     This object is produced by `load_auth_settings`, which is the only
     validated construction path. Every value it exposes is immutable: the

@@ -349,7 +349,7 @@ def create_app(
     application = FastAPI(
         title="HAWKI Backend",
         version="0.1.0",
-        openapi_url=None,
+        openapi_url="/v1/openapi.json",
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
@@ -357,7 +357,8 @@ def create_app(
     application.include_router(health_router, prefix="/v1")
     application.include_router(callback_router)
     application.include_router(query_router, prefix="/v1")
-    application.include_router(ops_router, prefix="/v1")
+    # UI administration remains callable but is omitted from public API docs.
+    application.include_router(ops_router, prefix="/v1", include_in_schema=False)
     if resolved_dataset_service is not None:
         application.include_router(dataset_router, prefix="/v1")
     application.include_router(text_ingestion_router, prefix="/v1")

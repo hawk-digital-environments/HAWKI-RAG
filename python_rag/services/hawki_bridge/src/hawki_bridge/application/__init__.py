@@ -1,1 +1,0 @@
-"""Bridge application layer."""

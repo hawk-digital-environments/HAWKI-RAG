@@ -25,7 +25,7 @@ from jwt.exceptions import (
 
 from hawki_backend.auth.errors import AuthenticationError, AuthFailureReason
 from hawki_backend.auth.jwks import KeyProvider, SigningKey
-from hawki_backend.auth.models import AuthenticatedPrincipal
+from hawki_backend.auth.models import AuthenticatedPrincipal, PrincipalKind
 from hawki_backend.settings import AuthSettings
 
 _MAX_TOKEN_BYTES = 8192
@@ -71,7 +71,7 @@ class JwtAuthenticator:
         expires_at, issued_at = self._check_time(claims)
         client_id = self._resolve_client(claims)
         kind = self._settings.clients.get(client_id)
-        if kind is None:
+        if kind is not PrincipalKind.SERVICE:
             raise AuthenticationError(AuthFailureReason.CLIENT_NOT_ALLOWED)
         subject = self._read_subject(claims)
         tenant_id = self._read_tenant(claims)

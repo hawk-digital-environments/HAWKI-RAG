@@ -74,26 +74,17 @@ def test_retrieval_import_registers_no_fastapi_routes() -> None:
     )
 
 
-def test_openapi_exposes_health_and_query_only() -> None:
-    """The backend OpenAPI schema must expose exactly health and query."""
+def test_openapi_exposes_application_routes_without_ui_operations() -> None:
+    """Document application APIs while preserving UI operations outside the schema."""
     from hawki_backend.main import app
 
     openapi = app.openapi()
     paths = set(openapi["paths"].keys())
+    assert not any(path.startswith("/v1/ops/") for path in paths)
 
     assert paths == {
         "/v1/health",
         "/v1/query",
-        "/v1/ops/graph/overview",
-        "/v1/ops/graph/search",
-        "/v1/ops/graph/node",
-        "/v1/ops/graph/expand",
-        "/v1/ops/graph/semantic-search",
-        "/v1/ops/graph/snapshots",
-        "/v1/ops/graph/snapshots/{snapshot_id}",
-        "/v1/ops/graph/clear",
-        "/v1/ops/stats",
-        "/v1/ops/config",
         "/v1/text-ingestions",
         "/v1/text-ingestions/{source_id}",
         "/v1/documents",
@@ -110,3 +101,18 @@ def test_openapi_exposes_health_and_query_only() -> None:
     assert set(openapi["paths"]["/v1/query"]) == {"post"}
     assert set(openapi["paths"]["/v1/text-ingestions"]) == {"post"}
     assert set(openapi["paths"]["/v1/text-ingestions/{source_id}"]) == {"delete"}
+
+
+def test_retired_bff_routes_are_not_served() -> None:
+    from fastapi.testclient import TestClient
+    from hawki_backend.main import app
+
+    client = TestClient(app)
+    for method, path in (
+        ("POST", "/v1/documents/read-access"),
+        ("POST", "/v1/pipeline/legacy-access"),
+        ("GET", "/v1/pipeline/start-request?key=fixture"),
+        ("GET", "/v1/ops/graph/scope?dataset_id=fixture"),
+    ):
+        response = client.request(method, path, json={} if method == "POST" else None)
+        assert response.status_code in {404, 405}, (method, path, response.status_code)

@@ -404,3 +404,47 @@ def test_unknown_ui_access_mode_never_calls_issuer_or_backend(boundary, monkeypa
     monkeypatch.setenv("HAWKI_RAG_UI_ACCESS_MODE", "anonymous")
     response, calls = request()
     assert response.status_code == 503 and calls == []
+
+
+def test_swagger_uses_gateway_schema_and_browser_marker(local_boundary):
+    response, calls = request(path="docs", base_url="http://localhost:8080")
+    assert response.status_code == 200 and calls == []
+    assert "/ui-api/v1/openapi.json" in response.text
+    assert "requestInterceptor" in response.text
+    assert "X-Hawki-Browser" in response.text
+    assert "server-only-service-jwt" not in response.text
+
+
+def test_browser_schema_uses_gateway_without_exposing_service_auth(local_boundary):
+    from hawki_backend.main import app as backend
+
+    import copy
+
+    original = copy.deepcopy(backend.openapi())
+    original["components"]["securitySchemes"] = {
+        "service": {"type": "http", "scheme": "bearer"}
+    }
+    original["paths"]["/v1/query"]["post"]["security"] = [{"service": []}]
+    calls = []
+
+    async def handler(wire):
+        calls.append(wire)
+        return httpx.Response(200, json=original)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            app.state.http = client
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://localhost:8080"
+            ) as browser:
+                return await browser.get("/ui-api/v1/openapi.json")
+
+    response = asyncio.run(run())
+    schema = response.json()
+    assert response.status_code == 200
+    assert schema["servers"] == [{"url": "/ui-api"}]
+    assert all(path.startswith("/v1/") for path in schema["paths"])
+    assert "securitySchemes" not in schema["components"]
+    assert "securitySchemes" in original["components"]
+    assert calls[0].headers["authorization"] == "Bearer server-only-service-jwt"
+    assert "server-only-service-jwt" not in response.text

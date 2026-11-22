@@ -22,40 +22,6 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_health_and_query_are_the_only_endpoints() -> None:
-    paths = app.openapi()["paths"]
-
-    assert set(paths) == {
-        "/v1/health",
-        "/v1/query",
-        "/v1/ops/graph/overview",
-        "/v1/ops/graph/search",
-        "/v1/ops/graph/node",
-        "/v1/ops/graph/expand",
-        "/v1/ops/graph/semantic-search",
-        "/v1/ops/graph/snapshots",
-        "/v1/ops/graph/snapshots/{snapshot_id}",
-        "/v1/ops/graph/clear",
-        "/v1/ops/stats",
-        "/v1/ops/config",
-        "/v1/text-ingestions",
-        "/v1/text-ingestions/{source_id}",
-        "/v1/documents",
-        "/v1/documents/batch",
-        "/v1/documents/{document_id}",
-        "/v1/pipeline/tasks/start",
-        "/v1/pipeline/tasks/{task_id}",
-        "/v1/pipeline/tasks/{task_id}/cancel",
-        "/v1/pipeline/sources/{source_id}",
-        "/v1/pipeline/sources/{source_id}/recrawl",
-        "/v1/pipeline/recovery/{path}",
-    }
-    assert set(paths["/v1/health"]) == {"get"}
-    assert set(paths["/v1/query"]) == {"post"}
-    assert set(paths["/v1/text-ingestions"]) == {"post"}
-    assert set(paths["/v1/text-ingestions/{source_id}"]) == {"delete"}
-
-
 def test_readiness_requires_authentication_and_leaves_health_public():
     async def request():
         async with httpx.AsyncClient(

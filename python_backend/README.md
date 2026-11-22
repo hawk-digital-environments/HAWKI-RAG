@@ -7,7 +7,11 @@ browser-session implementation.
 
 The current [deployment guide](../_documentation/Operations/python_runtime.md)
 documents provisioning and startup. Frozen contract fixtures live under
-`tests/fixtures`; test-only activation models live under `tests/historical`.
+`tests/fixtures`; current runtime and operator tooling have dedicated tests.
+The retired bridge, Laravel dataset/grant import commands, and BFF-only access
+projection routes have been removed. Historical public records and migration
+history remain preserved. Use the current dataset APIs for provisioning and
+`python -m hawki_backend.readiness --live` for deployment checks.
 
 ## Boundaries
 
@@ -84,7 +88,6 @@ docker compose exec -T hawki_backend python -m hawki_backend.readiness --live
 ```
 
 The current runtime requires 26/26 PASS. Readiness never repairs state or replaces
-authorization. Compatibility validators are test-only under
-`tests/historical`; they are not runtime/operator tools. Explicit grant migration
-scripts may inspect frozen historical reports, but their old live activation
-switches are retired.
+authorization. Retained grant/import tooling is covered independently; its old
+live activation switches are retired. Frozen contract fixtures remain independent
+reference data for compatibility and security tests.

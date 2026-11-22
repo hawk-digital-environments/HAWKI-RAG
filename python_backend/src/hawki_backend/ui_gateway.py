@@ -17,6 +17,8 @@ import time
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
@@ -211,6 +213,51 @@ async def authorize_management(request: Request) -> httpx.AsyncClient:
             "ui_management_access_required",
         )
     return client
+
+
+@app.get("/ui-api/v1/docs", include_in_schema=False)
+async def documentation(request: Request):
+    await authorize_management(request)
+    page = get_swagger_ui_html(
+        openapi_url="/ui-api/v1/openapi.json",
+        title="HAWKI RAG API",
+        swagger_ui_parameters={"persistAuthorization": False},
+    )
+    # Interactive calls use the same trusted gateway as the application UI.
+    html = page.body.decode().replace(
+        "SwaggerUIBundle({",
+        "SwaggerUIBundle({ requestInterceptor: request => { request.headers['X-Hawki-Browser'] = '1'; return request; },",
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/ui-api/v1/openapi.json", include_in_schema=False)
+async def documentation_schema(request: Request):
+    client = await authorize_management(request)
+    token = await request.app.state.service_tokens.get(client)
+    try:
+        response = await client.get(
+            configured_url("HAWKI_RAG_UI_BACKEND_URL") + "/v1/openapi.json",
+            headers={"Authorization": "Bearer " + token},
+        )
+        response.raise_for_status()
+        schema = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(503, "api_documentation_unavailable") from None
+    schema["servers"] = [{"url": "/ui-api"}]
+    schema["paths"] = {
+        path: operations
+        for path, operations in schema["paths"].items()
+        if path.startswith("/v1/")
+    }
+    # The browser authenticates through the gateway, never with its service JWT.
+    schema.pop("security", None)
+    schema.get("components", {}).pop("securitySchemes", None)
+    for operations in schema["paths"].values():
+        for operation in operations.values():
+            if isinstance(operation, dict):
+                operation.pop("security", None)
+    return schema
 
 
 @app.api_route(

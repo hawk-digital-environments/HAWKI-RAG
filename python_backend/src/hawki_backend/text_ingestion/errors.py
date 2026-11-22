@@ -2,8 +2,7 @@
 
 The bodies carry a code and a generic message only. They never carry a
 fingerprint, a path, a collection, a namespace, a token or a database error.
-The Laravel compatibility BFF maps these codes back onto its existing
-browser contract.
+API clients receive the same stable error contract as the management UI.
 """
 
 from __future__ import annotations

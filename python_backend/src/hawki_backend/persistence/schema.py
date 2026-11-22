@@ -2,16 +2,14 @@
 
 The backend owns the ``hawki_backend`` schema. Authorization, dataset
 metadata, physical scope, grants and one-time grant tokens all live here.
-Laravel owns ``public``: its connection pins its search path to ``public``, so
-the legacy application never addresses the Python tables and its migrations
-never collide with them.
+Historical ``public`` tables remain separate, preserved evidence. The runtime
+role cannot read or write them.
 
 The schema is defined once, here, in SQLAlchemy Core. The runtime code and the
 migrations both read this definition, so the two cannot drift apart.
 
-There is no dual write. In Python dataset mode an operator imports the legacy
-rows once with the migration tooling; after that the backend's own dataset
-management is the only writer.
+There is no dual write. The backend's dataset management is the only runtime
+writer of dataset authority.
 """
 
 import sqlalchemy as sa

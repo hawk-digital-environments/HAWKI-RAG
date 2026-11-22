@@ -57,7 +57,6 @@ jobs:
         working-directory: python_rag
         run: >-
           uv sync --frozen --group test --extra cpu
-          --package hawki-bridge
           --package hawki-workflow-worker
           --package hawki-scraper-worker
           --package hawki-converter-worker
@@ -90,7 +89,7 @@ jobs:
               fi
             fi
           }
-          services=(hawki_bridge hawki_workflow_worker hawki_scraper_worker hawki_converter_worker hawki_indexer_worker hawki_reranker)
+          services=(hawki_workflow_worker hawki_scraper_worker hawki_converter_worker hawki_indexer_worker hawki_reranker)
           for service in "${services[@]}"; do
             for other in "${services[@]}"; do
               if [ "$service" != "$other" ]; then

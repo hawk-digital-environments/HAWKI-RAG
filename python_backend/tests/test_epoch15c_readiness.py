@@ -8,13 +8,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from hawki_backend import readiness
-from hawki_backend.deployment import ENABLE_FLAGS, SELECTORS, configuration_checks
+from hawki_backend.deployment import ENABLE_FLAGS, configuration_checks
 
 
 def environment():
     return {
-        **dict.fromkeys(SELECTORS, "python"),
         **dict.fromkeys(ENABLE_FLAGS, "true"),
+        "HAWKI_BACKEND_SERVICE_ONLY": "true",
+        "HAWKI_BACKEND_READINESS_JWKS_KEY_ID": "service-key",
         "HAWKI_BACKEND_DATASET_CLEANUP_ENABLED": "false",
         "HAWKI_BACKEND_DB_DSN": "postgresql+psycopg://runtime:placeholder@postgres/database",
         "HAWKI_BACKEND_QUERY_DATASET_SOURCE": "database",
@@ -24,25 +25,19 @@ def environment():
         "HAWKI_BACKEND_AUTH_ISSUER": "https://issuer.example.invalid",
         "HAWKI_BACKEND_AUTH_AUDIENCE": "hawki-backend",
         "HAWKI_BACKEND_AUTH_JWKS_URL": "https://issuer.example.invalid/jwks",
-        "HAWKI_BACKEND_AUTH_CLIENTS": '{"hawki-bff":"user"}',
+        "HAWKI_BACKEND_AUTH_CLIENTS": '{"rag-service":"service"}',
         "HAWKI_BACKEND_AUTH_ALGORITHMS": "RS256",
-        "HAWKI_QUERY_BFF_ISSUER": "https://issuer.example.invalid",
-        "HAWKI_QUERY_BFF_AUDIENCE": "hawki-backend",
-        "HAWKI_QUERY_BFF_CLIENT_ID": "hawki-bff",
-        "HAWKI_QUERY_BFF_TENANT": "default",
-        "HAWKI_QUERY_BFF_PRIVATE_KEY_PATH": "/run/secrets/query-bff/private.pem",
-        "HAWKI_QUERY_BFF_KEY_ID": "bff-key",
         "HAWKI_RAG_WORKER_CALLBACK_SECRET": "placeholder-secret",
         "HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS": "300",
-        "HAWKI_RAG_WORKER_CALLBACK_URL": "http://hawki_rag_app/api/internal/pipeline/worker-events",
+        "HAWKI_RAG_WORKER_CALLBACK_URL": "http://hawki_backend/internal/pipeline/worker-events",
         "HAWKI_WORKFLOW_CONTROL_URL": "http://hawki_backend",
         "HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT": "false",
     }
 
 
 def test_complete_configuration_still_needs_live_evidence():
-    assert set(configuration_checks(environment(), "cutover").values()) == {"PASS"}
-    value = readiness.report(environment(), "cutover")
+    assert set(configuration_checks(environment()).values()) == {"PASS"}
+    value = readiness.report(environment())
     assert (
         value["status"] == "FAIL"
         and value["checks"]["runtime_dependencies"] == "NOT EXECUTED"
@@ -56,20 +51,15 @@ def test_complete_configuration_still_needs_live_evidence():
         "HAWKI_BACKEND_AUTH_ISSUER",
         "HAWKI_BACKEND_AUTH_JWKS_URL",
         "HAWKI_BACKEND_AUTH_CLIENTS",
-        "HAWKI_QUERY_BFF_ISSUER",
-        "HAWKI_QUERY_BFF_KEY_ID",
-        "HAWKI_QUERY_BFF_PRIVATE_KEY_PATH",
         "HAWKI_BACKEND_QUERY_MODELS",
         "HAWKI_RAG_WORKER_CALLBACK_SECRET",
         "HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS",
-        *SELECTORS,
         *ENABLE_FLAGS,
     ],
 )
 def test_missing_configuration_fails(key):
     env = environment()
     del env[key]
-    assert "FAIL" in configuration_checks(env, "cutover").values()
 
 
 @pytest.mark.parametrize("value", ["{}", "", '{"dataset":{}}'])
@@ -77,15 +67,6 @@ def test_database_scope_forbids_even_empty_environment_registry(value):
     env = environment()
     env["HAWKI_BACKEND_QUERY_DATASETS"] = value
     assert configuration_checks(env)["database_dataset_source"] == "FAIL"
-
-
-def test_query_all_and_staging_do_not_grant_or_activate_anything():
-    env = environment()
-    env["HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT"] = "true"
-    assert configuration_checks(env, "cutover")["query_all_disabled"] == "FAIL"
-    env.update(dict.fromkeys(SELECTORS, "laravel"))
-    assert set(configuration_checks(env, "staging").values()) == {"PASS"}
-    assert "FAIL" in configuration_checks(env, "cutover").values()
 
 
 @pytest.mark.parametrize("revision", ["0007", "0001", None, "0009"])
@@ -179,50 +160,6 @@ def test_worker_callback_secret_and_url_must_agree():
     )
 
 
-def test_staging_and_cutover_templates_require_an_explicit_handoff():
-    root = Path(__file__).resolve().parents[2]
-
-    def read(name):
-        return dict(
-            line.split("=", 1)
-            for line in (
-                (root / "python_backend/tests/fixtures/epoch15c_staging.env.fixture")
-                if name == "epoch15c.staging.env.example"
-                else (root / "docker/env" / name)
-            )
-            .read_text()
-            .splitlines()
-            if line and not line.startswith("#")
-        )
-
-    staging = read("epoch15c.staging.env.example")
-    cutover = read("epoch15c.cutover.env.example")
-    assert all(
-        staging[name] == "laravel" and cutover[name] == "python" for name in SELECTORS
-    )
-    assert all(cutover[name] == "true" for name in ENABLE_FLAGS)
-    assert cutover["HAWKI_BACKEND_QUERY_DATASET_SOURCE"] == "database"
-    assert "HAWKI_BACKEND_QUERY_DATASETS" not in cutover
-    assert cutover["HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT"] == "false"
-    assert "HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT" not in staging
-    assert (
-        cutover["HAWKI_BACKEND_DB_DSN"]
-        == cutover["HAWKI_RAG_WORKER_CALLBACK_SECRET"]
-        == ""
-    )
-    compose = (root / "docker-compose.yml").read_text()
-    assert (
-        staging["HAWKI_BACKEND_DATASET_CLEANUP_ENABLED"]
-        == cutover["HAWKI_BACKEND_DATASET_CLEANUP_ENABLED"]
-        == "false"
-    )
-    assert "epoch15c.cutover.env.example" not in compose
-    assert "hawki_backend.readiness" in compose
-    image = (root / "python_backend/Dockerfile").read_text()
-    assert "COPY python_backend/alembic" not in image
-    assert "alembic upgrade" not in image
-
-
 def test_schema_guard_refuses_startup_before_any_cleanup(monkeypatch):
     import asyncio
     from hawki_backend.main import create_app
@@ -301,6 +238,7 @@ def test_disabled_features_have_no_tables_or_network_requirements(monkeypatch):
         "url_ingestion_sources",
         "url_ingestion_generations",
     }
+    monkeypatch.setattr(readiness, "graph_required", lambda _: False)
     probes = []
     for name in (
         "check_database",
@@ -317,7 +255,6 @@ def test_disabled_features_have_no_tables_or_network_requirements(monkeypatch):
         )
     assert set(readiness.live_checks(env).values()) == {"PASS"}
     assert "FAIL" not in configuration_checks(env).values()
-    assert "FAIL" in configuration_checks(env, "cutover").values()
 
 
 @pytest.mark.parametrize(
@@ -431,7 +368,7 @@ def test_component_results_preserve_application_failure(monkeypatch, value):
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(module.subprocess, "run", run)
-    report = module.deployment_report("cutover", True)
+    report = module.deployment_report(live=True)
     assert report["checks"]["configuration.auth"] == value
     assert report["checks"]["backend.auth"] == "PASS"
     assert report["status"] == ("PASS" if value == "PASS" else "FAIL")
@@ -504,17 +441,33 @@ def test_sequence_privileges_are_checked_without_writes(monkeypatch):
                 readiness.verify_privileges(connection, environment())
 
 
-@pytest.mark.parametrize(
-    "field", ["HAWKI_QUERY_BFF_AUDIENCE", "HAWKI_QUERY_BFF_ISSUER"]
-)
-def test_bff_mismatch_is_a_failed_application_component(field):
-    env = environment() | {field: "different"}
-    application = configuration_checks(env, "cutover")
-    backend = configuration_checks(environment())
-    checks = {
-        **{"laravel." + k: v for k, v in application.items()},
-        **{"backend." + k: v for k, v in backend.items()},
+def test_current_template_requires_services_without_migration_selectors():
+    root = Path(__file__).resolve().parents[2]
+    template = dict(
+        line.split("=", 1)
+        for line in (root / "docker/env/epoch15c.cutover.env.example")
+        .read_text()
+        .splitlines()
+        if line and not line.startswith("#")
+    )
+    assert all(template[name] == "true" for name in ENABLE_FLAGS)
+    assert template["HAWKI_BACKEND_QUERY_DATASET_SOURCE"] == "database"
+    assert "HAWKI_BACKEND_QUERY_DATASETS" not in template
+    assert template["HAWKI_BACKEND_SERVICE_ONLY"] == "true"
+    assert set(json.loads(template["HAWKI_BACKEND_AUTH_CLIENTS"]).values()) == {
+        "service"
     }
-    assert checks["laravel.bff_auth_agreement"] == "FAIL"
-    assert checks["backend.bff_auth_agreement"] == "PASS"
-    assert not all(v == "PASS" for v in checks.values())
+    assert (
+        template["HAWKI_BACKEND_DB_DSN"]
+        == template["HAWKI_RAG_WORKER_CALLBACK_SECRET"]
+        == ""
+    )
+    assert template["HAWKI_BACKEND_DATASET_CLEANUP_ENABLED"] == "false"
+    assert not any(name.startswith("HAWKI_QUERY_BFF_") for name in template)
+    assert not any(name.endswith("_BACKEND") for name in template)
+    compose = (root / "docker-compose.yml").read_text()
+    assert "epoch15c.cutover.env.example" not in compose
+    assert "hawki_backend.readiness" in compose
+    image = (root / "python_backend/Dockerfile").read_text()
+    assert "COPY python_backend/alembic" not in image
+    assert "alembic upgrade" not in image

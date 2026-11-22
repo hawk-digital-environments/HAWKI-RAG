@@ -2,8 +2,7 @@
 
 Only ``HAWKI_BACKEND_TEXT_INGESTION_*`` is read here. The public size limits
 are constants because they are part of the external contract, not deployment
-tuning: the Laravel compatibility BFF and this service must refuse exactly the
-same bodies.
+tuning. API clients and the management UI share these limits.
 """
 
 from __future__ import annotations

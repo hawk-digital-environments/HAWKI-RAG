@@ -21,8 +21,8 @@ and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-wo
 | Ownership rules | [Architecture Rules](../_documentation/Developer/architecture_rules.md) |
 
 The current [Python runtime guide](../_documentation/Operations/python_runtime.md)
-covers current deployment requirements. The bridge package is
-retained only for compatibility tests; it has no Compose service or image target.
+covers current deployment requirements. FastAPI serves query and graph APIs
+directly through the shared retrieval and workflow-control packages.
 
 ## Local development
 

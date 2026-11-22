@@ -26,7 +26,6 @@ conflicts = [[
 [manifest]
 members = [
     "hawki-artifact-store",
-    "hawki-bridge",
     "hawki-converter-worker",
     "hawki-external-jobs",
     "hawki-graph-store",
@@ -328,7 +327,7 @@ name = "click"
 version = "8.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "colorama", marker = "(sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker') or (extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/d4/81420972a676e8ffea40450d8c8c92943e7218a78fe9b64359836cc9876b/click-8.4.2.tar.gz", hash = "sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6", size = 338000, upload-time = "2026-06-24T17:45:15.148Z" }
 wheels = [
@@ -577,11 +576,11 @@ name = "fastapi"
 version = "0.139.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "annotated-doc" },
-    { name = "pydantic" },
-    { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
+    { name = "annotated-doc", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "pydantic", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "starlette", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "typing-extensions", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "typing-inspection", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/95/d3f0ae10836324a2eab98a52b61210ac609f08200bf4bb0dc8132d32f78a/fastapi-0.139.2.tar.gz", hash = "sha256:333145a6891e9b5b3cfceb69baf817e8240cde4d4588ae5a10bf56ffacb6255e", size = 423428, upload-time = "2026-07-16T15:06:17.912Z" }
 wheels = [
@@ -814,57 +813,6 @@ test = [
 
 [package.metadata.requires-dev]
 test = [{ name = "pytest", specifier = "==8.4.2" }]
-
-[[package]]
-name = "hawki-bridge"
-version = "0.1.0"
-source = { editable = "services/hawki_bridge" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "hawki-graph-store" },
-    { name = "hawki-model-providers" },
-    { name = "hawki-observability" },
-    { name = "hawki-rag-contracts" },
-    { name = "hawki-rag-retrieval" },
-    { name = "hawki-rag-text" },
-    { name = "hawki-vector-store" },
-    { name = "hawki-workflow-control" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "starlette" },
-    { name = "temporalio" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-test = [
-    { name = "httpx" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = "==0.139.2" },
-    { name = "hawki-graph-store", editable = "packages/graph_store" },
-    { name = "hawki-model-providers", editable = "packages/model_providers" },
-    { name = "hawki-observability", editable = "packages/observability" },
-    { name = "hawki-rag-contracts", editable = "packages/contracts" },
-    { name = "hawki-rag-retrieval", editable = "packages/retrieval" },
-    { name = "hawki-rag-text", editable = "packages/text_processing" },
-    { name = "hawki-vector-store", editable = "packages/vector_store" },
-    { name = "hawki-workflow-control", editable = "packages/workflow_control" },
-    { name = "pydantic", specifier = "==2.13.4" },
-    { name = "requests", specifier = "==2.34.2" },
-    { name = "starlette", specifier = "==1.3.1" },
-    { name = "temporalio", specifier = "==1.30.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = "==0.30.6" },
-]
-
-[package.metadata.requires-dev]
-test = [
-    { name = "httpx", specifier = "==0.27.2" },
-    { name = "pytest", specifier = "==8.4.2" },
-]
 
 [[package]]
 name = "hawki-converter-worker"
@@ -3090,7 +3038,7 @@ name = "starlette"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio" },
+    { name = "anyio", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/e3/7c1dc7381d9f8ab7d854328ebfa884e62cb3f3d8549ddfd37c7814f42afa/starlette-1.3.1.tar.gz", hash = "sha256:05d0213193f2fbaae60e2ecb593b4add4262ad4e46536b54abe36f11a71724e0", size = 2703240, upload-time = "2026-06-12T09:23:11.602Z" }
 wheels = [
@@ -3661,8 +3609,8 @@ name = "uvicorn"
 version = "0.30.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "h11", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5a/01/5e637e7aa9dd031be5376b9fb749ec20b86f5a5b6a49b87fabd374d5fa9f/uvicorn-0.30.6.tar.gz", hash = "sha256:4b15decdda1e72be08209e860a1e10e92439ad5b97cf44cc945fcbee66fc5788", size = 42825, upload-time = "2024-08-13T09:27:35.098Z" }
 wheels = [
@@ -3671,14 +3619,13 @@ wheels = [
 
 [package.optional-dependencies]
 standard = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker')" },
-    { name = "httptools" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (platform_python_implementation == 'PyPy' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (platform_python_implementation == 'PyPy' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (sys_platform == 'win32' and extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker')" },
-    { name = "watchfiles" },
-    { name = "websockets", version = "14.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
-    { name = "websockets", version = "17.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra != 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra != 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra != 'project-20-hawki-indexer-worker')" },
+    { name = "colorama", marker = "(sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu')" },
+    { name = "httptools", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
+    { name = "python-dotenv", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
+    { name = "pyyaml", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
+    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker') or (platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (platform_python_implementation == 'PyPy' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'cygwin' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (sys_platform == 'win32' and extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker' and extra == 'project-20-hawki-indexer-worker') or (extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu')" },
+    { name = "watchfiles", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
+    { name = "websockets", version = "17.0.1", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
 ]
 
 [[package]]
@@ -3700,7 +3647,7 @@ name = "watchfiles"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio" },
+    { name = "anyio", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-14-hawki-reranker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-14-hawki-reranker')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/41/5e1a4bb12aac5f1493fa1bdc11154eca3b258ca4eba65d39c473fe19d8e9/watchfiles-1.2.0.tar.gz", hash = "sha256:c995fba777f1ea992f090f9236e9284cf7a5d1a0130dd5a3d82c598cacd76838", size = 108252, upload-time = "2026-05-18T04:32:04.251Z" }
 wheels = [

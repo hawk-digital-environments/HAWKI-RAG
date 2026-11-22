@@ -297,11 +297,7 @@ def _jwks(env: Mapping[str, str]) -> None:
 
     provider = JwksKeyProvider(load_auth_settings(env))
     try:
-        name = (
-            "HAWKI_BACKEND_READINESS_JWKS_KEY_ID"
-            if enabled(env, "HAWKI_BACKEND_LARAVEL_OFF")
-            else "HAWKI_QUERY_BFF_KEY_ID"
-        )
+        name = "HAWKI_BACKEND_READINESS_JWKS_KEY_ID"
         if provider.get_key(env[name], "RS256") is None:
             raise ValueError("Configured public signing key unavailable")
     finally:
@@ -428,10 +424,8 @@ def _qdrant(env: Mapping[str, str], consumer: str = "query") -> None:
         raise ValueError("Canonical collection unavailable")
 
 
-def graph_required(env: Mapping[str, str], phase: str = "runtime") -> bool:
+def graph_required(env: Mapping[str, str]) -> bool:
     """Derive graph use from capabilities and the canonical owned registry."""
-    if phase in {"staging", "cutover"} or env.get("GRAPH_OPS_BACKEND") == "python":
-        return True
     # These capabilities can dispatch graph writers or clean historical graph
     # contributions even when current datasets have graph retrieval disabled.
     if any(
@@ -503,7 +497,7 @@ def _reranker(env):
         raise ValueError("External reranker response contract incompatible")
 
 
-def live_checks(env: Mapping[str, str], phase: str = "runtime") -> dict[str, str]:
+def live_checks(env: Mapping[str, str]) -> dict[str, str]:
     probes = {
         "database_schema_role": lambda: check_database(env),
         "jwks": lambda: _jwks(env),
@@ -517,7 +511,7 @@ def live_checks(env: Mapping[str, str], phase: str = "runtime") -> dict[str, str
     except Exception:
         configuration_results["qdrant.configuration"] = "FAIL"
     try:
-        if graph_required(env, phase):
+        if graph_required(env):
             probes["neo4j"] = lambda: _graph(env)
         configuration_results["graph_requirement"] = "PASS"
     except Exception:
@@ -549,12 +543,10 @@ def live_checks(env: Mapping[str, str], phase: str = "runtime") -> dict[str, str
     return result
 
 
-def report(
-    env: Mapping[str, str], phase: str = "runtime", live: bool = False
-) -> dict[str, Any]:
-    checks = configuration_checks(env, phase)
+def report(env: Mapping[str, str], live: bool = False) -> dict[str, Any]:
+    checks = configuration_checks(env)
     if live:
-        checks.update(live_checks(env, phase))
+        checks.update(live_checks(env))
     else:
         checks["runtime_dependencies"] = "NOT EXECUTED"
     return {
@@ -562,7 +554,6 @@ def report(
         if all(value == "PASS" for value in checks.values())
         else "FAIL",
         "read_only": True,
-        "phase": phase,
         "required_revision": REQUIRED_REVISION,
         "checks": checks,
     }
@@ -571,15 +562,12 @@ def report(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--phase", choices=("runtime", "staging", "cutover"), default="runtime"
-    )
-    parser.add_argument(
         "--live",
         action="store_true",
         help="Perform bounded read-only dependency probes",
     )
     args = parser.parse_args()
-    result = report(os.environ, args.phase, args.live)
+    result = report(os.environ, live=args.live)
     print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] == "PASS" else 1
 

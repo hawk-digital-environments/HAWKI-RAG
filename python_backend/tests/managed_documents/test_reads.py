@@ -133,22 +133,3 @@ def test_list_aliases_search_limit_and_deleted_filter(reader):
         == 200
     )
     assert len(send(reader, method="GET").json()["documents"]) == 1
-
-
-def test_legacy_access_requires_query_grant_and_absence_of_python_owner(reader):
-    from .conftest import request_json
-
-    value = create(reader)
-    response = request_json(
-        reader,
-        "/v1/documents/read-access",
-        {
-            "documents": [
-                {"document_id": value["document"]["id"], "dataset_id": "files"},
-                {"document_id": "adoc_legacy", "dataset_id": "files"},
-                {"document_id": "adoc_denied", "dataset_id": "other"},
-            ]
-        },
-    )
-    assert response.status_code == 200
-    assert response.json() == {"legacy_document_ids": ["adoc_legacy"]}

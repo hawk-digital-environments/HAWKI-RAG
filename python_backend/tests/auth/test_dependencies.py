@@ -36,7 +36,7 @@ def _settings(auth_settings: AuthSettings) -> AuthSettings:
     return dataclasses.replace(
         auth_settings,
         clients={
-            _USER_CLIENT: PrincipalKind.USER,
+            _USER_CLIENT: PrincipalKind.SERVICE,
             _SERVICE_CLIENT: PrincipalKind.SERVICE,
         },
     )
@@ -751,41 +751,6 @@ def test_health_stays_public(
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
-
-
-def test_the_production_application_exposes_health_and_query() -> None:
-    from hawki_backend.main import app
-
-    paths = app.openapi()["paths"]
-    assert set(paths) == {
-        "/v1/health",
-        "/v1/query",
-        "/v1/ops/graph/overview",
-        "/v1/ops/graph/search",
-        "/v1/ops/graph/node",
-        "/v1/ops/graph/expand",
-        "/v1/ops/graph/semantic-search",
-        "/v1/ops/graph/snapshots",
-        "/v1/ops/graph/snapshots/{snapshot_id}",
-        "/v1/ops/graph/clear",
-        "/v1/ops/stats",
-        "/v1/ops/config",
-        "/v1/text-ingestions",
-        "/v1/text-ingestions/{source_id}",
-        "/v1/documents",
-        "/v1/documents/batch",
-        "/v1/documents/{document_id}",
-        "/v1/pipeline/tasks/start",
-        "/v1/pipeline/tasks/{task_id}",
-        "/v1/pipeline/tasks/{task_id}/cancel",
-        "/v1/pipeline/sources/{source_id}",
-        "/v1/pipeline/sources/{source_id}/recrawl",
-        "/v1/pipeline/recovery/{path}",
-    }
-    assert set(paths["/v1/health"]) == {"get"}
-    assert set(paths["/v1/query"]) == {"post"}
-    assert set(paths["/v1/text-ingestions"]) == {"post"}
-    assert set(paths["/v1/text-ingestions/{source_id}"]) == {"delete"}
 
 
 # ---------------------------------------------------------------------- logging

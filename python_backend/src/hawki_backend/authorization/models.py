@@ -31,11 +31,8 @@ _FORBIDDEN_DATASET_ID_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
 class AuthorizationAction(StrEnum):
     """The actions a principal may be authorized to perform on a dataset.
 
-    The values are the permissions the current Laravel authorization model
-    records for a dataset grant, so a grant means the same thing on both
-    sides. There is deliberately no delete action: text-ingestion deletion
-    is authorized with the ingest grant, so a separate action would have no
-    counterpart to be granted from.
+    Values match the persisted dataset grant vocabulary. Deletion requires
+    the ingest grant rather than a separate delete permission.
     """
 
     QUERY = "query"
@@ -93,10 +90,8 @@ class DatasetGrant:
     of the identity: a grant of one tenant is not a grant of another, and a
     grant held by a user is not a grant held by a service.
 
-    The tenant is part of the identity even though the current Laravel
-    authorization model has no tenant at all. The Python boundary already
-    requires a validated tenant, and fixing the identity now keeps a later
-    persistence branch from having to change it.
+    The tenant is part of every grant identity and must match the validated
+    service principal's tenant.
 
     Raises:
         ValueError: when the grant does not name a principal, a dataset and

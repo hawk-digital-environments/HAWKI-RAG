@@ -30,8 +30,8 @@ from temporalio.client import Client, WorkflowFailureError
 from temporalio.exceptions import ApplicationError
 from temporalio.worker import Replayer, Worker
 
-from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
-from hawki_bridge.settings import load_settings
+from hawki_workflow_control.temporal_client import TemporalControlClient
+from hawki_workflow_control.settings import load_settings
 from hawki_graph_store.graph import Neo4jGraph
 from hawki_indexer_worker.activities.deletion import (
     delete_managed_graph,
@@ -159,12 +159,12 @@ async def _run_isolated_live() -> None:
     os.environ["HAWKI_RAG_WORKER_CALLBACK_SECRET"] = secret
     os.environ["HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS"] = "1"
     settings = replace(
-        load_settings(), workflow_task_queue=queue, control_plane_secret=secret
+        load_settings(), workflow_task_queue=queue
     )
     client = await Client.connect(
         settings.temporal_address, namespace=settings.temporal_namespace
     )
-    bridge = TemporalBridgeClient(settings)
+    control = TemporalControlClient(settings)
     task_input = {
         "operation_id": "delete_" + hashlib.sha256(token.encode()).hexdigest(),
         "managed_document_id": "adoc_live_" + token,
@@ -265,7 +265,7 @@ async def _run_isolated_live() -> None:
                     activity_executor=executor,
                     graceful_shutdown_timeout=timedelta(seconds=1),
                 ):
-                    first = await bridge.start_managed_deletion(
+                    first = await control.start_managed_deletion(
                         workflow_id=workflow_id, workflow_input=task_input
                     )
                     await asyncio.wait_for(first_graph_attempt.wait(), timeout=30)
@@ -282,7 +282,7 @@ async def _run_isolated_live() -> None:
                     ],
                     activity_executor=executor,
                 ):
-                    repeated = await bridge.start_managed_deletion(
+                    repeated = await control.start_managed_deletion(
                         workflow_id=workflow_id, workflow_input=task_input
                     )
                     assert repeated["run_id"] == first["run_id"]
@@ -291,7 +291,7 @@ async def _run_isolated_live() -> None:
                     )
                     result = await asyncio.wait_for(handle.result(), timeout=90)
                     assert result["status"] == "completed"
-                    after = await bridge.start_managed_deletion(
+                    after = await control.start_managed_deletion(
                         workflow_id=workflow_id, workflow_input=task_input
                     )
                     assert (
@@ -425,7 +425,7 @@ async def _run_isolated_live() -> None:
                     ],
                     activity_executor=executor,
                 ):
-                    failed_start = await bridge.start_managed_deletion(
+                    failed_start = await control.start_managed_deletion(
                         workflow_id=failure_id, workflow_input=failure_input
                     )
                     try:
@@ -446,7 +446,7 @@ async def _run_isolated_live() -> None:
                     ],
                     activity_executor=executor,
                 ):
-                    retry_start = await bridge.start_managed_deletion(
+                    retry_start = await control.start_managed_deletion(
                         workflow_id=failure_id, workflow_input=failure_input
                     )
                     assert retry_start["run_id"] != failed_start["run_id"]

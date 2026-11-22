@@ -376,27 +376,6 @@ def test_task_delete_recovers_after_process_death_and_stays_visible_until_verifi
     )
 
 
-def test_lost_start_response_lookup_is_bound_to_principal_and_existing_authorization(
-    env,
-):
-    task = create(env)
-    response = request(env, "/v1/pipeline/start-request?key=one", method="GET")
-    assert response.json() == {
-        "success": True,
-        "owner": "url",
-        "task_id": task["task_id"],
-    }
-    assert request(
-        env, "/v1/pipeline/start-request?key=unknown", method="GET"
-    ).json() == {"success": True, "owner": "absent"}
-    with env.engine.begin() as connection:
-        connection.execute(dataset_grants.delete())
-    assert (
-        request(env, "/v1/pipeline/start-request?key=one", method="GET").status_code
-        == 404
-    )
-
-
 def test_cancel_disables_owned_refresh_schedule_without_cleaning_data(env):
     task = create(env, refresh_cadence="daily")
     old = generation(env, task)

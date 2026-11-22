@@ -10,11 +10,10 @@ from pathlib import Path
 PYTHON_RAG = Path(__file__).resolve().parents[3]
 REPO_ROOT = PYTHON_RAG.parent
 RETRIEVAL_SRC = PYTHON_RAG / "packages" / "retrieval" / "src" / "hawki_rag_retrieval"
-BRIDGE_SRC = PYTHON_RAG / "services" / "hawki_bridge" / "src" / "hawki_bridge"
 BACKEND_SRC = REPO_ROOT / "python_backend" / "src"
 
-# Fail closed: both source trees must exist
-assert BRIDGE_SRC.exists(), f"Expected bridge source tree: {BRIDGE_SRC}"
+# Fail closed: active source trees must exist
+assert RETRIEVAL_SRC.exists(), f"Expected retrieval source tree: {RETRIEVAL_SRC}"
 assert BACKEND_SRC.exists(), f"Expected backend source tree: {BACKEND_SRC}"
 
 
@@ -156,21 +155,6 @@ def test_single_implementation_per_retrieval_adapter() -> None:
     assert not extra, f"Unexpected adapter files: {extra}"
 
 
-def test_no_duplicate_adapters_in_bridge() -> None:
-    """No duplicate retrieval adapter implementations may remain under hawki_bridge."""
-    violations: list[str] = []
-    for py_file in BRIDGE_SRC.rglob("*.py"):
-        if py_file.name in {
-            "qdrant_reader.py",
-            "qdrant_search_policy.py",
-            "neo4j_reader.py",
-            "reranker_client.py",
-        }:
-            violations.append(f"Duplicate adapter in bridge: {py_file}")
-
-    assert not violations, f"Duplicate adapters found in bridge: {violations}"
-
-
 def test_no_duplicate_adapters_in_python_backend() -> None:
     """No duplicate retrieval adapter implementations may remain under python_backend."""
     violations: list[str] = []
@@ -226,25 +210,6 @@ def test_historical_logger_string_allowed() -> None:
     assert qdrant_search_mod.logger.name == "hawki_bridge.adapters.qdrant_search_policy"
     assert neo4j_mod.logger.name == "hawki_bridge.adapters.neo4j_reader"
     assert reranker_mod.logger.name == "hawki_bridge.adapters.reranker_client"
-
-
-def test_bridge_source_imports_no_store_packages_directly() -> None:
-    """The bridge must not directly import store packages.
-
-    Storage implementations must remain behind the shared retrieval package.
-    """
-    store_packages = {"hawki_vector_store", "hawki_graph_store", "neo4j"}
-    violations: list[str] = []
-
-    for py_file in BRIDGE_SRC.rglob("*.py"):
-        if "__pycache__" in str(py_file):
-            continue
-        for imp in _imports_from_file(py_file):
-            root = imp.split(".", 1)[0]
-            if root in store_packages:
-                violations.append(f"{py_file}: imports {imp}")
-
-    assert not violations, f"Bridge directly imports store packages: {violations}"
 
 
 if __name__ == "__main__":

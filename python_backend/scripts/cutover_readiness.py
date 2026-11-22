@@ -54,13 +54,13 @@ def replica_checks(reference_env, backend_env, worker_envs):
     return checks
 
 
-def deployment_report(phase="runtime", live=False):
+def deployment_report(live=False):
     backend, backend_env = inspect("hawki_backend")
     project = backend["Config"]["Labels"]["com.docker.compose.project"]
     workers = [inspect(f"{project}-{name}-1") for name in WORKERS]
     checks = {
         "configuration." + key: value
-        for key, value in configuration_checks(backend_env, phase).items()
+        for key, value in configuration_checks(backend_env).items()
     }
     checks.update(
         {

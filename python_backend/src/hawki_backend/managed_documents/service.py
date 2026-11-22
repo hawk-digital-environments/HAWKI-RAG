@@ -224,21 +224,6 @@ class ManagedService:
             ),
         }
 
-    def legacy_read_access(
-        self, principal: AuthenticatedPrincipal, candidates: list[dict]
-    ) -> dict:
-        owned = self.repository.owned_ids([item["document_id"] for item in candidates])
-        grants = {
-            dataset: self.can_read(principal, dataset)
-            for dataset in {item["dataset_id"] for item in candidates}
-        }
-        return {
-            "legacy_document_ids": [
-                item["document_id"]
-                for item in candidates
-                if item["document_id"] not in owned and grants[item["dataset_id"]]
-            ]
-        }
 
     async def mutate(
         self,

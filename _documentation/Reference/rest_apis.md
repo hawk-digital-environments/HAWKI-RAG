@@ -1,5 +1,14 @@
 # REST APIs
 
+Open interactive Swagger at `/ui-api/v1/docs` (locally,
+`http://localhost:8080/ui-api/v1/docs`). Its schema is
+`/ui-api/v1/openapi.json`; interactive requests use the UI gateway's server-side
+service authentication and browser origin checks. Direct backend clients can
+read `/v1/openapi.json`; API operations still require service JWT authorization.
+Internal callback routes and UI administration `/v1/ops/*` routes are excluded
+from the published schema. The UI administration routes remain callable with
+their existing authentication and authorization.
+
 Public service calls use `/v1/*` on FastAPI. Browser calls use `/ui-api/v1/*` through the server-side gateway, which supplies its own service JWT. `/api/*` returns 410; internal callback routes are not published by nginx.
 
 | Family | Current routes / authorization |

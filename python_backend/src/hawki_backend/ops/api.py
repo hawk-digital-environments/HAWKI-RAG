@@ -249,14 +249,3 @@ def runtime_health(request: Request, principal: Manager):
             {"label": "Pipeline Health", "href": "/pipeline-health", "kind": "health"}
         ],
     }
-
-
-@router.get("/graph/scope", include_in_schema=False)
-def scope(request: Request, principal: Reader, dataset_id: Dataset):
-    """Internal BFF projection for scoped legacy graph reads."""
-
-    def run():
-        record = service(request).dataset(principal, dataset_id)
-        return {"dataset_id": dataset_id, "neo4j_namespace": record.neo4j_namespace}
-
-    return execute(run)

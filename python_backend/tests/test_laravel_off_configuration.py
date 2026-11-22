@@ -109,7 +109,7 @@ def test_service_jwks_probe_does_not_require_a_laravel_key_id(monkeypatch):
     env = environment()
     env["HAWKI_BACKEND_LARAVEL_OFF"] = "true"
     env["HAWKI_BACKEND_READINESS_JWKS_KEY_ID"] = "service-key"
-    env.pop("HAWKI_QUERY_BFF_KEY_ID")
+    env.pop("HAWKI_QUERY_BFF_KEY_ID", None)
     provider = Mock()
     monkeypatch.setattr("hawki_backend.auth.jwks.JwksKeyProvider", lambda _: provider)
     readiness._jwks(env)

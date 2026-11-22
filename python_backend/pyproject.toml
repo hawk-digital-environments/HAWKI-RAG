@@ -1,7 +1,7 @@
 [project]
 name = "hawki-backend"
 version = "0.1.0"
-description = "Standalone foundation for the future HAWKI public API backend"
+description = "HAWKI RAG service API backend"
 requires-python = "==3.13.14"
 dependencies = [
     "alembic==1.20.0",

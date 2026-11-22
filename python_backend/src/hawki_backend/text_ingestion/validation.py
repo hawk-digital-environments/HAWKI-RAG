@@ -1,8 +1,7 @@
 """The public direct-text request contract.
 
-The limits and the accepted shapes mirror ``IngestTextRequest`` exactly. The
-service, not the compatibility BFF, is the authoritative validator, so a
-caller cannot widen the contract by reaching Python directly.
+The service validates the stable request shapes and limits for every caller.
+The management UI and direct API clients use the same contract.
 """
 
 from __future__ import annotations

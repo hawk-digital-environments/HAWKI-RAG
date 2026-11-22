@@ -309,7 +309,7 @@ def test_empty_ledger_needs_protocol_bound_durable_closure(env, protocol, status
 
 
 @pytest.mark.parametrize(
-    "action", ["overview", "search", "node", "expand", "semantic-search", "scope"]
+    "action", ["overview", "search", "node", "expand", "semantic-search"]
 )
 def test_signed_query_token_cannot_authorize_another_dataset(env, action):
     import time
@@ -324,19 +324,19 @@ def test_signed_query_token_cannot_authorize_another_dataset(env, action):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     env.app.state.authenticator = JwtAuthenticator(
         AuthSettings(
-            issuer="https://bff.test",
+            issuer="https://issuer.test",
             audience="hawki-backend",
-            jwks_url="https://bff.test/jwks",
-            clients={"hawki-bff": PrincipalKind.USER},
+            jwks_url="https://issuer.test/jwks",
+            clients={"rag-service": PrincipalKind.SERVICE},
         ),
         StaticKeyProvider({"test": key.public_key()}),
     )
     now = int(time.time())
     token = jwt.encode(
         {
-            "iss": "https://bff.test",
+            "iss": "https://issuer.test",
             "aud": "hawki-backend",
-            "azp": "hawki-bff",
+            "azp": "rag-service",
             "sub": "reader",
             "tenant_id": "a",
             "scope": "rag:query",
@@ -352,6 +352,16 @@ def test_signed_query_token_cannot_authorize_another_dataset(env, action):
         connection.execute(
             dataset_grants.delete().where(dataset_grants.c.dataset_id == "two")
         )
+    with env.engine.begin() as connection:
+        connection.execute(
+            dataset_grants.insert().values(
+                tenant_id="a",
+                dataset_id="one",
+                principal_type="service",
+                principal_id="rag-service",
+                permission="query",
+            )
+        )
     query = "?dataset_id=two&q=secret&node_id=opaque"
     response = call(
         env,
@@ -362,8 +372,8 @@ def test_signed_query_token_cannot_authorize_another_dataset(env, action):
     )
     assert response.status_code == 404
     env.factory.assert_not_called()
-    # Same verified identity still has its exact Dataset A grant.
-    assert call(env, "graph/scope?dataset_id=one", token=token).status_code == 200
+    # The same verified service can still read its granted Dataset A.
+    assert call(env, "graph/overview?dataset_id=one", token=token).status_code == 200
 
 
 def test_uncertain_laravel_clear_receipt_keeps_fence_until_valid_reconciliation(env):

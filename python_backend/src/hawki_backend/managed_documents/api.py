@@ -42,15 +42,6 @@ class ReadFilters(BaseModel):
     limit: int = Field(default=100, ge=1, le=250)
 
 
-class LegacyCandidate(BaseModel):
-    document_id: str = Field(min_length=1, max_length=64)
-    dataset_id: str = Field(min_length=1, max_length=191)
-
-
-class LegacyReadAccess(BaseModel):
-    documents: list[LegacyCandidate] = Field(max_length=250)
-
-
 async def execute_read(
     request: Request, principal: AuthenticatedPrincipal, method: str, *args: Any
 ) -> JSONResponse:
@@ -75,22 +66,6 @@ async def list_documents(
 ) -> JSONResponse:
     return await execute_read(
         request, principal, "list_documents", filters.model_dump()
-    )
-
-
-@router.post("/documents/read-access", include_in_schema=False)
-async def legacy_read_access(
-    request: Request, principal: ReadPrincipal, body: LegacyReadAccess
-) -> JSONResponse:
-    # The BFF supplies candidates from its durable legacy rows. This endpoint
-    # proves absence of Python ownership and QUERY access, never transfers it.
-    if principal.client_id != "hawki-bff":
-        return error_response(ManagedError(403, "Forbidden."))
-    return await execute_read(
-        request,
-        principal,
-        "legacy_read_access",
-        [item.model_dump() for item in body.documents],
     )
 
 
@@ -326,17 +301,61 @@ async def mutation(
             await form.close()
 
 
-@router.post("/documents")
+def multipart_document_schema(*, batch: bool = False, update: bool = False) -> dict:
+    """Describe the existing manual form parser without changing admission."""
+    schema = ManagedInput.model_json_schema()
+    schema["properties"]["metadata_json"] = {
+        "type": "string",
+        "description": "JSON-encoded metadata object or array.",
+    }
+    schema["properties"]["converter_token"]["format"] = "password"
+    file_schema = {"type": "string", "format": "binary"}
+    field = "files" if batch else "file"
+    schema["properties"][field] = (
+        {"type": "array", "items": file_schema, "minItems": 1} if batch else file_schema
+    )
+    schema["required"] = [field] if update else ["dataset_id", field]
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {"multipart/form-data": {"schema": schema}},
+        },
+        "parameters": [
+            {
+                "name": "Idempotency-Key",
+                "in": "header",
+                "required": False,
+                "description": "Reuse the same key and input when retrying an upload.",
+                "schema": {"type": "string", "maxLength": 255},
+            }
+        ],
+    }
+
+
+@router.post(
+    "/documents",
+    summary="Upload a file for ingestion",
+    description="Upload to an active dataset with an exact ingest grant. The browser gateway supplies service authentication.",
+    openapi_extra=multipart_document_schema(),
+)
 async def create(request: Request, principal: IngestPrincipal) -> JSONResponse:
     return await mutation(request, principal, "create")
 
 
-@router.post("/documents/batch")
+@router.post(
+    "/documents/batch",
+    summary="Upload multiple files for ingestion",
+    openapi_extra=multipart_document_schema(batch=True),
+)
 async def batch(request: Request, principal: IngestPrincipal) -> JSONResponse:
     return await mutation(request, principal, "create", batch=True)
 
 
-@router.put("/documents/{document_id}")
+@router.put(
+    "/documents/{document_id}",
+    summary="Replace a document with an uploaded file",
+    openapi_extra=multipart_document_schema(update=True),
+)
 async def update(
     document_id: str, request: Request, principal: IngestPrincipal
 ) -> JSONResponse:

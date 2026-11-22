@@ -30,11 +30,11 @@ _TENANT = "tenant-1"
 
 
 def _settings(auth_settings: AuthSettings) -> AuthSettings:
-    """Return settings that know both a user client and a service client."""
+    """Return settings for two registered service clients."""
     return dataclasses.replace(
         auth_settings,
         clients={
-            _USER_CLIENT: PrincipalKind.USER,
+            _USER_CLIENT: PrincipalKind.SERVICE,
             _SERVICE_CLIENT: PrincipalKind.SERVICE,
         },
     )
@@ -1650,20 +1650,28 @@ def test_a_malformed_token_identifier_is_refused(
 # -------------------------------------------------------------- principal kind
 
 
-def test_a_user_client_produces_a_user_principal(
+@pytest.mark.parametrize("service_only", ["false", "true"])
+@pytest.mark.parametrize("claims_kind", ["user", "service"])
+def test_a_user_client_is_rejected(
+    monkeypatch,
+    service_only,
+    claims_kind,
     auth_settings: AuthSettings,
     rsa_signing_key: object,
     rsa_public_key: object,
     clock: ControllableClock,
 ) -> None:
-    authenticator = _authenticator(
-        _settings(auth_settings), {RSA_KID: rsa_public_key}, clock
+    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", service_only)
+    settings = dataclasses.replace(
+        _settings(auth_settings), clients={_USER_CLIENT: PrincipalKind.USER}
     )
-    token = _sign(_claims(clock), rsa_signing_key, headers={"kid": RSA_KID})
-    principal = authenticator.authenticate(token)
-
-    assert principal.kind is PrincipalKind.USER
-    assert principal.principal_id == "user-42"
+    authenticator = _authenticator(settings, {RSA_KID: rsa_public_key}, clock)
+    token = _sign(
+        _claims(clock, kind=claims_kind), rsa_signing_key, headers={"kid": RSA_KID}
+    )
+    with pytest.raises(AuthenticationError) as failure:
+        authenticator.authenticate(token)
+    assert failure.value.reason is AuthFailureReason.CLIENT_NOT_ALLOWED
 
 
 def test_a_service_client_produces_a_service_principal(
@@ -1694,12 +1702,12 @@ def test_a_token_cannot_choose_its_own_principal_kind(
         _settings(auth_settings), {RSA_KID: rsa_public_key}, clock
     )
     token = _sign(
-        _claims(clock, kind="service", principal_type="service"),
+        _claims(clock, kind="user", principal_type="user"),
         rsa_signing_key,
         headers={"kid": RSA_KID},
     )
 
-    assert authenticator.authenticate(token).kind is PrincipalKind.USER
+    assert authenticator.authenticate(token).kind is PrincipalKind.SERVICE
 
 
 # --------------------------------------------------------------------- logging

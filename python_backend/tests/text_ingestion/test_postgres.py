@@ -31,7 +31,6 @@ from hawki_backend.workflow_control.repository import OperationRepository
 from hawki_backend.workflow_control.schema import operations
 from hawki_backend.workflow_control.service import WorkflowControl
 from .conftest import payload
-from .test_grants import grants, source
 from .test_writer_fencing import writer_event
 from hawki_backend.main import create_app
 from .test_delete_snapshot import (
@@ -228,80 +227,6 @@ def test_concurrent_different_keys_have_one_active_owner(pg):
         results = list(pool.map(call, ["key-1", "key-2"]))
     assert results.count("busy") == 1
     pg.port.start_text_ingest_workflow.assert_awaited_once()
-
-
-def test_grant_postgres_locks_and_transaction_rollback(pg):
-    statements = []
-    sa.event.listen(
-        pg.engine,
-        "before_cursor_execute",
-        lambda conn, cursor, statement, parameters, context, executemany: (
-            statements.append(statement)
-        ),
-    )
-    plan = grants.make_plan(source())
-    with pg.engine.begin() as conn:
-        conn.execute(dataset_grants.delete())
-    with pytest.raises(RuntimeError), pg.engine.begin() as conn:
-        grants.apply_plan(conn, plan, plan.digest)
-        raise RuntimeError("abort")
-    with pg.engine.connect() as conn:
-        assert grants.compare_target(conn, plan)["status"] == "FAIL"
-    assert any("pg_advisory_xact_lock" in query for query in statements)
-    assert any("LOCK TABLE hawki_backend.datasets" in query for query in statements)
-
-
-def test_grant_cli_modes_and_source_tenant_guard(pg, monkeypatch, capsys):
-    meta = sa.MetaData(schema="public")
-    tables = {
-        "datasets": sa.Table(
-            "datasets",
-            meta,
-            sa.Column("dataset_id", sa.Text),
-            sa.Column("status", sa.Text),
-            sa.Column("tenant_id", sa.Text),
-        ),
-        "users": sa.Table(
-            "users",
-            meta,
-            sa.Column("id", sa.Integer),
-            sa.Column("isRemoved", sa.Boolean),
-        ),
-        "dataset_grants": sa.Table(
-            "dataset_grants",
-            meta,
-            sa.Column("dataset_id", sa.Text),
-            sa.Column("principal_type", sa.Text),
-            sa.Column("principal_id", sa.Text),
-            sa.Column("permission", sa.Text),
-        ),
-    }
-    meta.create_all(pg.engine)
-    try:
-        with pg.engine.begin() as conn:
-            for name, table in tables.items():
-                values = source()[name]
-                if name == "datasets":
-                    values = [{**row, "tenant_id": "default"} for row in values]
-                conn.execute(table.insert(), values)
-            conn.execute(dataset_grants.delete())
-        monkeypatch.setenv(
-            "HAWKI_INGEST_MIGRATION_SOURCE_DSN", os.environ["HAWKI_EPOCH9_TEST_DSN"]
-        )
-        assert grants.main(["--dry-run"]) == 1
-        output = __import__("json").loads(capsys.readouterr().out)
-        for mode in ["--apply", "--apply", "--verify"]:
-            args = [mode] + (
-                ["--confirm-plan", output["plan_sha256"]] if mode == "--apply" else []
-            )
-            assert grants.main(args) == 0
-            capsys.readouterr()
-        with pg.engine.begin() as conn:
-            conn.execute(tables["datasets"].update().values(tenant_id="other"))
-        assert grants.main(["--dry-run"]) == 1
-        assert "ambiguous tenant" in capsys.readouterr().out
-    finally:
-        meta.drop_all(pg.engine)
 
 
 @pytest.mark.parametrize("conflicting", [False, True])
