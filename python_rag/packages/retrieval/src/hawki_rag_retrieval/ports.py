@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias
 
+from hawki_rag_contracts.retrieval.metadata_filter import MetadataFilter
 from hawki_rag_contracts.retrieval.query import QueryFilterScalar
 
 
-ScopedFilters: TypeAlias = dict[str, QueryFilterScalar]
+@dataclass(frozen=True, slots=True)
+class MetadataScopedFilters:
+    matches: dict[str, QueryFilterScalar]
+    metadata: MetadataFilter
+
+
+ScopedFilters: TypeAlias = dict[str, QueryFilterScalar] | MetadataScopedFilters
 
 
 class ModelProvider(Protocol):

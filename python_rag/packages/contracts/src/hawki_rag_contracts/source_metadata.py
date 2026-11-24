@@ -85,43 +85,56 @@ def _string(value: str) -> None:
         raise ValueError("metadata strings must contain valid Unicode") from None
 
 
+def validate_metadata_key(key: object) -> str:
+    if not isinstance(key, str) or not _KEY.fullmatch(key):
+        raise ValueError("metadata keys must match [A-Za-z][A-Za-z0-9_]{0,63}")
+    if is_reserved_metadata_key(key):
+        raise ValueError("metadata contains a reserved key")
+    return key
+
+
+def is_reserved_metadata_key(key: str) -> bool:
+    name = key.lower().replace("_", "")
+    return (
+        name in _RESERVED
+        or name.startswith(_INTERNAL_PREFIXES)
+        or any(term in name for term in _CREDENTIAL_TERMS)
+    )
+
+
+def validate_metadata_scalar(value: object) -> str | int | float | bool:
+    """Normalize one wire scalar using the persisted source metadata types."""
+    if isinstance(value, str):
+        _string(value)
+        return value
+    if type(value) is bool or (type(value) is int and -(2**63) <= value < 2**63):
+        return value
+    if type(value) is float and math.isfinite(value):
+        # Canonicalize integral numbers so equality can use exact int64 matching.
+        if value.is_integer() and -(2**63) <= value < 2**63:
+            return int(value)
+        return value
+    raise ValueError(
+        "metadata scalars must be strings, signed 64-bit integers, finite numbers or booleans"
+    )
+
+
 def validate_source_metadata(value: object) -> dict[str, MetadataValue]:
     if not isinstance(value, dict) or len(value) > MAX_KEYS:
         raise ValueError("metadata must be an object with at most 32 keys")
-    fields = value.copy()
+    fields = {}
     for key, item in value.items():
-        if not isinstance(key, str) or not _KEY.fullmatch(key):
-            raise ValueError("metadata keys must match [A-Za-z][A-Za-z0-9_]{0,63}")
-        name = key.lower().replace("_", "")
-        if (
-            name in _RESERVED
-            or name.startswith(_INTERNAL_PREFIXES)
-            or any(term in name for term in _CREDENTIAL_TERMS)
-        ):
-            raise ValueError("metadata contains a reserved key")
-        if isinstance(item, str):
-            _string(item)
-        elif type(item) is bool:
-            continue
-        elif type(item) is int and -(2**63) <= item < 2**63:
-            continue
-        elif type(item) is float and math.isfinite(item):
-            # JSON encoders may spell the same integral number as 1 or 1.0.
-            # Choose the signed integer representation explicitly for Qdrant.
-            if item.is_integer() and -(2**63) <= item < 2**63:
-                fields[key] = int(item)
-        elif (
-            isinstance(item, list)
-            and len(item) <= MAX_LIST
-            and all(isinstance(entry, str) for entry in item)
-        ):
+        validate_metadata_key(key)
+        if isinstance(item, list):
+            if len(item) > MAX_LIST or not all(
+                isinstance(entry, str) for entry in item
+            ):
+                raise ValueError("metadata lists may contain at most 32 strings")
             for entry in item:
                 _string(entry)
+            fields[key] = item
         else:
-            raise ValueError(
-                "metadata values must be strings, signed 64-bit integers, finite "
-                "numbers, booleans or lists of at most 32 strings"
-            )
+            fields[key] = validate_metadata_scalar(item)
     if len(_encoded(fields)) > MAX_BYTES:
         raise ValueError("metadata exceeds 65536 encoded bytes")
     return fields

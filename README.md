@@ -37,6 +37,6 @@ or automatically adopted. See the [runtime preservation rules](_documentation/Op
 and [schema history](_documentation/History/public_schema.md).
 
 Fast vector retrieval remains the default. Deep retrieval (`fast_mode: false`)
-includes available graph facts. New dataset graph support is controlled by the
-deployment; managed uploads and URL tasks opt into graph ingestion. Direct text
-retains its existing vector-only behavior.
+can include graph facts when the query omits `metadata_filters`. The deployment
+controls graph support for new datasets. Managed uploads and URL tasks opt into
+graph ingestion. Direct text remains vector-only.

@@ -95,6 +95,9 @@ def test_aliases_multi_url_metadata_and_201_contract(env, data):
     payload = response.json()
     assert payload["success"] is True
     assert payload["task"]["metadata"]["request"]["metadata"] == metadata
+    wire = generation(env, payload)["workflow_input"]
+    assert wire["metadata"]["request"]["metadata"] == metadata
+    assert "metadata_sha256" not in wire
     assert len(payload["task"]["jobs"]) == (
         3 if isinstance(data.get("urls"), str) else 2 if "urls" in data else 1
     )

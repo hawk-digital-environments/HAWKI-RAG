@@ -774,3 +774,113 @@ def test_create_app_rejects_invalid_query_configuration(monkeypatch) -> None:
             authenticator=_FakeAuthenticator(_principal()),
             policy=LocalGrantPolicy(InMemoryGrantReader()),
         )
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        {"field": "tenant_id", "op": "exists"},
+        {"field": "metadata.year", "op": "eq", "value": 2025},
+        {"field": "year", "op": "gt", "value": True},
+        {"field": "year", "op": "in", "value": list(range(33))},
+        {"and": [{"field": "year", "op": "exists"}] * 32},
+    ],
+)
+def test_invalid_metadata_filter_returns_422_before_storage(expr):
+    dependencies, _, vectors, _ = _dependencies()
+    response = _post_json(
+        _app(query_dependencies=dependencies), _body(metadata_filters=expr)
+    )
+    assert response.status_code == 422
+    assert not vectors.selected_collections
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "metadata.year",
+        "writer_generation",
+        "grant-id",
+        "credentials",
+        "sources[].title",
+    ],
+)
+def test_legacy_flat_filters_cannot_target_protected_paths(field):
+    assert _post_json(_app(), _body(filters={field: "x"})).status_code == 422
+
+
+def test_matching_metadata_cannot_expand_service_grant(monkeypatch):
+    from dataclasses import replace
+
+    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    principal = replace(
+        _principal(), kind=PrincipalKind.SERVICE, client_id="search-service"
+    )
+    grant = replace(
+        _grant(), principal_kind=PrincipalKind.SERVICE, principal_id=principal.client_id
+    )
+    hit = _semantic_hit()
+    hit["payload"].update(
+        ingestion_mode="direct_text", metadata={"year": 2025}, writer_generation=42
+    )
+    dependencies, provider, vectors, graph = _dependencies(
+        vector_search=_RecordingVectorSearch([hit])
+    )
+
+    def application(caller):
+        return _app(
+            principal=caller,
+            grant_reader=InMemoryGrantReader([grant]),
+            query_settings=_query_settings(graph_enabled=True, namespace=_NAMESPACE),
+            query_dependencies=dependencies,
+        )
+
+    expr = {"field": "year", "op": "eq", "value": 2025}
+    body = _body(fast_mode=False, metadata_filters=expr, filters={"source": "handbook"})
+    missing = _post_json(application(principal), {**body, "dataset_id": "other"})
+    foreign = _post_json(application(replace(principal, tenant_id="foreign")), body)
+    assert missing.status_code == foreign.status_code == 404
+    assert missing.json() == foreign.json()
+    assert (
+        _post_json(
+            application(replace(principal, scopes=frozenset())), body
+        ).status_code
+        == 403
+    )
+    assert not vectors.selected_collections and not provider.embedded_queries
+
+    result = _post_json(application(principal), body)
+    assert result.status_code == 200, result.text
+    filters = vectors.search_calls[0]["filters"]
+    assert filters.matches == {"dataset_id": _DATASET, "source": "handbook"}
+    assert filters.metadata.model_dump() == expr
+    assert result.json()["hits"][0]["metadata"] == {"year": 2025}
+    assert "writer_generation" not in result.text
+    assert (
+        result.json()["kg"] == []
+        and not graph.structural_calls
+        and not graph.fact_calls
+    )
+    assert result.json()["retrieval"]["graph_disabled_reason"] == "metadata_filters"
+
+
+@pytest.mark.parametrize("value", [b"1e309", rb'"\ud800"'])
+def test_nonserializable_filter_values_have_safe_422_responses(value):
+    async def post():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=_app()), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/v1/query",
+                headers={
+                    "Authorization": "Bearer valid",
+                    "Content-Type": "application/json",
+                },
+                content=b'{"dataset_id":"dataset-a","query":"design","metadata_filters":{"op":"eq","field":"x","value":'
+                + value
+                + b"}}",
+            )
+
+    response = asyncio.run(post())
+    assert response.status_code == 422
+    assert "input" not in response.json()["detail"][0]

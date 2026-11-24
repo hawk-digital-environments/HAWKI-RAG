@@ -113,6 +113,16 @@ class RankedEvidence:
     expansion_terms: list[str]
 
 
+def _graph_disabled_reason(request: QueryRequest) -> str | None:
+    if request.metadata_filters is not None:
+        return "metadata_filters"
+    if request.fast_mode:
+        return "fast_mode"
+    if not request.authorized_scope.graph_enabled:
+        return "graph_not_enabled"
+    return None
+
+
 def execute_authorized_query(
     request: QueryRequest,
     *,
@@ -171,8 +181,7 @@ def execute_authorized_query(
         timings,
     )
 
-    graph_enabled = request.authorized_scope.graph_enabled and not request.fast_mode
-    graph_disabled_reason = "fast_mode" if request.fast_mode else "graph_not_enabled"
+    graph_disabled_reason = _graph_disabled_reason(request)
 
     return QueryResponse.model_validate(
         {
@@ -183,10 +192,8 @@ def execute_authorized_query(
             "answer": answer,
             "retrieval": {
                 "dataset_id": request.authorized_scope.dataset_id,
-                "graph_enabled": graph_enabled,
-                "graph_disabled_reason": None
-                if graph_enabled
-                else graph_disabled_reason,
+                "graph_enabled": graph_disabled_reason is None,
+                "graph_disabled_reason": graph_disabled_reason,
                 "iterative_pass": ranked.iterative_pass,
                 "expansion_terms": ranked.expansion_terms,
                 "context_tokens_used": context_tokens_used,
@@ -252,6 +259,7 @@ def build_query_runtime(
     filters = build_scoped_query_filters(
         request.authorized_scope.dataset_id,
         request.filters,
+        request.metadata_filters,
     )
     logger.info(
         "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s",
@@ -354,7 +362,7 @@ def retrieve_query_hits(
     started = time.perf_counter()
     structural_hits = (
         []
-        if not request.authorized_scope.graph_enabled or request.fast_mode or hops == 0
+        if _graph_disabled_reason(request) or hops == 0
         else graph_search.build_structural_hits(
             prepared.terms,
             dataset_id=request.authorized_scope.dataset_id,
@@ -512,7 +520,7 @@ def retrieve_query_graph(
     terms_per_hit, term_limit = graph_term_limits()
     started = time.perf_counter()
     facts: list[dict[str, str]] = []
-    if request.authorized_scope.graph_enabled and hits and not request.fast_mode:
+    if hits and _graph_disabled_reason(request) is None:
         term_groups: list[Iterable[str]] = [
             query_terms(prepared.text).terms,
             prepared.terms,

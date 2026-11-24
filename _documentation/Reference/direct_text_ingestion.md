@@ -51,8 +51,4 @@ Direct text writes vectors even on graph-capable datasets. Its writer grant cove
 
 A service with `rag:query` and the dataset query grant can call `POST /v1/query`. Each hit includes its existing ID, score and projected evidence payload, plus a separate `metadata` object. For the example above, `hits[0].payload.content` contains the retrieved chunk and `hits[0].metadata.year` is the integer `2025`. Hit metadata comes only from validated direct-text source metadata. A hit without public source metadata, including a historical point whose metadata fails validation, returns `{}`. Source metadata remains recoverable from the authoritative operation.
 
-The shared Python contracts are `hawki_rag_contracts.source_metadata.SourceMetadata`, `hawki_rag_contracts.retrieval.query.QueryRequest` and `PublicQueryResponse`. The public API currently defines no typed source-metadata filter language.
-
-### Proposed shared filter contract for Epoch 17/18
-
-Both REST and a future Python MCP adapter should accept the same logical `MetadataFilter` on `QueryRequest`. Use validated field names and typed predicates for equality, numeric range and membership in string lists. Both transports should resolve the caller's grant into `AuthorizedQueryScope` and invoke the existing `execute_authorized_query` use case. The Qdrant adapter can then combine the mandatory dataset predicate with predicates under `metadata.<key>` for every candidate search before reranking. The current Python deployment has no MCP query endpoint.
+Use the optional `metadata_filters` expression to narrow retrieval before reranking. The REST reference defines its operators, types, limits and shared Python contract. [Metadata-aware queries](rest_apis.md#query-request)

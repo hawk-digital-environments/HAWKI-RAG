@@ -9,7 +9,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from hawki_rag_retrieval.ports import ScopedFilters
+from hawki_rag_contracts.retrieval.metadata_filter import MetadataFilter
+from hawki_rag_retrieval.ports import MetadataScopedFilters, ScopedFilters
 
 
 _RESERVED_FILTER_KEYS = frozenset(
@@ -44,6 +45,7 @@ def normalize_filter_key(key: str) -> str:
 def build_scoped_query_filters(
     dataset_id: str,
     user_filters: dict[str, Any] | None,
+    metadata_filters: MetadataFilter | None = None,
 ) -> ScopedFilters:
     """Combine sanitized user metadata with the mandatory dataset predicate.
 
@@ -51,7 +53,7 @@ def build_scoped_query_filters(
     routing keys are not user-searchable metadata and are removed as well.
     """
 
-    sanitized_filters: ScopedFilters = {}
+    sanitized_filters = {}
     for key, value in (user_filters or {}).items():
         normalized_key = str(key).strip()
         if (
@@ -68,6 +70,8 @@ def build_scoped_query_filters(
         sanitized_filters[normalized_key] = value
 
     sanitized_filters["dataset_id"] = dataset_id
+    if metadata_filters is not None:
+        return MetadataScopedFilters(sanitized_filters, metadata_filters)
     return sanitized_filters
 
 

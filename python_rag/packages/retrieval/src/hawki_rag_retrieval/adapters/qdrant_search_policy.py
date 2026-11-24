@@ -6,6 +6,7 @@ from collections.abc import Iterable
 import logging
 from typing import Any
 
+from hawki_vector_store.payloads import ConstrainedMatches, SearchFilters
 from hawki_vector_store.client import QdrantHTTP
 
 # Preserve historical logger identity per Epoch 4 D3 decision
@@ -17,7 +18,7 @@ def semantic_search_basic(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: dict[str, Any] | None = None,
+    filters: SearchFilters | None = None,
 ) -> list[dict[str, Any]]:
     """Plain dense vector search with whatever filters the caller provides."""
     result = qdrant.search(vector, top_k=top_k, filters=filters)
@@ -30,7 +31,7 @@ def semantic_search_high_recall(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: dict[str, Any] | None = None,
+    filters: SearchFilters | None = None,
     ef_multiplier: int = 6,
 ) -> list[dict[str, Any]]:
     """Increase `hnsw_ef` to favour recall over latency."""
@@ -45,7 +46,7 @@ def semantic_search_with_threshold(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: dict[str, Any] | None = None,
+    filters: SearchFilters | None = None,
     score_threshold: float = 0.32,
     ef_multiplier: int = 6,
 ) -> list[dict[str, Any]]:
@@ -67,14 +68,20 @@ def optimized_semantic_search(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: dict[str, Any] | None = None,
+    filters: SearchFilters | None = None,
     preferred_tags: Iterable[str] | None = None,
     score_threshold: float = 0.28,
 ) -> list[dict[str, Any]]:
     """Composite search tuned for quality: metadata filter + threshold + high recall."""
-    combined_filters: dict[str, Any] = dict(filters or {})
-    if preferred_tags:
-        combined_filters.setdefault("tags", list(preferred_tags))
+    combined_filters = filters
+    matches = (
+        filters.matches if isinstance(filters, ConstrainedMatches) else filters or {}
+    )
+    if preferred_tags and "tags" not in matches:
+        condition = {"key": "tags", "match": {"any": list(preferred_tags)}}
+        if isinstance(filters, ConstrainedMatches):
+            condition = {"must": [filters.condition, condition]}
+        combined_filters = ConstrainedMatches(matches, condition)
 
     hits = semantic_search_with_threshold(
         qdrant,
@@ -106,7 +113,7 @@ def semantic_search_smart(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: dict[str, Any] | None = None,
+    filters: SearchFilters | None = None,
     keyword_terms: Iterable[str] | None = None,
     keyword_fields: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:

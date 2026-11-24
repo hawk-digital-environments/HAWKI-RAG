@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from hawki_rag_contracts.source_metadata import SourceMetadata
+from hawki_rag_contracts.retrieval.metadata_filter import MetadataFilter
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
 
@@ -38,6 +39,7 @@ class QueryRequest(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
     )
     filters: dict[str, QueryFilterScalar] = Field(default_factory=dict)
+    metadata_filters: MetadataFilter | None = None
     generate: bool = True
     is_optimized: bool = False
     fast_mode: bool = True

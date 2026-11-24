@@ -12,8 +12,15 @@ import logging
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 from hawki_backend.auth.dependencies import require_scopes
 from hawki_backend.auth.models import AuthenticatedPrincipal
@@ -37,6 +44,8 @@ from hawki_backend.query.settings import (
     ProviderModels,
     QuerySettings,
 )
+from hawki_rag_contracts.source_metadata import is_reserved_metadata_key
+from hawki_rag_contracts.retrieval.metadata_filter import MetadataFilter
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 from hawki_rag_contracts.retrieval.query import (
     QueryFilterScalar,
@@ -99,6 +108,32 @@ class QueryRequestBody(BaseModel):
         max_length=_MAX_PREFERRED_TAGS,
     )
     filters: dict[str, QueryFilterScalar] = Field(default_factory=dict)
+    metadata_filters: MetadataFilter | None = None
+
+    @field_validator("metadata_filters", mode="wrap")
+    @classmethod
+    def validate_metadata_filters(
+        cls, value: object, handler: ValidatorFunctionWrapHandler
+    ) -> MetadataFilter | None:
+        try:
+            return handler(value)
+        except ValidationError as error:
+            # The default HTTP error echoes its input, including an oversized
+            # tree or values that JSON responses cannot encode (e.g. infinity).
+            issue = error.errors(
+                include_input=False, include_context=False, include_url=False
+            )[0]
+            message = issue["msg"][:300].encode("utf-8", "backslashreplace").decode()
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    {
+                        "loc": ["body", "metadata_filters"],
+                        "type": issue["type"],
+                        "msg": message,
+                    }
+                ],
+            ) from None
 
     @field_validator("preferred_tags")
     @classmethod
@@ -136,7 +171,11 @@ class QueryRequestBody(BaseModel):
             normalized = _normalize_filter_key(key)
             if not normalized:
                 raise ValueError("filters must use named metadata keys")
-            if normalized in _RESERVED_FILTER_KEYS:
+            if (
+                normalized in _RESERVED_FILTER_KEYS
+                or is_reserved_metadata_key(normalized)
+                or any(char in key for char in '.[]"\\')
+            ):
                 raise ValueError(
                     "filters must not contain reserved authorization or storage keys"
                 )
@@ -171,6 +210,7 @@ class QueryRequestBody(BaseModel):
             chat_model=models.chat_model,
             vision_model=models.vision_model,
             filters=self.filters,
+            metadata_filters=self.metadata_filters,
             generate=self.generate,
             is_optimized=self.is_optimized,
             fast_mode=self.fast_mode,

@@ -11,6 +11,7 @@ from hawki_vector_store.collections import (
     vector_size_from_config,
 )
 from hawki_vector_store.payloads import (
+    SearchFilters,
     build_delete_filter,
     build_match_filter,
     build_scroll_body,
@@ -266,7 +267,7 @@ class QdrantHTTP:
         self,
         vector: list[float],
         top_k: int = 5,
-        filters: dict[str, Any] | None = None,
+        filters: SearchFilters | None = None,
         *,
         score_threshold: float | None = None,
         params: dict[str, Any] | None = None,
@@ -360,7 +361,7 @@ class QdrantHTTP:
         top_k: int,
         terms: list[str],
         fields: list[str],
-        filters: dict[str, Any] | None = None,
+        filters: SearchFilters | None = None,
     ) -> list[dict[str, Any]]:
         terms = [t for t in (terms or []) if t]
         fields = [f for f in (fields or []) if f]
@@ -418,7 +419,7 @@ class QdrantHTTP:
         limit: int,
         require_all: bool = True,
         offset: str | None = None,
-        filters: dict[str, Any] | None = None,
+        filters: SearchFilters | None = None,
     ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
@@ -457,7 +458,7 @@ class QdrantHTTP:
         fields: list[str],
         limit: int,
         require_all: bool = True,
-        filters: dict[str, Any] | None = None,
+        filters: SearchFilters | None = None,
     ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:

@@ -9,11 +9,11 @@ The searches interact in this order:
 1. **Semantic search** compares the query's embedding with chunk embeddings in
    Qdrant to find passages with similar meaning.
 2. **Lexical search** finds query terms in chunk text and metadata, such as titles
-   and tags. The bridge merges these results with the semantic results. A chunk
+   and tags. The retrieval service merges these results with the semantic results. A chunk
    found by both searches becomes one candidate with a combined score; distinct
    chunks from the same document remain separate candidates.
 3. **Optional graph search** uses query terms to find entities and relationships
-   in Neo4j. The bridge combines these graph results with the already merged
+   in Neo4j. The service combines these graph results with the already merged
    semantic and lexical candidates. Graph matches add a weighted relevance score
    to chunks from the same document. A document found through the graph alone
    can contribute a relationship as an additional candidate.
@@ -25,21 +25,16 @@ The searches interact in this order:
 Graph search therefore runs **after the semantic and lexical results are merged,
 and before reranking**. It augments that combined candidate set. The later
 related-fact read supplies additional answer context while preserving the
-selected candidate ranking. Fast mode uses semantic and lexical retrieval;
-graph reads run in non-fast mode when authorized graph access is enabled.
-
-Use [REST APIs](../Reference/rest_apis.md) or
-[MCP query-search](../Reference/mcp_query_search_contract.md) for wire contracts.
-This page explains the shared execution behavior.
+selected candidate ranking. Both Neo4j reads require authorized graph access,
+deep mode, and a query without a typed source-metadata filter.
 
 ## Runtime request options
 
-Users can change `top_k`, `generate`, `fast_mode`, `smart_lookup`, `is_optimized`,
-`preferred_tags`, and permitted metadata `filters` for each `POST /api/query`
-request while the system is running. These options control retrieval or answer
-generation for that query and leave the stored index in place. FastAPI supplies
-the authorized dataset's collection and embedding model. See the
-[query request contract](../Reference/rest_apis.md#query-request) for accepted fields.
+For each `POST /v1/query` request, callers select one logical `dataset_id` and
+can set `top_k`, `generate`, `fast_mode`, `smart_lookup`, `is_optimized`,
+`preferred_tags`, flat payload `filters`, and typed `metadata_filters`.
+FastAPI resolves the authorized dataset's physical scope and embedding model.
+[Query request format and examples](../Reference/rest_apis.md#query-request)
 
 Environment settings take effect when the affected services are recreated. For
 example, `generate=false` applies to one query, while `RAG_GENERATE_ANSWER` controls
@@ -50,7 +45,7 @@ the service's generation capability. See
 
 ```mermaid
 flowchart TB
-    Scope["FastAPI identity / grant checks<br/>AuthorizedDatasetScope"] --> Prepare["Safety checks and query preparation"]
+    Scope["FastAPI identity / grant checks<br/>AuthorizedQueryScope"] --> Prepare["Safety checks and query preparation"]
     Prepare --> Rewrite["Optional multimodal rewrite → query embedding"]
     Rewrite --> Dense["Scoped semantic search"]
     Dense --> Lexical["Scoped lexical search and scroll"]
@@ -71,8 +66,10 @@ The implementation entrypoint is
 ## 1. Bind trusted scope and prepare the query
 
 FastAPI selects one concrete Qdrant collection and embedding provider/model.
-The bridge locks the reader to that collection, removes reserved filter keys,
-and adds a mandatory `dataset_id` predicate to every vector and lexical path.
+The retrieval service locks the reader to that collection and adds a mandatory
+`dataset_id` predicate to every vector and lexical path. For a typed metadata
+filter, the Qdrant adapter adds the compiled predicate to candidate searches,
+including scrolls and iterative retries.
 It does not fall back to an unscoped collection or another embedding provider.
 See [Authorization & Dataset Scope](./authorization_dataset_scope.md).
 
@@ -94,7 +91,7 @@ embedding failure stops the request.
 
 ## 2. Retrieve semantic candidates
 
-The bridge retrieves a wider candidate set before final evidence selection.
+The retrieval service retrieves a wider candidate set before final evidence selection.
 
 | Condition, in precedence order | Semantic strategy |
 |---|---|

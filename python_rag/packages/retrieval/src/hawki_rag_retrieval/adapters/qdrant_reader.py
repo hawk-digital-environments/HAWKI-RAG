@@ -9,6 +9,9 @@ from typing import Any, TypeVar
 
 from requests import RequestException
 
+from hawki_vector_store.payloads import ConstrainedMatches, SearchFilters
+from hawki_rag_retrieval.adapters.metadata_filter import compile_metadata_filter
+from hawki_rag_retrieval.ports import MetadataScopedFilters, ScopedFilters
 from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
 from hawki_rag_retrieval.adapters.qdrant_search_policy import (
     semantic_search_basic,
@@ -44,7 +47,7 @@ class QdrantReader:
         *,
         vector: list[float],
         top_k: int,
-        filters: dict[str, Any] | None,
+        filters: ScopedFilters | None,
         query_terms: list[str],
         keyword_fields: list[str],
         smart_lookup: bool,
@@ -57,7 +60,7 @@ class QdrantReader:
                 qdrant=self.client,
                 vec=vector,
                 top_k=top_k,
-                filters=filters,
+                filters=_compile_filters(filters),
                 query_terms=query_terms,
                 keyword_fields=keyword_fields,
                 smart_lookup=smart_lookup,
@@ -72,7 +75,7 @@ class QdrantReader:
         *,
         vector: list[float],
         top_k: int,
-        filters: dict[str, Any] | None,
+        filters: ScopedFilters | None,
         preferred_tags: list[str] | None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
@@ -80,7 +83,7 @@ class QdrantReader:
                 qdrant=self.client,
                 vec=vector,
                 top_k=top_k,
-                filters=filters,
+                filters=_compile_filters(filters),
                 preferred_tags=preferred_tags,
             )
         )
@@ -92,7 +95,7 @@ class QdrantReader:
         top_k: int,
         terms: list[str],
         fields: list[str],
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
             lambda: self.client.search_with_text(
@@ -100,7 +103,7 @@ class QdrantReader:
                 top_k=top_k,
                 terms=terms,
                 fields=fields,
-                filters=filters,
+                filters=_compile_filters(filters),
             )
         )
 
@@ -111,7 +114,7 @@ class QdrantReader:
         fields: list[str],
         limit: int,
         require_all: bool = True,
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
             lambda: self.client.scroll_with_text(
@@ -119,7 +122,7 @@ class QdrantReader:
                 fields=fields,
                 limit=limit,
                 require_all=require_all,
-                filters=filters,
+                filters=_compile_filters(filters),
             )
         )
 
@@ -130,7 +133,7 @@ class QdrantReader:
         fields: list[str],
         limit: int,
         require_all: bool = True,
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
             lambda: self.client.scroll_with_text_all(
@@ -138,9 +141,26 @@ class QdrantReader:
                 fields=fields,
                 limit=limit,
                 require_all=require_all,
-                filters=filters,
+                filters=_compile_filters(filters),
             )
         )
+
+
+def _compile_filters(filters: ScopedFilters | None) -> SearchFilters | None:
+    if isinstance(filters, MetadataScopedFilters):
+        # Historical collections may carry structural records alongside chunks.
+        # Even a negated predicate must only consider eligible vector evidence.
+        chunk = {
+            "should": [
+                {"is_empty": {"key": "component_type"}},
+                {"key": "component_type", "match": {"any": ["", "chunk"]}},
+            ]
+        }
+        return ConstrainedMatches(
+            filters.matches,
+            {"must": [chunk, compile_metadata_filter(filters.metadata.root)]},
+        )
+    return filters
 
 
 def _translate_not_ready(operation: Callable[[], ResultT]) -> ResultT:
@@ -161,7 +181,7 @@ def search_qdrant_hits(
     qdrant: QdrantHTTP,
     vec: list[float],
     top_k: int,
-    filters: dict[str, Any] | None,
+    filters: SearchFilters | None,
     query_terms: list[str],
     keyword_fields: list[str],
     smart_lookup: bool,
@@ -216,7 +236,7 @@ def search_high_recall(
     qdrant: QdrantHTTP,
     vec: list[float],
     top_k: int,
-    filters: dict[str, Any] | None,
+    filters: SearchFilters | None,
     preferred_tags: list[str] | None,
 ) -> list[dict[str, Any]]:
     """Search for high recall, then fall back to optimized semantic search."""

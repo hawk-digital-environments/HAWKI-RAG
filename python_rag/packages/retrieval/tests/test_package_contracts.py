@@ -139,6 +139,7 @@ def test_single_implementation_per_retrieval_adapter() -> None:
     expected = {
         "qdrant_reader.py",
         "qdrant_search_policy.py",
+        "metadata_filter.py",
         "neo4j_reader.py",
         "reranker_client.py",
         "external_reranker.py",

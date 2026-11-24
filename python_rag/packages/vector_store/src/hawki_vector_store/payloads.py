@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import Any, Iterator, Optional
 
 
@@ -12,14 +13,25 @@ def iter_batches(items: Sequence[Any], batch_size: int) -> Iterator[list[Any]]:
         yield list(items[index : index + size])
 
 
-def build_match_filter(filters: Optional[dict[str, Any]]) -> dict[str, Any]:
+@dataclass(frozen=True, slots=True)
+class ConstrainedMatches:
+    """Flat payload matches plus a server-compiled nested condition."""
+
+    matches: dict[str, Any]
+    condition: dict[str, Any]
+
+
+type SearchFilters = dict[str, Any] | ConstrainedMatches
+
+
+def build_match_filter(filters: SearchFilters | None) -> dict[str, Any]:
     if not filters:
         return {}
-    return {
-        "must": [
-            {"key": key, "match": {"value": value}} for key, value in filters.items()
-        ]
-    }
+    matches = filters.matches if isinstance(filters, ConstrainedMatches) else filters
+    must = [{"key": key, "match": {"value": value}} for key, value in matches.items()]
+    if isinstance(filters, ConstrainedMatches):
+        must.append(filters.condition)
+    return {"must": must}
 
 
 def build_keyword_should_filter(
@@ -76,7 +88,7 @@ def build_search_body(
     vector: list[float],
     *,
     top_k: int,
-    filters: Optional[dict[str, Any]] = None,
+    filters: SearchFilters | None = None,
     score_threshold: Optional[float] = None,
     params: Optional[dict[str, Any]] = None,
     with_payload: bool = True,

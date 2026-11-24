@@ -204,6 +204,8 @@ def test_upload_validation_metadata_graph_and_checksum(env):
     )
     assert value["document"]["graph_enabled"] is True
     assert value["document"]["metadata_json"] == [1, 2]
+    assert "metadata_json" not in revision(env, value)["workflow_input"]
+    assert not revision(env, value)["workflow_input"].get("metadata")
     assert (
         revision(env, value)["workflow_input"]["ingestion"]["neo4j_namespace"]
         == "historic_graph"
