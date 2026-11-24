@@ -38,7 +38,9 @@ def _json_request(method, url, *, payload=None, headers=None, timeout=10):
         return error.code, json.load(error)
 
 
-def _source_points(collection: str, source_id: str) -> list[dict[str, Any]]:
+def _source_points(
+    collection: str, source_id: str, *, conditions: tuple = ()
+) -> list[dict[str, Any]]:
     root = os.environ.get(
         "RAWKI_INTEGRATION_QDRANT_URL", "http://127.0.0.1:6333"
     ).rstrip("/")
@@ -47,7 +49,12 @@ def _source_points(collection: str, source_id: str) -> list[dict[str, Any]]:
         "POST",
         f"{root}/collections/{collection}/points/scroll",
         payload={
-            "filter": {"must": [{"key": "source_id", "match": {"value": source_id}}]},
+            "filter": {
+                "must": [
+                    {"key": "source_id", "match": {"value": source_id}},
+                    *conditions,
+                ]
+            },
             "limit": 100,
             "with_payload": True,
             "with_vector": False,
@@ -58,6 +65,26 @@ def _source_points(collection: str, source_id: str) -> list[dict[str, Any]]:
         return []
     assert status == 200, "Qdrant source inventory unavailable"
     return value["result"]["points"]
+
+
+def _wait_ready(root: str, headers: dict[str, str], task_id: str) -> dict:
+    deadline = time.monotonic() + float(
+        os.environ.get("RAWKI_INTEGRATION_INGEST_TIMEOUT", "300")
+    )
+    while time.monotonic() < deadline:
+        status, value = _json_request(
+            "GET",
+            root + "/v1/pipeline/tasks/" + task_id,
+            headers=headers,
+        )
+        assert status == 200
+        task = value["task"]
+        assert task["status"] not in {"failed", "cancelled"}
+        if task["status"] == "completed":
+            return task
+        time.sleep(1)
+    else:
+        pytest.fail("Text workflow did not complete before deadline")
 
 
 def test_direct_text_reaches_qdrant_and_ready_state(
@@ -89,7 +116,13 @@ def test_direct_text_reaches_qdrant_and_ready_state(
         "dataset_id": dataset,
         "text": text,
         "content_format": "markdown",
-        "metadata": {"integration_marker": marker},
+        "metadata": {
+            "integration_marker": marker,
+            "year": 2025,
+            "open": True,
+            "topics": ["design", "ux"],
+            "weight": 1.25,
+        },
     }
     admitted = None
     try:
@@ -110,23 +143,7 @@ def test_direct_text_reaches_qdrant_and_ready_state(
         assert status in {200, 202}
         for field in ("task_id", "source_id", "job_id", "workflow_id"):
             assert replay[field] == admitted[field]
-        deadline = time.monotonic() + float(
-            os.environ.get("RAWKI_INTEGRATION_INGEST_TIMEOUT", "300")
-        )
-        while time.monotonic() < deadline:
-            status, value = _json_request(
-                "GET",
-                root + "/v1/pipeline/tasks/" + admitted["task_id"],
-                headers=headers,
-            )
-            assert status == 200
-            task = value["task"]
-            assert task["status"] not in {"failed", "cancelled"}
-            if task["status"] == "completed":
-                break
-            time.sleep(1)
-        else:
-            pytest.fail("Text workflow did not complete before deadline")
+        task = _wait_ready(root, headers, admitted["task_id"])
         assert task["dataset_id"] == dataset
         job = next(job for job in task["jobs"] if job["job_id"] == admitted["job_id"])
         assert job["index_status"] == "ready"
@@ -136,6 +153,37 @@ def test_direct_text_reaches_qdrant_and_ready_state(
         assert len(points) == 1
         assert points[0]["payload"]["content"] == text.rstrip()
         assert points[0]["payload"]["ingestion_mode"] == "direct_text"
+        assert points[0]["payload"]["metadata"] == payload["metadata"]
+        matches = _source_points(
+            collection,
+            admitted["source_id"],
+            conditions=(
+                {"key": "metadata.integration_marker", "match": {"value": marker}},
+                {"key": "metadata.year", "match": {"value": 2025}},
+                {"key": "metadata.open", "match": {"value": True}},
+                {"key": "metadata.topics", "match": {"value": "ux"}},
+                {"key": "metadata.weight", "range": {"gt": 1, "lt": 2}},
+            ),
+        )
+        assert [point["id"] for point in matches] == [points[0]["id"]]
+        assert not _source_points(
+            collection,
+            admitted["source_id"],
+            conditions=({"key": "metadata.year", "match": {"value": "2025"}},),
+        )
+        # A metadata-only revision replaces removed keys on the existing chunks.
+        updated = {"year": "2026", "open": False, "topics": ["research"]}
+        status, revision = _json_request(
+            "POST",
+            root + "/v1/text-ingestions",
+            payload={**payload, "metadata": updated},
+            headers=headers | {"Idempotency-Key": "update-" + marker},
+        )
+        assert status == 202 and revision["source_id"] == admitted["source_id"]
+        _wait_ready(root, headers, revision["task_id"])
+        refreshed = _source_points(collection, admitted["source_id"])
+        assert [point["id"] for point in refreshed] == [points[0]["id"]]
+        assert refreshed[0]["payload"]["metadata"] == updated
     finally:
         if admitted and admitted.get("source_id"):
             deadline = time.monotonic() + 180

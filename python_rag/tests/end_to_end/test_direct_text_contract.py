@@ -34,7 +34,7 @@ def test_service_api_contract_and_cleanup(monkeypatch, failed):
         assert url.startswith("http://backend.test/v1/")
         calls.append((method, url, payload, headers))
         if method == "POST":
-            state["text"] = payload["text"]
+            state.update(payload)
             return 202, identity
         if method == "DELETE":
             state["cleaned"] = True
@@ -56,16 +56,20 @@ def test_service_api_contract_and_cleanup(monkeypatch, failed):
             }
         }
 
-    def points(collection, source):
+    def points(collection, source, *, conditions=()):
         assert (collection, source) == ("physical-disposable", "source")
-        if state.get("cleaned"):
+        if state.get("cleaned") or conditions == (
+            {"key": "metadata.year", "match": {"value": "2025"}},
+        ):
             return []
         return [
             {
+                "id": "point",
                 "payload": {
+                    "metadata": state["metadata"],
                     "content": state["text"].rstrip(),
                     "ingestion_mode": "direct_text",
-                }
+                },
             }
         ]
 
@@ -78,6 +82,6 @@ def test_service_api_contract_and_cleanup(monkeypatch, failed):
         module.test_direct_text_reaches_qdrant_and_ready_state(pytest.fail)
     assert state["cleaned"]
     posts = [call for call in calls if call[0] == "POST"]
-    assert len(posts) == 2
+    assert len(posts) == (2 if failed else 3)
     assert posts[0][2:] == posts[1][2:]
     assert calls[-1][0:2] == ("DELETE", "http://backend.test/v1/text-ingestions/source")

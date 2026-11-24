@@ -1,7 +1,10 @@
 # HAWKI RAG
 
-HAWKI RAG runs a static Svelte management frontend and Python retrieval/ingestion
-services.
+RAWKI indexes normalized text and typed source metadata, retrieves and reranks
+chunks, and returns source metadata with the results. Integrations can acquire
+and extract their own source material and use the [canonical text API](_documentation/Reference/direct_text_ingestion.md).
+Managed files and crawler URLs remain supported ingestion adapters. A static
+Svelte frontend provides management access to the Python services.
 
 Browser → nginx frontend → `/ui-api/v1/*` → Python UI gateway → FastAPI.
 HAWKI services call FastAPI with issuer-validated service JWTs. HAWKI owns human

@@ -9,6 +9,10 @@ from typing import Any, NotRequired, TypedDict
 from hawki_artifact_store.local import LocalArtifactStore
 from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
 from hawki_rag_contracts.pipeline.identity import document_id, sha256_text
+from hawki_rag_contracts.source_metadata import (
+    validate_source_metadata,
+    metadata_digest,
+)
 from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
 
 from hawki_indexer_worker.adapters.artifact_store import load_passthrough_metadata
@@ -134,6 +138,16 @@ def _document_from_artifact(
         allowed_directories=allowed_metadata_directories,
     )
     payload = dict(passthrough)
+    expected_metadata = workflow_input.get("metadata_sha256")
+    if expected_metadata is not None:
+        if payload.get("ingestion_mode") != "direct_text" or "metadata" not in payload:
+            raise IndexingValidationError("Missing direct-text metadata sidecar")
+        raw_metadata = payload["metadata"]
+        # Immutable sidecars use [] for the empty metadata object.
+        metadata = validate_source_metadata({} if raw_metadata == [] else raw_metadata)
+        if metadata_digest(metadata) != expected_metadata:
+            raise IndexingValidationError("Direct-text metadata digest mismatch")
+        payload["metadata"] = metadata
     payload.update(
         {
             "managed_document_id": workflow_input.get("managed_document_id"),

@@ -11,7 +11,11 @@ from hawki_backend.text_ingestion.artifacts import (
     TextArtifactStorage,
 )
 from hawki_backend.text_ingestion.validation import TextIngestionRequest
-from hawki_backend.text_ingestion.identity import metadata_bytes, legacy_json
+from hawki_backend.text_ingestion.identity import (
+    fingerprint,
+    metadata_bytes,
+    legacy_json,
+)
 from .conftest import payload
 
 ORACLE = json.loads(
@@ -34,18 +38,21 @@ def test_historical_fingerprint_and_artifact_bytes(tmp_path, case):
     metadata = case["metadata"]
     value = {**payload(), "metadata": metadata}
     oracle = case["expected"]
-    body, artifact = store(tmp_path, value)
-    assert body.fingerprint() == oracle["fingerprint"]
+    # Exercise the historic byte codec independently of new public validation.
+    fields = {"display_name": None, "source_url": None, **value}
+    revision = fingerprint(fields)
+    artifact = TextArtifactStorage(str(tmp_path)).store(fingerprint=revision, **fields)
+    assert revision == oracle["fingerprint"]
     assert metadata_bytes(metadata) == oracle["metadata_bytes"]
     assert legacy_json(metadata) == oracle["metadata_json"]
     assert (
-        legacy_json(body.fingerprint_values(), sort_keys=True, escape_slashes=True)
+        legacy_json(fields, sort_keys=True, escape_slashes=True)
         == oracle["canonical_json"]
     )
     path = Path(artifact.markdown_path)
     assert (
         path.relative_to(tmp_path).as_posix()
-        == f"sources/{artifact.source_id}/revisions/{body.fingerprint()}/markdown/document.md"
+        == f"sources/{artifact.source_id}/revisions/{revision}/markdown/document.md"
     )
     assert path.read_bytes() == value["text"].encode()
     assert path.with_name("rawki_passthrough.json").read_text() == oracle["passthrough"]
@@ -120,18 +127,12 @@ def test_php_metadata_limit_at_exact_encoded_boundary(character, size, accepted)
     assert oracle["metadata_bytes"] == metadata_bytes(value["metadata"]) == size
     if accepted:
         assert (
-            TextIngestionRequest.model_validate(value).fingerprint()
+            fingerprint({"display_name": None, "source_url": None, **value})
             == oracle["fingerprint"]
         )
-    else:
-        with pytest.raises(ValidationError):
-            TextIngestionRequest.model_validate(value)
-
-
-def test_twenty_thousand_del_characters_match_php_acceptance():
-    value = {**payload(), "metadata": {"a": "\x7f" * 20_000}}
-    assert metadata_bytes(value["metadata"]) == 20_008
-    assert TextIngestionRequest.model_validate(value).metadata == value["metadata"]
+    # Even historical values within the total size must meet today's per-string limit.
+    with pytest.raises(ValidationError):
+        TextIngestionRequest.model_validate(value)
 
 
 def test_literal_unicode_escape_is_not_replaced():

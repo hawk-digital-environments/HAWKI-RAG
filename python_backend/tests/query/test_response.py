@@ -40,9 +40,7 @@ def test_sanitize_removes_nested_physical_identifiers() -> None:
 
     assert "neo4j_namespace" not in payload
     assert "qdrant_collection" not in payload
-    assert "neo4j_namespace" not in payload["nested"]
-    assert "qdrant_collection" not in payload["nested"]
-    assert payload["nested"]["keep"] == "value"
+    assert "nested" not in payload
     assert payload["content"] == "A -uses-> B"
     assert payload["dataset_id"] == "dataset-a"
     assert dumped["retrieval"]["dataset_id"] == "dataset-a"
@@ -66,3 +64,39 @@ def test_sanitize_preserves_the_logical_response_shape() -> None:
     assert sanitized.count == 0
     assert sanitized.answer == "hello"
     assert sanitized.retrieval == {"graph_enabled": False}
+
+
+def test_user_metadata_has_separate_public_projection():
+    metadata = {
+        "course": "design",
+        "language": ["en"],
+        "year": 2025,
+        "open": True,
+        "rating": 1.25,
+    }
+    base = {
+        "ingestion_mode": "direct_text",
+        "content": "evidence",
+        "job_id": "private-job",
+        "writer": {"password": "private-db"},
+        "idempotency_key": "private-operation",
+    }
+    response = QueryResponse(
+        ok=True,
+        count=3,
+        hits=[
+            {"payload": {**base, "metadata": metadata}, "debug": "private-extra"},
+            {"payload": {**base, "metadata": {"auth_claims": "private-claims"}}},
+            {
+                "payload": {
+                    "content": "graph fact",
+                    "metadata": {"course": "internal adapter data"},
+                }
+            },
+        ],
+    )
+    public = sanitize_query_response(response)
+    assert public.hits[0].payload == {"content": "evidence"}
+    assert public.hits[0].metadata == metadata
+    assert public.hits[1].metadata == public.hits[2].metadata == {}
+    assert "private-" not in public.model_dump_json()

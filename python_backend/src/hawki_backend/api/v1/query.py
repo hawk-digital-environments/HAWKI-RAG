@@ -41,7 +41,7 @@ from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 from hawki_rag_contracts.retrieval.query import (
     QueryFilterScalar,
     QueryRequest,
-    QueryResponse,
+    PublicQueryResponse,
 )
 from hawki_rag_retrieval import QueryDependencies, execute_authorized_query
 from hawki_rag_retrieval.errors import BridgeQueryError
@@ -195,7 +195,7 @@ router = APIRouter()
 _QUERY_PRINCIPAL = require_scopes(AuthorizationAction.QUERY.required_scope)
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post("/query", response_model=PublicQueryResponse)
 def query(
     body: QueryRequestBody,
     principal: Annotated[
@@ -203,7 +203,7 @@ def query(
         Depends(_QUERY_PRINCIPAL),
     ],
     request: Request,
-) -> QueryResponse:
+) -> PublicQueryResponse:
     """Authorize and execute a dataset-scoped query in-process.
 
     The route is synchronous on purpose: the grant lookup and the retrieval

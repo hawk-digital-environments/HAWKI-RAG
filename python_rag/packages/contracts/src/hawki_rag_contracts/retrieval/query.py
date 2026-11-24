@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from hawki_rag_contracts.source_metadata import SourceMetadata
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
 
@@ -73,17 +74,42 @@ class QueryHit(BaseModel):
     payload: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class QueryResponse(BaseModel):
-    """Stable outer query response; detailed telemetry remains extensible."""
+class _QueryResponseFields(BaseModel):
+    """Answer, graph facts and retrieval diagnostics shared by response views."""
 
     model_config = ConfigDict(extra="allow", frozen=True)
 
     ok: bool
     count: int = Field(ge=0)
-    hits: list[QueryHit] = Field(default_factory=list)
     kg: list[dict[str, str]] = Field(default_factory=list)
     answer: str = ""
     retrieval: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-__all__ = ["QueryFilterScalar", "QueryHit", "QueryRequest", "QueryResponse"]
+class QueryResponse(_QueryResponseFields):
+    hits: list[QueryHit] = Field(default_factory=list)
+
+
+class PublicQueryHit(BaseModel):
+    """Ranked evidence and its validated, caller-supplied source metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    id: str | int | None = None
+    score: FiniteFloat | None = None
+    payload: dict[str, JsonValue]
+    metadata: SourceMetadata = Field(default_factory=dict)
+
+
+class PublicQueryResponse(_QueryResponseFields):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    hits: list[PublicQueryHit] = Field(default_factory=list)
+
+
+__all__ = [
+    "PublicQueryHit",
+    "PublicQueryResponse",
+    "QueryFilterScalar",
+    "QueryHit",
+    "QueryRequest",
+    "QueryResponse",
+]

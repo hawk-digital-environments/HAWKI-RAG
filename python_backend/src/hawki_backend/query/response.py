@@ -1,15 +1,46 @@
-"""Public response sanitization for the query boundary.
-
-Structural graph hits currently carry physical identifiers in their payload.
-The shared retrieval package keeps that behaviour in this epoch, so the public
-boundary removes those fields before a response leaves the service.
-"""
+"""Project internal retrieval responses to public evidence."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from hawki_rag_contracts.retrieval.query import QueryResponse
+from hawki_rag_contracts.retrieval.query import PublicQueryResponse, QueryResponse
+from hawki_rag_contracts.source_metadata import MetadataValue, validate_source_metadata
+
+_PUBLIC_STRINGS = frozenset(
+    {
+        "content",
+        "snippet",
+        "text",
+        "title",
+        "page_title",
+        "page_url",
+        "url",
+        "source_url",
+        "source_format",
+        "title_text",
+        "document_title",
+        "page_url_text",
+        "markdown_snippet",
+        "type",
+        "format",
+        "parent_url",
+        "parent_page_url",
+        "checksum_sha256",
+        "file_hash",
+        "source_id",
+        "doc_id",
+        "document_id",
+        "dataset_id",
+        "external_document_id",
+        "display_name",
+        "content_format",
+        "component_type",
+        "chunk_id",
+        "content_hash",
+        "managed_document_id",
+    }
+)
 
 _PHYSICAL_KEYS = frozenset(
     {
@@ -21,12 +52,45 @@ _PHYSICAL_KEYS = frozenset(
 )
 
 
-def sanitize_query_response(response: QueryResponse) -> QueryResponse:
-    """Return the logical response shape without physical storage identifiers."""
-
-    return QueryResponse.model_validate(
-        _sanitize_value(response.model_dump(mode="json"))
+def sanitize_query_response(response: QueryResponse) -> PublicQueryResponse:
+    """Project storage hits to the public evidence and source metadata contract."""
+    fields = _sanitize_value(
+        response.model_dump(
+            mode="json", include={"ok", "count", "kg", "answer", "retrieval"}
+        )
     )
+    hits = []
+    for hit in response.hits:
+        payload = hit.payload
+        evidence = {
+            key: value
+            for key, value in payload.items()
+            if key in _PUBLIC_STRINGS and isinstance(value, str)
+        }
+        if type(payload.get("chunk_index")) is int:
+            evidence["chunk_index"] = payload["chunk_index"]
+        tags = payload.get("tags")
+        if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):
+            evidence["tags"] = tags
+        hits.append(
+            {
+                "id": hit.id,
+                "score": hit.score,
+                "payload": evidence,
+                "metadata": _user_metadata(payload),
+            }
+        )
+    return PublicQueryResponse.model_validate({**fields, "hits": hits})
+
+
+def _user_metadata(payload: dict) -> dict[str, MetadataValue]:
+    if payload.get("ingestion_mode") != "direct_text":
+        return {}
+    try:
+        return validate_source_metadata(payload.get("metadata"))
+    except ValueError:
+        # Historical points may contain unvalidated recursive metadata.
+        return {}
 
 
 def _sanitize_value(value: Any) -> Any:

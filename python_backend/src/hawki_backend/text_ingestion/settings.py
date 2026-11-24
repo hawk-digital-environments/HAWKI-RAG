@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from hawki_rag_contracts.source_metadata import MAX_BYTES as MAX_METADATA_BYTES
+
 _PREFIX = "HAWKI_BACKEND_TEXT_INGESTION_"
 
 _KNOWN_SUFFIXES = frozenset(
@@ -28,7 +30,7 @@ _KNOWN_SUFFIXES = frozenset(
 # ``config/config.php`` exactly and are deliberately not configurable.
 MAX_REQUEST_BYTES = 4_300_000
 MAX_TEXT_CHARACTERS = 1_048_576
-MAX_METADATA_BYTES = 65_536
+
 FINGERPRINT_VERSION = 2
 
 _DEFAULT_SHARED_ROOT = "/shared"

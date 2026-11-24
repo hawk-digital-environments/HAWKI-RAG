@@ -204,6 +204,7 @@ class IngestTextWorkflowInput(BaseModel):
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     # Opt-in for Python-owned direct text. Absent in historical Laravel inputs.
     text_writer_protocol: Literal[1] | None = None
+    metadata_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     display_name: str | None = Field(default=None, max_length=255)
     storage: StorageConfig
     task_queues: TaskQueueConfig = Field(default_factory=TaskQueueConfig)

@@ -213,3 +213,52 @@ def test_prepare_direct_text_preserves_converter_like_markdown(tmp_path: Path) -
     )
     assert stats["processed_docs"] == 1
     assert chunks[0]["content"].startswith("| page | 7 |")
+
+
+def test_verified_metadata_reaches_every_vector_point(tmp_path):
+    from unittest.mock import Mock
+    from hawki_rag_contracts.source_metadata import metadata_digest
+    from hawki_indexer_worker.indexing.vector_prepare import build_points
+
+    text = "Interaction design studies digital products. " * 80
+    markdown = tmp_path / "document.md"
+    markdown.write_text(text)
+    metadata = {
+        "course": "design",
+        "year": 2025,
+        "rating": 0.75,
+        "public": True,
+        "topics": ["design", "interaction"],
+    }
+    sidecar = tmp_path / "rawki_passthrough.json"
+    sidecar.write_text(
+        json.dumps({"ingestion_mode": "direct_text", "metadata": metadata})
+    )
+    context = ArtifactPreparationContext(
+        workflow_input={
+            **_workflow_input(tmp_path),
+            "metadata_sha256": metadata_digest(metadata),
+        },
+        options={},
+        markdown_dir=str(tmp_path),
+        artifact_store=LocalArtifactStore(tmp_path),
+        artifacts_by_path={},
+    )
+    batch = prepare_artifact_batch([str(markdown)], context)
+    chunks, _ = prepare_documents(
+        batch.documents, chunk_chars=120, chunk_overlap=10, default_job_id=None
+    )
+    points, _, failures = build_points(chunks, Mock(embed=lambda _: [0.5]))
+    assert not failures and len(points) == len(chunks) > 1
+    for index, point in enumerate(points):
+        assert point["payload"]["metadata"] == metadata
+        assert type(point["payload"]["metadata"]["public"]) is bool
+        assert type(point["payload"]["metadata"]["year"]) is int
+        assert point["payload"]["chunk_index"] == index
+        assert "course" not in point["payload"]
+    sidecar.write_text(json.dumps({"ingestion_mode": "direct_text", "metadata": {}}))
+    with pytest.raises(ValueError, match="digest mismatch"):
+        prepare_artifact_batch([str(markdown)], context)
+    sidecar.unlink()
+    with pytest.raises(ValueError, match="Missing direct-text metadata"):
+        prepare_artifact_batch([str(markdown)], context)

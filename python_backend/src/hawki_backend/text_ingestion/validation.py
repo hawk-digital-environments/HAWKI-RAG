@@ -6,14 +6,21 @@ The management UI and direct API clients use the same contract.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import re
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .identity import fingerprint, metadata_bytes
-from .settings import MAX_METADATA_BYTES, MAX_TEXT_CHARACTERS
+from hawki_rag_contracts.source_metadata import (
+    SourceMetadata,
+    metadata_digest,
+    validate_source_metadata,
+)
+
+from .identity import fingerprint
+from .settings import MAX_TEXT_CHARACTERS
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
 _ENVELOPE_FIELDS = frozenset(
@@ -40,7 +47,7 @@ class TextIngestionRequest(BaseModel):
     content_format: Literal["plain_text", "markdown"]
     display_name: str | None = Field(default=None, max_length=255)
     source_url: str | None = Field(default=None, max_length=2048)
-    metadata: Any = None
+    metadata: SourceMetadata = Field(default_factory=dict)
 
     @field_validator("display_name", "source_url")
     @classmethod
@@ -83,23 +90,6 @@ class TextIngestionRequest(BaseModel):
             raise ValueError("source_url must be an http or https URL")
         return value
 
-    @field_validator("metadata")
-    @classmethod
-    def validate_metadata(cls, value: Any) -> dict[str, Any]:
-        if value is None:
-            return {}
-        if isinstance(value, list):
-            if value:
-                raise ValueError("metadata must be a JSON object")
-            return {}
-        if not isinstance(value, dict):
-            raise ValueError("metadata must be a JSON object")
-        if value and list(value) == [str(index) for index in range(len(value))]:
-            raise ValueError("metadata must be a JSON object")
-        if metadata_bytes(value) > MAX_METADATA_BYTES:
-            raise ValueError("metadata is too large")
-        return value
-
     def fingerprint_values(self) -> dict[str, Any]:
         """Return the fields the legacy version-2 fingerprint covers."""
         return {
@@ -114,6 +104,24 @@ class TextIngestionRequest(BaseModel):
 
     def fingerprint(self) -> str:
         return fingerprint(self.fingerprint_values())
+
+    def matches_operation(self, row: Mapping[str, Any], request_hash: str) -> bool:
+        """Replay only the same logical request, including historical number encoding."""
+        previous = row["request_metadata"].get("metadata")
+        if previous is None or previous == []:
+            previous = {}
+        try:
+            normalized = validate_source_metadata(previous)
+        except ValueError:
+            return False
+        if metadata_digest(normalized) != metadata_digest(self.metadata):
+            return False
+        if row["fingerprint"] == request_hash:
+            return True
+        # Old fingerprints used the submitted spelling for integral floats.
+        return row["fingerprint"] == fingerprint(
+            {**self.fingerprint_values(), "metadata": previous}
+        )
 
     def request_metadata(self, idempotency_key: str) -> dict[str, Any]:
         """Return the non-content metadata persisted with the operation."""

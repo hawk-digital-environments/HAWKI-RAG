@@ -80,13 +80,18 @@ def _service(request: Request) -> TextIngestionService:
 def _parse_body(raw: bytes) -> TextIngestionRequest:
     try:
         payload = json.loads(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (ValueError, RecursionError):
         raise errors.invalid_request() from None
     if not isinstance(payload, dict):
         raise errors.invalid_request()
     try:
         return TextIngestionRequest.model_validate(payload)
-    except (ValidationError, RecursionError):
+    except ValidationError as error:
+        for issue in error.errors(include_input=False, include_url=False):
+            if issue["loc"] == ("metadata",) and issue["type"] == "value_error":
+                raise errors.invalid_request(str(issue["ctx"]["error"])) from None
+        raise errors.invalid_request() from None
+    except RecursionError:
         raise errors.invalid_request() from None
 
 
@@ -117,7 +122,27 @@ def _map_ingest_error(error: Exception) -> None:
     raise error
 
 
-@router.post("/text-ingestions")
+@router.post(
+    "/text-ingestions",
+    status_code=202,
+    responses={200: {"description": "Idempotent replay"}},
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {"schema": TextIngestionRequest.model_json_schema()}
+            },
+        },
+        "parameters": [
+            {
+                "in": "header",
+                "name": "Idempotency-Key",
+                "required": True,
+                "schema": {"type": "string", "maxLength": 191},
+            }
+        ],
+    },
+)
 async def ingest_text(
     raw: Annotated[bytes, Depends(_raw_body)],
     principal: Annotated[AuthenticatedPrincipal, Depends(_INGEST_PRINCIPAL)],

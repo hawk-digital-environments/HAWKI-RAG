@@ -40,6 +40,8 @@ from hawki_backend.workflow_control.service import (
 )
 from hawki_workflow_control.temporal_client import TemporalUnavailable
 
+from hawki_rag_contracts.source_metadata import metadata_digest
+
 from . import identity
 from .deletion import DeletionSnapshot
 from .artifacts import StoredTextArtifact, TextArtifactStorage
@@ -188,7 +190,7 @@ class TextIngestionService:
 
         existing = self._repository.find(principal.tenant_id, idempotency_key)
         if existing is not None:
-            if existing["fingerprint"] != fingerprint:
+            if not request.matches_operation(existing, fingerprint):
                 raise IdempotencyConflict()
             return await self._resume(existing)
 
@@ -272,7 +274,7 @@ class TextIngestionService:
             raise DatasetNotFound() from None
 
         if not created:
-            if row["fingerprint"] != fingerprint:
+            if not request.matches_operation(row, fingerprint):
                 raise IdempotencyConflict()
             return await self._resume(row)
 
@@ -591,6 +593,7 @@ class TextIngestionService:
         markdown_directory = os.path.dirname(markdown_path)
         return {
             "text_writer_protocol": 1,
+            "metadata_sha256": metadata_digest(metadata["metadata"]),
             "source_id": str(row["source_id"]),
             "source_url": source_url,
             "task_id": str(row["task_id"]),

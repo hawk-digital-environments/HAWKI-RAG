@@ -131,6 +131,8 @@ def test_response_matches_the_deterministic_golden(
     actual, _, _, _ = _run_case(case, monkeypatch)
     expected = _strip_physical(deepcopy(case["expected"]))
 
+    for hit in expected["hits"]:
+        hit["metadata"] = {}
     assert set(actual) == RESPONSE_KEYS
     assert _comparable(actual) == _comparable(expected)
 

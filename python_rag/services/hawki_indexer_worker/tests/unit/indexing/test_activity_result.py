@@ -62,3 +62,28 @@ def test_accumulator_produces_skipped_result_with_reason() -> None:
     assert result.status is IngestionStatus.SKIPPED
     assert result.error_details == "No Markdown files were found."
     assert result.document_version is None
+
+
+def test_completed_metadata_refresh_is_an_indexed_revision_without_new_vectors():
+    accumulator = IndexActivityAccumulator("source-1")
+    accumulator.accumulate_response(
+        {
+            "points": 0,
+            "summary": {
+                "documents": {
+                    "processed_docs": 0,
+                    "skipped_docs": 1,
+                    "incremental_payload_refresh_docs": 1,
+                }
+            },
+        }
+    )
+    result = accumulator.completed_result([{"content_hash": "same-content"}])
+    assert result.status is IngestionStatus.SUCCESS
+    assert result.documents_indexed == result.changed_documents == 1
+    assert (
+        result.skipped_documents
+        == result.vectors_upserted
+        == result.chunks_indexed
+        == 0
+    )

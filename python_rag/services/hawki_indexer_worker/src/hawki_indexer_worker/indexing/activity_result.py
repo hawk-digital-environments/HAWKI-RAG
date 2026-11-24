@@ -41,10 +41,15 @@ class IndexActivityAccumulator:
         documents_value = summary.get("documents")
         documents = documents_value if isinstance(documents_value, dict) else {}
 
-        self.documents_indexed += int(documents.get("processed_docs") or 0)
-        self.skipped_documents += int(documents.get("skipped_docs") or 0)
+        # The embedding plan skips refreshed documents. Their payload writes
+        # have completed by this point and count as indexed revisions.
+        refreshed = int(documents.get("incremental_payload_refresh_docs") or 0)
+        self.documents_indexed += int(documents.get("processed_docs") or 0) + refreshed
+        self.skipped_documents += int(documents.get("skipped_docs") or 0) - refreshed
         self.new_documents += int(documents.get("incremental_new_docs") or 0)
-        self.changed_documents += int(documents.get("incremental_changed_docs") or 0)
+        self.changed_documents += (
+            int(documents.get("incremental_changed_docs") or 0) + refreshed
+        )
         self.unchanged_documents += int(
             documents.get("incremental_unchanged_docs") or 0
         )

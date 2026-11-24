@@ -42,8 +42,8 @@ def request_too_large() -> HTTPException:
     return _error(413, "text_ingestion_request_too_large", _REQUEST_TOO_LARGE)
 
 
-def invalid_request() -> HTTPException:
-    return _error(422, "text_ingestion_invalid_request", _INVALID_REQUEST)
+def invalid_request(message: str = _INVALID_REQUEST) -> HTTPException:
+    return _error(422, "text_ingestion_invalid_request", message)
 
 
 def idempotency_conflict() -> HTTPException:
