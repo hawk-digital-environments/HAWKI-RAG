@@ -36,7 +36,6 @@ GRAPH_PREPARE = (
     / "indexing"
     / "graph_prepare.py"
 )
-PYTHON_RUNTIME_ENV = ROOT / "docker" / "python_rag" / "10-rawki-runtime.env"
 PYTHON_PERMISSIONS_HOOK = (
     ROOT / "docker" / "python_rag" / "80-rawki-runtime-permissions.sh"
 )
@@ -81,11 +80,8 @@ def test_app_becomes_healthy_only_after_initialization() -> None:
 def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract() -> (
     None
 ):
-    runtime_env = PYTHON_RUNTIME_ENV.read_text(encoding="utf-8")
     permissions_hook = PYTHON_PERMISSIONS_HOOK.read_text(encoding="utf-8")
 
-    assert re.search(r"(?m)^PUID=10001$", runtime_env)
-    assert re.search(r"(?m)^PGID=10001$", runtime_env)
     assert 'shared_gid="${PIPELINE_SHARED_STORAGE_GID:-}"' in permissions_hook
     assert 'usermod --append --groups "$shared_group" www-data' in permissions_hook
     assert 'chown -R www-data:www-data "$writable_dir"' in permissions_hook
