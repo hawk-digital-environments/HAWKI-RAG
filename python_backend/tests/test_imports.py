@@ -35,7 +35,7 @@ def _environment_without_authentication() -> dict[str, str]:
     return {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith("HAWKI_BACKEND_AUTH_")
+        if not name.startswith("RAG_BACKEND_AUTH_")
     }
 
 

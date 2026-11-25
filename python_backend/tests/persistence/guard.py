@@ -8,7 +8,7 @@ database that exists to be destroyed.
 Two conditions must both hold before any of it happens, and neither of them
 is inferred from anything but the two facts themselves:
 
-* ``HAWKI_BACKEND_DB_TESTING`` is exactly ``1``, so the operator has said
+* ``RAG_BACKEND_DB_TESTING`` is exactly ``1``, so the operator has said
   out loud that this database is disposable, and
 * the database the connection string names ends with ``_test``.
 
@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
-TESTING_VARIABLE = "HAWKI_BACKEND_DB_TESTING"
+TESTING_VARIABLE = "RAG_BACKEND_DB_TESTING"
 TESTING_VALUE = "1"
 _TEST_DATABASE_SUFFIX = "_test"
 _DATABASE_QUERY_PARAMETER = "dbname"

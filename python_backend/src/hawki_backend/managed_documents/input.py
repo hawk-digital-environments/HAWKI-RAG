@@ -1,4 +1,4 @@
-"""Public multipart normalization, matching Laravel's managed request parser."""
+"""Public multipart normalization for managed document ingestion."""
 
 import hashlib
 import json
@@ -128,7 +128,7 @@ class ManagedInput(BaseModel):
 
 def extension(filename: str, extensions: tuple[str, ...], custom: bool) -> str:
     # PHP's client extension is authoritative, with a MIME-derived fallback only
-    # for extensionless names. The BFF sends that fallback as the upload filename.
+    # for extensionless names. Use that fallback as the upload filename.
     name = PurePosixPath(filename.replace("\\", "/")).name
     value = name.rsplit(".", 1)[1].lower() if "." in name else ""
     if not value or (not custom and value not in extensions):

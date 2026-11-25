@@ -1,6 +1,6 @@
 """Measure a ten-PDF multipart burst, worker queues and client latency.
 
-Local UI service boundary; no secrets are read. Uses only disposable datasets.
+Uses a local service JWT and disposable datasets.
 Temporal history is read through docker compose exec after completion.
 """
 
@@ -17,9 +17,9 @@ from uuid import uuid4
 
 import httpx
 
-from benchmark_local_ingestion import synthetic_pdf
+from local_api_client import api_url, service_headers
 
-BASE = "http://localhost:8080/ui-api/v1"
+from benchmark_local_ingestion import synthetic_pdf
 
 
 def distribution(values):
@@ -80,7 +80,7 @@ def worker_configuration():
                 "compose",
                 "exec",
                 "-T",
-                "rawki_local_" + role + "_worker",
+                f"{role}_worker",
                 "python",
                 "-c",
                 code,
@@ -246,11 +246,12 @@ async def benchmark(args, report, save):
         trust_env=False,
         follow_redirects=False,
         limits=httpx.Limits(max_connections=30),
-        headers={"Origin": "http://localhost:8080", "X-Hawki-Browser": "1"},
+        base_url=api_url(),
+        headers=service_headers(),
     ) as client:
 
         async def request(method, path, **kwargs):
-            response = await client.request(method, BASE + path, **kwargs)
+            response = await client.request(method, path, **kwargs)
             if response.status_code not in {200, 201, 202, 207}:
                 raise RuntimeError(f"{method} {path}: HTTP {response.status_code}")
             return response.json()
@@ -258,9 +259,7 @@ async def benchmark(args, report, save):
         async def retire(path, key):
             deadline = time.monotonic() + 600
             while time.monotonic() < deadline:
-                response = await client.delete(
-                    BASE + path, headers={"Idempotency-Key": key}
-                )
+                response = await client.delete(path, headers={"Idempotency-Key": key})
                 if response.status_code == 200:
                     return
                 if response.status_code != 202:
@@ -361,7 +360,7 @@ async def benchmark(args, report, save):
                         tasks = {t["task_id"]: t for t in listing["tasks"]}
                         statuses = [await poll(d, tasks) for d in pending]
                     probe = time.monotonic()
-                    response = await client.get(BASE + "/pipeline/tasks?limit=1")
+                    response = await client.get("/pipeline/tasks?limit=1")
                     probe_ms = (time.monotonic() - probe) * 1000
                     run["probe_failures"] += int(response.status_code != 200)
                     sample = {
@@ -409,7 +408,7 @@ async def benchmark(args, report, save):
                             "compose",
                             "exec",
                             "-T",
-                            "hawki_backend",
+                            "rag_backend",
                             "python",
                             "-c",
                             helper,
@@ -467,7 +466,7 @@ async def benchmark(args, report, save):
                 assert all(d["document_id"] in indexed for d in run["documents"])
                 for item in run["documents"]:
                     response = await client.get(
-                        BASE + "/documents/uploads/download",
+                        "/documents/uploads/download",
                         params={"document_id": item["document_id"]},
                     )
                     assert (

@@ -58,7 +58,7 @@ def test_tenant_stats_do_not_expose_other_tenant(env):
 
 def test_config_is_explicit_secret_free_projection(env, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "forbidden-api-key")
-    monkeypatch.setenv("HAWKI_BACKEND_DB_DSN", "forbidden-dsn")
+    monkeypatch.setenv("RAG_BACKEND_DB_DSN", "forbidden-dsn")
     response = call(env, "config", token="manager")
     assert response.status_code == 200
     assert "forbidden" not in response.text
@@ -232,39 +232,19 @@ def test_graph_and_catalog_failure_are_unavailable(env):
     assert call(env, "stats", token="manager").status_code == 503
 
 
-def test_internal_clear_admission_and_receipt_require_manager_and_exact_tenant(env):
+def test_graph_clear_requires_manager_and_exact_tenant(env):
     body = {"dataset_id": "one", "confirm": "CLEAR_DATASET_GRAPH"}
     assert (
-        call(
-            env, "graph/clear-admission", token=None, method="POST", body=body
-        ).status_code
+        call(env, "graph/clear", token=None, method="POST", body=body).status_code
         == 401
     )
+    assert call(env, "graph/clear", method="POST", body=body).status_code == 403
+    body["dataset_id"] = "foreign"
     assert (
-        call(env, "graph/clear-admission", method="POST", body=body).status_code == 403
-    )
-    admitted = call(
-        env, "graph/clear-admission", token="manager", method="POST", body=body
-    )
-    assert admitted.status_code == 200
-    receipt = {
-        "dataset_id": "foreign",
-        "operation_id": admitted.json()["operation_id"],
-        "success": True,
-    }
-    assert (
-        call(
-            env, "graph/clear-receipt", token="manager", method="POST", body=receipt
-        ).status_code
+        call(env, "graph/clear", token="manager", method="POST", body=body).status_code
         == 404
     )
-    receipt["dataset_id"] = "one"
-    assert (
-        call(
-            env, "graph/clear-receipt", token="manager", method="POST", body=receipt
-        ).status_code
-        == 200
-    )
+    env.factory.assert_not_called()
 
 
 def test_physical_scope_cannot_be_supplied_in_mutation_body(env):
@@ -376,18 +356,11 @@ def test_signed_query_token_cannot_authorize_another_dataset(env, action):
     assert call(env, "graph/overview?dataset_id=one", token=token).status_code == 200
 
 
-def test_uncertain_laravel_clear_receipt_keeps_fence_until_valid_reconciliation(env):
-    body = {"dataset_id": "one", "confirm": "CLEAR_DATASET_GRAPH"}
-    admitted = call(
-        env, "graph/clear-admission", token="manager", method="POST", body=body
-    )
-    assert admitted.status_code == 200
-    operation = admitted.json()["operation_id"]
-    receipt = {"dataset_id": "one", "operation_id": operation, "success": False}
-    response = call(
-        env, "graph/clear-receipt", token="manager", method="POST", body=receipt
-    )
-    assert response.json() == {"ok": False}
+def test_uncertain_graph_clear_keeps_fence_until_verified_receipt(env):
+    from hawki_backend.ops.admission import finish_clear, prepare_clear
+
+    operation, _ = prepare_clear(env.engine, "a", "one")
+    finish_clear(env.engine, operation, None)
     with env.engine.begin() as connection:
         row = (
             connection.execute(
@@ -399,18 +372,24 @@ def test_uncertain_laravel_clear_receipt_keeps_fence_until_valid_reconciliation(
         assert row["status"] == "uncertain" and row["receipt"] is None
         with pytest.raises(DatasetInactiveError):
             lock_active_dataset(connection, "a", "one")
+    body = {"dataset_id": "one", "confirm": "CLEAR_DATASET_GRAPH"}
+    response = call(env, "graph/clear", token="manager", method="POST", body=body)
+    assert response.status_code == 409
+    env.factory.assert_not_called()
+    receipt = {"dataset_id": "foreign", "operation_id": operation, "success": True}
     assert (
         call(
-            env, "graph/clear-admission", token="manager", method="POST", body=body
+            env, "graph/clear-receipt", token="manager", method="POST", body=receipt
         ).status_code
-        == 409
+        == 404
     )
-    env.factory.assert_not_called()
-    # Only a subsequent trusted sink acknowledgement can reconcile the same operation.
-    receipt.update(success=True, deleted_nodes=0, deleted_relationships=0)
-    assert call(
-        env, "graph/clear-receipt", token="manager", method="POST", body=receipt
-    ).json() == {"ok": True}
+    receipt["dataset_id"] = "one"
+    assert (
+        call(
+            env, "graph/clear-receipt", token="manager", method="POST", body=receipt
+        ).status_code
+        == 200
+    )
     with env.engine.begin() as connection:
         assert lock_active_dataset(connection, "a", "one").dataset_id == "one"
 

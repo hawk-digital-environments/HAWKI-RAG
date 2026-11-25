@@ -1,0 +1,148 @@
+# Explicit local development only. Generate the ignored files first with
+# scripts/provision_local_api.py. No production service or issuer is changed.
+x-local-runtime-worker: &local_runtime_worker
+  env_file:
+    - ./docker/env/local-workers.env
+  volumes:
+    - shared_storage:/shared
+  group_add: !override
+    - "${PGID}"
+  networks: [default, hawki-network]
+  depends_on:
+    rag_backend:
+      condition: service_healthy
+  restart: unless-stopped
+  stop_grace_period: 60s
+
+services:
+  # New Python-owned work uses distinct queues. Legacy replicas are not changed
+  # and cannot consume these executions or adopt their ownership records.
+  workflow_worker:
+    <<: *local_runtime_worker
+    image: hawki-rag-workflow-worker:local
+    build:
+      context: .
+      dockerfile: python_rag/Dockerfile
+      target: workflow-runtime
+    depends_on: !override
+      temporal:
+        condition: service_started
+
+  scraper_worker:
+    <<: *local_runtime_worker
+    image: hawki-rag-scraper-worker:local
+    build:
+      context: .
+      dockerfile: python_rag/Dockerfile
+      target: scraper-runtime
+
+  converter_worker:
+    <<: *local_runtime_worker
+    image: hawki-rag-converter-worker:local
+    build:
+      context: .
+      dockerfile: python_rag/Dockerfile
+      target: converter-runtime
+
+  indexer_worker:
+    <<: *local_runtime_worker
+    image: hawki-rag-indexer-worker:local
+    build:
+      context: .
+      dockerfile: python_rag/Dockerfile
+      target: indexer-runtime
+
+  rawki_local_crawler:
+    depends_on:
+      rag_backend:
+        condition: service_started
+    build:
+      context: ./.local-runtime/crawler
+      dockerfile: ../../docker/crawler/Dockerfile
+      target: runtime
+    image: hawki-crawler:permanent-job-v2-local
+    pull_policy: never
+    init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+          attempt=0
+          until [ -r /shared ] && [ -w /shared ] && [ -x /shared ]; do
+            if [ "$$attempt" -ge 60 ]; then
+              echo "Local crawler cannot access /shared as its configured UID/GID." >&2
+              exit 1
+            fi
+            attempt=$$((attempt + 1))
+            sleep 1
+          done
+          exec python -m uvicorn "$$@"
+      - crawler
+    command: ["hawki_crawler.app.main:app", "--host=0.0.0.0", "--port=8080", "--workers=1"]
+    env_file:
+      - ./docker/env/crawler.env
+    volumes:
+      - shared_storage:/shared
+    security_opt:
+      - seccomp=./docker/crawler/browser-seccomp.json
+    shm_size: 1gb
+    networks:
+      default:
+        aliases: [rawki-local-crawler]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+  rag_reranker:
+    volumes:
+      - rawki_local_reranker_cache:/home/rawki/.cache/huggingface/hub
+
+  rawki_local_auth:
+    image: hawki-backend:local
+    pull_policy: never
+    entrypoint: ["python", "-m", "uvicorn"]
+    command:
+      - server:app
+      - --app-dir=/opt/rawki-local-auth
+      - --host=0.0.0.0
+      - --port=8443
+      - --ssl-certfile=/run/rawki-local-auth/server.pem
+      - --ssl-keyfile=/run/rawki-local-auth/server.key
+      - --no-access-log
+    env_file:
+      - ./docker/env/local-auth.env
+    volumes:
+      - ./docker/local_auth/server.py:/opt/rawki-local-auth/server.py:ro
+      - ./.secrets/local-api/issuer:/run/rawki-local-auth:ro
+    networks:
+      default:
+        aliases: [rawki-local-auth]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,urllib.request; urllib.request.urlopen('https://rawki-local-auth:8443/health', context=ssl.create_default_context(cafile='/run/rawki-local-auth/ca.pem'), timeout=3).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  rag_backend:
+    env_file:
+      - ./.secrets/local-api/backend.env
+      - ./docker/env/local-workers.env
+      - ./docker/env/local-backend.env
+      - ./docker/env/worker-callback.env
+      - ./docker/env/backend.env
+    volumes:
+      - ./.secrets/local-api/ca-bundle.pem:/run/local-auth/ca-bundle.pem:ro
+    depends_on:
+      rawki_local_auth:
+        condition: service_healthy
+
+volumes:
+  rawki_local_reranker_cache:
+    external: true
+    name: rawki_local_reranker_cache

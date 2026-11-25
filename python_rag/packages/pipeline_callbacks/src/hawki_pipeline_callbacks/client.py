@@ -115,7 +115,7 @@ class PipelineCallbackClient:
                 conflict_code = self._conflict_code(response)
                 if conflict_code == "pipeline_worker_event_id_collision":
                     raise PipelineCallbackError(
-                        "Laravel rejected a reused callback event_id with a different payload."
+                        "The backend rejected a reused callback event_id with a different payload."
                     )
                 if conflict_code in {
                     "pipeline_worker_event_target_unavailable",
@@ -150,7 +150,7 @@ class PipelineCallbackClient:
 
         event_id = str(payload["event_id"])
         raise PipelineCallbackError(
-            f"Laravel did not accept worker event {event_id}: {last_failure}."
+            f"The backend did not accept worker event {event_id}: {last_failure}."
         ) from None
 
     @staticmethod
@@ -169,7 +169,7 @@ class PipelineCallbackClient:
 
     @staticmethod
     def _conflict_code(response: httpx.Response) -> str | None:
-        """Return an allowlisted Laravel conflict code without reflecting its body."""
+        """Return an allowlisted backend conflict code without reflecting its body."""
 
         if response.status_code != 409:
             return None

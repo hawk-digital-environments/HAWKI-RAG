@@ -1,4 +1,4 @@
-"""Translate scraper outcomes into signed Laravel callback events."""
+"""Translate scraper outcomes into signed backend callback events."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ class ActivityExecution:
 
 
 class ScraperStatusReporter:
-    """Build typed events and send Laravel-compatible signed payloads."""
+    """Build typed events and send signed callback payloads."""
 
     def __init__(
         self,

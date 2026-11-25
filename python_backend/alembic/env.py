@@ -2,7 +2,7 @@
 
 The backend owns one PostgreSQL schema, `hawki_backend`. Its version table
 lives in that schema too, so the migration history of the backend is
-separate from the migration history of Laravel, which stays in `public`.
+separate from historical records in `public`.
 
 The schema is created before Alembic creates its version table, because the
 version table has to live in a schema that already exists.
@@ -43,9 +43,8 @@ def _include_owned_object(
 ) -> bool:
     """Keep only the objects that live in the schema the backend owns.
 
-    The comparison runs over every schema of the database, so the tables of
-    the application that still serves the legacy surfaces would otherwise be
-    reported as objects to remove.
+    The comparison runs over every schema. Exclude historical tables and
+    objects outside the operational schema.
     """
     return _owned_schema_of(object_) == SCHEMA_NAME
 
@@ -55,7 +54,7 @@ def _database_url() -> str:
     settings = load_database_settings()
     if settings is None:
         raise RuntimeError(
-            "HAWKI_BACKEND_DB_DSN must be set to run the database migrations"
+            "RAG_BACKEND_DB_DSN must be set to run the database migrations"
         )
     return settings.dsn
 

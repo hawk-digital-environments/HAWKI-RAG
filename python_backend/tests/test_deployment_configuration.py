@@ -20,7 +20,7 @@ def test_environment_example_matches_runtime_settings() -> None:
     example = Path(__file__).resolve().parents[1] / ".env.example"
     environ = {}
     for line in example.read_text(encoding="utf-8").splitlines():
-        if line.startswith("HAWKI_BACKEND_"):
+        if line.startswith("RAG_BACKEND_"):
             name, value = line.split("=", 1)
             environ[name] = value
 
@@ -37,10 +37,10 @@ def test_environment_example_matches_runtime_settings() -> None:
 @pytest.mark.parametrize(
     "service",
     [
-        "hawki_backend",
-        "rawki_local_scraper_worker",
-        "rawki_local_converter_worker",
-        "rawki_local_indexer_worker",
+        "rag_backend",
+        "scraper_worker",
+        "converter_worker",
+        "indexer_worker",
     ],
 )
 def test_artifact_services_share_the_configured_persisted_root(service: str) -> None:
@@ -54,7 +54,7 @@ def test_artifact_services_share_the_configured_persisted_root(service: str) -> 
         .splitlines()
         if line and not line.startswith("#") and "=" in line
     )
-    managed_root = UploadStorage(environ["HAWKI_RAG_TEMPORAL_SHARED_ROOT"]).root
+    managed_root = UploadStorage(environ["RAG_TEMPORAL_SHARED_ROOT"]).root
     text_root = Path(load_text_ingestion_settings(environ).shared_root)
     url_root = Path(load_url_ingestion_settings(environ).shared_root)
     assert managed_root == text_root == url_root == Path("/shared")
@@ -66,8 +66,8 @@ def test_backend_reuses_worker_permissions_after_volume_initialization() -> None
     compose = yaml.safe_load(
         (REPOSITORY / "docker-compose.yml").read_text(encoding="utf-8")
     )
-    backend = compose["services"]["hawki_backend"]
-    worker = compose["services"]["rawki_local_converter_worker"]
+    backend = compose["services"]["rag_backend"]
+    worker = compose["services"]["converter_worker"]
     assert backend["group_add"] == worker["group_add"] == ["${PGID}"]
     assert "hawki_rag_app" not in backend["depends_on"]
     backend_image = (REPOSITORY / "python_backend/Dockerfile").read_text(
@@ -79,3 +79,34 @@ def test_backend_reuses_worker_permissions_after_volume_initialization() -> None
     ):
         assert shared_setup in backend_image
         assert shared_setup in worker_image
+
+
+@pytest.mark.parametrize(
+    "compose_file",
+    [
+        REPOSITORY / "docker-compose.yml",
+        REPOSITORY / "_docker_production/docker-compose.yml",
+    ],
+)
+def test_backend_and_infrastructure_stay_private(compose_file):
+    services = yaml.safe_load(compose_file.read_text())["services"]
+    assert {
+        "hawki_rag_frontend",
+        "hawki_rag_ui_gateway",
+        "temporal-ui",
+        "hawki_rag_app",
+        "hawki_rag_bridge",
+        "migrator",
+    }.isdisjoint(services)
+    backend = services["rag_backend"]
+    assert not backend.get("ports")
+    assert set(backend.get("networks", ["default"])) == {"default"}
+    assert all("environment" not in service for service in services.values())
+    runtime_env = (compose_file.parent / backend["env_file"][-1]).read_text()
+    assert "RAG_BACKEND_SERVICE_ONLY=true" in runtime_env.splitlines()
+    assert "RAG_BACKEND_REQUIRE_READY_SCHEMA=true" in runtime_env.splitlines()
+    assert "RAG_BACKEND_DATASET_CLEANUP_ENABLED=false" in runtime_env.splitlines()
+    assert "RAG_BACKEND_QUERY_DATASET_SOURCE=database" in runtime_env.splitlines()
+    assert "RAG_UI_" not in runtime_env
+    for role in ("postgres", "qdrant", "neo4j", "temporal"):
+        assert not services[role].get("ports")

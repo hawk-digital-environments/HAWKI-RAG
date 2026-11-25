@@ -1,42 +1,22 @@
-# HAWKI RAG
+# HAWKI-RAG
 
-RAWKI indexes normalized text and typed source metadata, retrieves and reranks
-chunks, and returns source metadata with the results. Integrations can acquire
-and extract their own source material and use the [canonical text API](_documentation/Reference/direct_text_ingestion.md).
-Managed files and crawler URLs remain supported ingestion adapters. A static
-Svelte frontend provides management access to the Python services.
+HAWKI-RAG is a headless Python RAG engine. Applications such as HAWKI, Stud.IP,
+and HISinOne call the FastAPI service with their own registered service JWTs.
+Dataset grants and tenant isolation apply to queries and mutations.
 
-Browser → nginx frontend → `/ui-api/v1/*` → Python UI gateway → FastAPI.
-HAWKI services call FastAPI with issuer-validated service JWTs. HAWKI owns human
-authentication; the UI gateway keeps service credentials on the server.
+FastAPI serves `/v1/*` on the private Docker network. Temporal workers use
+signed internal callbacks. HAWKI-RAG supports typed metadata filters, managed file and URL ingestion,
+direct text ingestion, vector and graph retrieval, and reranking.
 
-FastAPI owns current dataset grants and operational state in PostgreSQL
-`hawki_backend` (Alembic **0009**). Python workers run through Temporal and report
-directly to signed FastAPI callbacks. Qdrant and Neo4j provide vector/graph storage.
-URL ingestion requires the upgraded `permanent-job-v2` crawler.
+- [Install and configure HAWKI-RAG](_documentation/Getting%20Started/4_installation_zero_to_up.md)
+- [Run and operate the Python stack](_documentation/Operations/python_runtime.md)
+- [Public REST API contracts](_documentation/Reference/rest_apis.md)
+- [Authentication and dataset authorization](_documentation/Core%20Concepts/authorization_dataset_scope.md)
+- [Development and tests](_documentation/Developer/testing.md)
 
-Start with the [current Python deployment guide](_documentation/Operations/python_runtime.md).
-It covers required schema/role/JWKS/service credentials, local overlays, builds,
-startup and 26-check readiness. Use [Testing](_documentation/Developer/testing.md)
-for Python and frontend commands.
-
-```sh
-npm ci
-npm test
-npm run build
-make help
-```
-
-The existing frontend remains under `resources/js`, `resources/css` and
-`frontend`; it needs no PHP, Blade or Composer. The standalone Vite build is
-served by `docker/frontend.Dockerfile`.
-
-Historical `public.*` tables, the `gebuhren` orphan archive and original files,
-and crawler historical archives are preserved evidence. They must not be deleted
-or automatically adopted. See the [runtime preservation rules](_documentation/Operations/python_runtime.md#historical-evidence-and-reservations)
-and [schema history](_documentation/History/public_schema.md).
-
-Fast vector retrieval remains the default. Deep retrieval (`fast_mode: false`)
-can include graph facts when the query omits `metadata_filters`. The deployment
-controls graph support for new datasets. Managed uploads and URL tasks opt into
-graph ingestion. Direct text remains vector-only.
+The root Compose model builds local Python images. The pull-only production
+model is in [_docker_production](_docker_production/). Production needs
+published Python images, a provisioned schema and restricted role, and a
+service issuer. The current live model readiness probe requires Ollama.
+Historical database records and shared artifact reservations are covered in
+[the operational guide](_documentation/Operations/python_runtime.md#historical-evidence-and-reservations).

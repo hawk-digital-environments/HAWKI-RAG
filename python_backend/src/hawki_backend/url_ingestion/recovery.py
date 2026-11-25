@@ -1,4 +1,4 @@
-"""Recovery uses explicit Python URL generations, never Laravel job state."""
+"""Recover only from explicit, durable URL generations."""
 
 from typing import TYPE_CHECKING
 

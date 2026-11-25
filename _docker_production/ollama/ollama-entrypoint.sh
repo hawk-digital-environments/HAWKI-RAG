@@ -11,20 +11,20 @@
 #      instead of starving other GPU tenants on a shared host.
 #   2. Start "ollama" (with the given arguments) in the background.
 #   3. Once the API answers, pull every model listed in
-#      HAWKI_RAG_OLLAMA_MODELS. Pulls are cheap when a model is already
+#      RAG_OLLAMA_MODELS. Pulls are cheap when a model is already
 #      present in the volume; failures are reported but never stop the server.
 #   4. Wait on the server process and exit with its status. Stop signals are
 #      forwarded, so "docker stop" shuts the server down gracefully instead of
 #      waiting for the grace period and SIGKILL.
 #
 # Expects the ollama image: the "ollama" binary on PATH, "serve" as the
-# command. GPU_MIN_FREE_MB and HAWKI_RAG_OLLAMA_MODELS arrive through the
+# command. GPU_MIN_FREE_MB and RAG_OLLAMA_MODELS arrive through the
 # environment file of the service.
 
 set -uf
 
 MIN_FREE_MB="${GPU_MIN_FREE_MB:-4096}"
-MODELS="${HAWKI_RAG_OLLAMA_MODELS:-bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b}"
+MODELS="${RAG_OLLAMA_MODELS:-bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b}"
 
 # --- 1. VRAM guard -----------------------------------------------------------
 

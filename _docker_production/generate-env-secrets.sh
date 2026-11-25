@@ -26,5 +26,5 @@ printf '%s\n' 'Provision the restricted runtime DSN, issuer credentials and prov
 printf '%s\n' \
     "DB_PASSWORD=$db_password" \
     "NEO4J_PASSWORD=$neo4j_password" \
-    "HAWKI_RAG_WORKER_CALLBACK_SECRET=$callback_secret" \
+    "RAG_WORKER_CALLBACK_SECRET=$callback_secret" \
     "FILE_CONVERTER_TOKEN=$converter_token"

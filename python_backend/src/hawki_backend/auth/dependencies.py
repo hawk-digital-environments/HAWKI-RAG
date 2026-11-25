@@ -46,7 +46,7 @@ def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
             headers={"WWW-Authenticate": _INVALID_TOKEN_CHALLENGE},
         ) from None
     if (
-        os.environ.get("HAWKI_BACKEND_SERVICE_ONLY", "false").lower() == "true"
+        os.environ.get("RAG_BACKEND_SERVICE_ONLY", "false").lower() == "true"
         and principal.kind is not PrincipalKind.SERVICE
     ):
         raise _invalid_token()

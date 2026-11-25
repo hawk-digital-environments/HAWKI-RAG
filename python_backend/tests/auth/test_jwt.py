@@ -1661,7 +1661,7 @@ def test_a_user_client_is_rejected(
     rsa_public_key: object,
     clock: ControllableClock,
 ) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", service_only)
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", service_only)
     settings = dataclasses.replace(
         _settings(auth_settings), clients={_USER_CLIENT: PrincipalKind.USER}
     )

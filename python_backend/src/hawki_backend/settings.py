@@ -1,9 +1,9 @@
 """Environment-backed configuration for the backend's authentication boundary.
 
-The authentication boundary is configured entirely from ``HAWKI_BACKEND_AUTH_*``
+The authentication boundary is configured entirely from ``RAG_BACKEND_AUTH_*``
 environment variables. Two states are possible and only two:
 
-* No ``HAWKI_BACKEND_AUTH_*`` variable is present. Authentication is *not
+* No ``RAG_BACKEND_AUTH_*`` variable is present. Authentication is *not
   configured*, and `load_auth_settings` returns ``None``. This never means
   anonymous access is permitted; it means the service has no authentication
   boundary at all and must not expose authenticated routes.
@@ -25,8 +25,8 @@ from urllib.parse import urlsplit
 
 from hawki_backend.auth.models import PrincipalKind
 
-_PREFIX = "HAWKI_BACKEND_AUTH_"
-_DB_PREFIX = "HAWKI_BACKEND_DB_"
+_PREFIX = "RAG_BACKEND_AUTH_"
+_DB_PREFIX = "RAG_BACKEND_DB_"
 
 _ALLOWED_ALGORITHMS = frozenset({"RS256", "PS256", "ES256"})
 _TENANT_CLAIM_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$")
@@ -154,7 +154,7 @@ class DatabaseSettings:
 
     The schema the backend reads is not configurable. It owns one
     PostgreSQL schema and the tables in it, and pointing the connection at
-    another schema would put the backend inside Laravel's tables.
+    another schema would grant authority over historical data.
 
     This object is produced by `load_database_settings`, which is the only
     validated construction path.
@@ -180,7 +180,7 @@ def load_auth_settings(environ: Mapping[str, str] | None = None) -> AuthSettings
             not supplied, so the call site decides what is read.
 
     Returns:
-        The validated configuration, or ``None`` when no ``HAWKI_BACKEND_AUTH_*``
+        The validated configuration, or ``None`` when no ``RAG_BACKEND_AUTH_*``
         variable is present. ``None`` means authentication is not configured.
 
     Raises:
@@ -261,7 +261,7 @@ def load_database_settings(
             is not supplied, so the call site decides what is read.
 
     Returns:
-        The validated configuration, or ``None`` when no ``HAWKI_BACKEND_DB_*``
+        The validated configuration, or ``None`` when no ``RAG_BACKEND_DB_*``
         variable is present. ``None`` means the persistence boundary is not
         configured.
 
@@ -320,7 +320,7 @@ def _database_env_name(suffix: str) -> str:
 
 
 def _reject_unknown_database_names(present: set[str]) -> None:
-    """Reject an unknown ``HAWKI_BACKEND_DB_*`` variable as a typo."""
+    """Reject an unknown ``RAG_BACKEND_DB_*`` variable as a typo."""
     known = {_database_env_name(suffix) for suffix in _DB_KNOWN_SUFFIXES}
     unknown = sorted(present - known)
     if unknown:
@@ -394,7 +394,7 @@ def _env_name(suffix: str) -> str:
 
 
 def _reject_unknown_names(present: set[str]) -> None:
-    """Reject an unknown ``HAWKI_BACKEND_AUTH_*`` variable as a typo."""
+    """Reject an unknown ``RAG_BACKEND_AUTH_*`` variable as a typo."""
     known = {_env_name(suffix) for suffix in _KNOWN_SUFFIXES}
     unknown = sorted(present - known)
     if unknown:

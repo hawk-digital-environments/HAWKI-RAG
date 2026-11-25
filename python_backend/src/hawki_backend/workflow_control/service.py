@@ -10,7 +10,6 @@ from hawki_workflow_control.temporal_client import (
     WorkflowOwnershipConflict,
 )
 
-from hawki_rag_contracts.pipeline.deletion import DeleteManagedDocumentInput
 from hawki_rag_contracts.pipeline.ingestion import (
     IngestSourceWorkflowInput,
     IngestTextWorkflowInput,
@@ -39,13 +38,6 @@ class WorkflowPort(Protocol):
         workflow_input: dict[str, Any],
         control_operation: str,
     ) -> TemporalExecution: ...
-    async def start_managed_deletion(
-        self,
-        *,
-        workflow_id: str,
-        workflow_input: dict[str, Any],
-        control_operation: str,
-    ) -> dict[str, Any]: ...
     async def upsert_ingest_schedule(
         self,
         *,
@@ -125,11 +117,9 @@ class WorkflowControl:
             "source": IngestSourceWorkflowInput,
             "text": IngestTextWorkflowInput,
             "schedule": IngestSourceWorkflowInput,
-            "deletion": DeleteManagedDocumentInput,
         }[action]
         value = model.model_validate(raw).model_dump(mode="json", exclude_unset=True)
-        # Signed application preparation supplies dataset/artifact ownership until
-        # Epochs 9–11. Queue authority already belongs entirely to this deployment.
+        # Queue authority belongs to the deployment, including for stored inputs.
         defaults = {
             "workflow": os.environ.get(
                 "TEMPORAL_RAG_WORKFLOW_TASK_QUEUE", "rag-workflow-task-queue"
@@ -182,7 +172,7 @@ class WorkflowControl:
             raise ValueError("Recovery attempt is only valid for direct text.")
         if action != "schedule" and (cadence is not None or schedule_id is not None):
             raise ValueError("Refresh schedule fields require a schedule operation.")
-        if action != "deletion" and not (value.get("task_id") and value.get("job_id")):
+        if not (value.get("task_id") and value.get("job_id")):
             raise ValueError("Persisted application task and job identity required.")
         if action in {"source", "schedule"}:
             validate_source_workflow(value["source_id"], workflow_id)
@@ -191,10 +181,6 @@ class WorkflowControl:
                 raise ValueError(
                     "Text workflow identity differs from its prepared task."
                 )
-        elif workflow_id != "managed-" + value["operation_id"]:
-            raise ValueError(
-                "Deletion workflow identity differs from its prepared operation."
-            )
         if replacement and (action != "source" or not value.get("managed_document_id")):
             raise ValueError("Replacement requires a prepared managed source.")
         if action == "schedule" and (
@@ -216,7 +202,7 @@ class WorkflowControl:
         )
         operation_id = row["operation_id"]
         payload = row["payload"]
-        if row["status"] == "confirmed" and action != "deletion":
+        if row["status"] == "confirmed":
             return row["receipt"]
         url_generation = (
             action == "source" and payload["workflow_input"].get("owner") == "url"
@@ -243,8 +229,6 @@ class WorkflowControl:
                         "run_id"
                     ):
                         raise DispatchUncertain()
-                    if action == "deletion":
-                        receipt["status"] = "pending"
                     self.repository.finish(operation_id, receipt)
                     return receipt
                 # Only a definitive NOT_FOUND permits a URL retry. Temporal's
@@ -273,8 +257,6 @@ class WorkflowControl:
             elif action == "text":
                 result = await self.port.start_text_ingest_workflow(**kwargs)
                 receipt = result.to_payload()
-            elif action == "deletion":
-                receipt = await self.port.start_managed_deletion(**kwargs)
             else:
                 result = await self.port.upsert_ingest_schedule(
                     **kwargs,

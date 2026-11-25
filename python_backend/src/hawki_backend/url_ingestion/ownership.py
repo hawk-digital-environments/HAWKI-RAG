@@ -118,7 +118,7 @@ def classify(repository, body: dict) -> str:
                         raise UrlIngestionError(
                             409, "Text operation ownership conflicts."
                         )
-                owners.add("text" if matching else "laravel")
+                owners.add("text" if matching else "historical")
             elif wire.get("managed_document_id"):
                 matching = [
                     row
@@ -134,10 +134,10 @@ def classify(repository, body: dict) -> str:
                         raise UrlIngestionError(
                             409, "Managed operation ownership conflicts."
                         ) from error
-                owners.add("managed" if matching else "laravel")
+                owners.add("managed" if matching else "historical")
             else:
-                # Requires matching Laravel task/job/source evidence at the BFF.
-                owners.add("laravel")
+                # This preparation has no proven Python family owner.
+                owners.add("historical")
         if (
             field == "task_id"
             and connection.execute(

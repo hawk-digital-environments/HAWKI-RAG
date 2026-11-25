@@ -104,7 +104,7 @@ def execute_index_batches(
             requires_graph=requires_graph,
         )
         # Passthrough can require canonical graph writes even for graph=false.
-        # Resolve that requirement before Laravel freezes and grants sink scope.
+        # Resolve that requirement before the backend freezes and grants sink scope.
         if dependencies.target_registrar is not None:
             dependencies.target_registrar(
                 [

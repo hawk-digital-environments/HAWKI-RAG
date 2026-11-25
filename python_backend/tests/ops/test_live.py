@@ -13,8 +13,8 @@ from .test_postgres import pg  # noqa: F401
 
 
 def test_real_owned_stats_and_graph_clear(pg, monkeypatch):  # noqa: F811 - imported pytest fixture
-    qdrant = os.environ.get("HAWKI_EPOCH14_QDRANT_URL")
-    neo4j = os.environ.get("HAWKI_EPOCH14_NEO4J_URI")
+    qdrant = os.environ.get("RAG_EPOCH14_QDRANT_URL")
+    neo4j = os.environ.get("RAG_EPOCH14_NEO4J_URI")
     if not qdrant or not neo4j:
         pytest.skip("Set the explicit disposable Epoch 14 Neo4j and Qdrant URLs")
     settings = replace(load_neo4j_settings(), uri=neo4j, max_transaction_retry_time=0)

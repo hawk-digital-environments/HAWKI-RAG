@@ -188,7 +188,7 @@ def test_an_application_without_authentication_starts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for name in list(os.environ):
-        if name.startswith("HAWKI_BACKEND_AUTH_"):
+        if name.startswith("RAG_BACKEND_AUTH_"):
             monkeypatch.delenv(name, raising=False)
 
     application = create_app()
@@ -220,7 +220,7 @@ def test_injected_settings_without_a_key_provider_build_a_jwks_provider(
 def test_a_partial_environment_configuration_fails_application_creation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_ISSUER", _ISSUER)
+    monkeypatch.setenv("RAG_BACKEND_AUTH_ISSUER", _ISSUER)
 
     with pytest.raises(AuthConfigurationError):
         create_app()
@@ -229,10 +229,10 @@ def test_a_partial_environment_configuration_fails_application_creation(
 def test_an_invalid_environment_configuration_fails_application_creation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_ISSUER", _ISSUER)
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_AUDIENCE", _AUDIENCE)
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_JWKS_URL", "http://issuer.example/jwks")
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_CLIENTS", '{"client": "user"}')
+    monkeypatch.setenv("RAG_BACKEND_AUTH_ISSUER", _ISSUER)
+    monkeypatch.setenv("RAG_BACKEND_AUTH_AUDIENCE", _AUDIENCE)
+    monkeypatch.setenv("RAG_BACKEND_AUTH_JWKS_URL", "http://issuer.example/jwks")
+    monkeypatch.setenv("RAG_BACKEND_AUTH_CLIENTS", '{"client": "user"}')
 
     with pytest.raises(AuthConfigurationError):
         create_app()
@@ -243,7 +243,7 @@ def test_injected_settings_do_not_read_the_process_environment(
     rsa_public_key: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_AUTH_ISSUER", _ISSUER)
+    monkeypatch.setenv("RAG_BACKEND_AUTH_ISSUER", _ISSUER)
 
     application = create_app(
         auth_settings=_settings(auth_settings),

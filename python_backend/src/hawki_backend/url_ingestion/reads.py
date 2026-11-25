@@ -1,4 +1,4 @@
-"""Authorized URL pipeline projections; no Laravel mirror rows or raw file reads."""
+"""Authorized URL pipeline projections from operational state."""
 
 import json
 from datetime import datetime
@@ -277,7 +277,7 @@ def status(service, principal, job_id):
 
 
 def other_tasks(service, principal):
-    """Read existing Epoch 9/10 authority through the pipeline UI contract."""
+    """Project direct text and managed document state through the pipeline API."""
     from hawki_backend.managed_documents.schema import revisions
     from hawki_backend.text_ingestion.schema import ingest_text_operations
 

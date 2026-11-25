@@ -26,8 +26,8 @@ DATABASE_REPRESENTATIONS = [
 
 
 def startup_repository(env, monkeypatch, representation):
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", representation)
-    monkeypatch.setenv("HAWKI_WORKFLOW_CONTROL_ENABLED", "true")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", representation)
+    monkeypatch.setenv("RAG_WORKFLOW_CONTROL_ENABLED", "true")
     monkeypatch.setattr(main, "build_engine", lambda _: env.engine)
     monkeypatch.setattr(main, "TemporalControlClient", Mock())
     monkeypatch.setattr(main, "load_workflow_settings", Mock())
@@ -45,7 +45,7 @@ def startup_repository(env, monkeypatch, representation):
     assert app.state.text_ingestion_service is not None
     assert repository.dataset_source == "database"
     # Configuration is parsed once; later environment changes cannot remove fencing.
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "environment")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "environment")
     return repository
 
 
@@ -105,7 +105,7 @@ def test_normalized_authority_rejects_noncanonical_and_unregistered_scope(
 
 
 def test_invalid_authority_fails_startup_and_repository_closed(env, monkeypatch):
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "databaze")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "databaze")
     with pytest.raises(QueryConfigurationError):
         main.create_app(authenticator=Mock(), policy=Mock())
     with pytest.raises(ValueError, match="canonical dataset authority"):

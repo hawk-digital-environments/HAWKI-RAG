@@ -17,7 +17,7 @@ from .test_lifecycle import create, revision, writer
 
 
 def service_principal(env, monkeypatch):
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     principal = replace(
         env.principal,
         kind=PrincipalKind.SERVICE,
@@ -123,6 +123,6 @@ def test_managed_writer_uses_python_dispatch_and_keeps_collision_checks(
 def test_service_only_api_refuses_legacy_user_tokens_and_browser_cookies(
     env, monkeypatch
 ):
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     assert send(env).status_code == 401
     assert send(env, auth=False).status_code == 401

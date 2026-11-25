@@ -17,7 +17,7 @@ from hawki_scraper_worker.settings import ScraperWorkerSettings
 
 
 class UploadArtifactStager(Protocol):
-    """Boundary used to stage a Laravel-owned upload."""
+    """Boundary used to stage a historically recorded upload."""
 
     def stage(
         self,
@@ -34,7 +34,7 @@ ScraperClientFactory = Callable[
 
 
 class ScraperService:
-    """Scrape one source without knowing Temporal or Laravel callback APIs."""
+    """Scrape one source without knowing Temporal or callback APIs."""
 
     def __init__(
         self,

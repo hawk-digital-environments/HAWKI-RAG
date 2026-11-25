@@ -64,24 +64,24 @@ class ConverterSettings:
                 1, int(_env("TEMPORAL_RAG_HTTP_RETRY_ATTEMPTS", "3"))
             ),
             callback_url=_env(
-                "HAWKI_RAG_WORKER_CALLBACK_URL",
-                "http://hawki_backend/internal/pipeline/worker-events",
+                "RAG_WORKER_CALLBACK_URL",
+                "http://rag_backend/internal/pipeline/worker-events",
             ),
-            callback_secret=os.getenv("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
+            callback_secret=os.getenv("RAG_WORKER_CALLBACK_SECRET", ""),
             callback_timeout_seconds=float(
-                _env("HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", "10")
+                _env("RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", "10")
             ),
             callback_retry_attempts=max(
-                1, int(_env("HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", "3"))
+                1, int(_env("RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", "3"))
             ),
         )
         if not settings.callback_secret:
             raise RuntimeError(
-                "HAWKI_RAG_WORKER_CALLBACK_SECRET is required for converter status events."
+                "RAG_WORKER_CALLBACK_SECRET is required for converter status events."
             )
         if settings.callback_timeout_seconds <= 0:
             raise RuntimeError(
-                "HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS must be positive."
+                "RAG_WORKER_CALLBACK_TIMEOUT_SECONDS must be positive."
             )
         return settings
 

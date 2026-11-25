@@ -6,7 +6,7 @@
 # Variables can be overridden per invocation, for example:
 #
 #   make up-core USE_OLLAMA_GPU=0 ENV_FILE=.env.production
-#   make up-core-local UI_AUTO_BUILD=0
+#   make up-core-local
 #
 # Internal implementation targets start with an underscore and are intentionally
 # omitted from the help output.
@@ -26,8 +26,7 @@ BUILD_STACK ?= 1
 HOST_OS := $(shell uname -s)
 BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
-UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
-LOCAL_OVERRIDE_COMPOSE ?= docker-compose.cutover.local.yml
+LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 PYTHON_UV_CACHE ?= /tmp/rawki-uv-cache
 PYTHON_RERANKER_ENV ?= .venv-reranker
@@ -71,9 +70,8 @@ else
 endif
 
 CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)
-CORE_UI_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(UI_OVERRIDE_COMPOSE)
-CORE_LOCAL_COMPOSE_FILE_LIST := $(CORE_UI_COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
-COMPOSE_FILE_LIST ?= $(CORE_UI_COMPOSE_FILE_LIST)
+CORE_LOCAL_COMPOSE_FILE_LIST := $(CORE_SERVER_COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
+COMPOSE_FILE_LIST ?= $(CORE_SERVER_COMPOSE_FILE_LIST)
 COMPOSE_PROFILES ?= $(CORE_PROFILES)
 PROFILE_MESSAGE ?= $(GPU_MESSAGE)
 
@@ -88,34 +86,17 @@ endif
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) \
 	COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) \
 	COMPOSE_FILE=$(COMPOSE_FILE_LIST) \
-	HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
+	RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
 	$(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) \
 	$(COMPOSE_BIN) --env-file $(ENV_FILE)
-
-# ==============================================================================
-# UI asset configuration
-# ==============================================================================
-
-UI_AUTO_BUILD ?= 1
-UI_BUILD_DIR ?= /tmp/rawki-vite-build
-UI_NODE_IMAGE ?= node:22-bookworm-slim
-UI_NPM_CACHE_DIR ?= /tmp/rawki-npm-cache
-UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
-	--user "$$(id -u):$$(id -g)" \
-	-e HOME=/tmp \
-	-e npm_config_cache=/tmp/rawki-npm-cache \
-	-v "$(CURDIR):/work" \
-	-v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" \
-	-v "$(UI_NPM_CACHE_DIR):/tmp/rawki-npm-cache" \
-	-w /work $(UI_NODE_IMAGE)
 
 # ==============================================================================
 # Target registry and command discovery
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps test-backend test-rag test-frontend
-.PHONY: network pull-core build-backend build-ui publish-ui
+.PHONY: clean python-lock python-deps test-backend test-rag
+.PHONY: network pull-core build-backend
 .PHONY: migrate-core
 .PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health
@@ -123,7 +104,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: down-core down-rag restart-core teardown
 .PHONY: neo4j-fresh
 .PHONY: up-crawler-tool down-crawler-tool up-file-converter-tool down-file-converter-tool
-.PHONY: up-monitor-workflows-tool down-monitor-workflows-tool up-tools down-tools
+.PHONY: up-tools down-tools
 
 ##@ General
 help: ## Show the available commands grouped by module.
@@ -169,43 +150,14 @@ python-deps: ## Sync the data plane and isolated reranker uv environments.
 
 ##@ Docker foundation
 
-network: ## Create the external Docker networks when they do not exist.
-	@set -e; \
-	for net in hawki-network hosting_network; do \
-		if docker network inspect $$net >/dev/null 2>&1; then \
-			echo "$$net already exists; skipping create"; \
-		else \
-			echo "Creating $$net..."; \
-			docker network create $$net; \
-		fi; \
-	done
+network: ## Create the external network used by local workers and helper services.
+	@docker network inspect hawki-network >/dev/null 2>&1 || docker network create hawki-network
 
 pull-core: ## Pull third-party runtime images used directly by the core stack.
-	@$(COMPOSE_CMD) pull postgres temporal hawki_rag_neo4j $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull postgres temporal neo4j $(OLLAMA_SERVICE)
 
-build-backend: ## Build the FastAPI backend and UI gateway image.
-	@$(COMPOSE_CMD) build hawki_backend
-
-# ==============================================================================
-# Frontend assets
-# ==============================================================================
-
-##@ Frontend
-
-build-ui: ## Build the Svelte/Vite frontend in an isolated Node container.
-	@echo "Building HAWKI RAG UI assets..."
-	@mkdir -p "$(UI_BUILD_DIR)"
-	@mkdir -p "$(UI_NPM_CACHE_DIR)"
-	@if [ ! -x node_modules/.bin/vite ] || [ ! -d node_modules/@sveltejs/vite-plugin-svelte ] || ! $(UI_NODE_RUN) node -e "require('rollup/dist/native.js')" >/dev/null 2>&1; then \
-		echo "Node dependencies are missing, incomplete, or built for the wrong platform; reinstalling cleanly..."; \
-		rm -rf node_modules; \
-		$(UI_NODE_RUN) npm ci; \
-	fi
-	@$(UI_NODE_RUN) npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
-
-publish-ui: ## Build and replace the standalone Svelte/nginx frontend.
-	@$(COMPOSE_CMD) build hawki_rag_frontend
-	@$(COMPOSE_CMD) up -d --no-deps hawki_rag_frontend
+build-backend: ## Build the FastAPI backend image.
+	@$(COMPOSE_CMD) build rag_backend
 
 # ==============================================================================
 # Database lifecycle
@@ -231,11 +183,11 @@ _up-core: network
 		echo "Reusing existing development images (set BUILD_STACK=1 to rebuild them)."; \
 	fi
 	@echo "Starting the Python runtime; pre-provisioned schema, role and JWT readiness are required."
-	@$(COMPOSE_CMD) up -d --wait
+	@$(COMPOSE_CMD) up -d --wait $(OLLAMA_SERVICE)
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \
-		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
+		$(COMPOSE_CMD) exec -T $(OLLAMA_SERVICE) ollama pull $$model || exit $$?; \
 	done
 	@for container in "$(FILE_CONVERTER_CONTAINER)"; do \
 		if docker container inspect "$$container" >/dev/null 2>&1; then \
@@ -245,27 +197,22 @@ _up-core: network
 			echo "Optional external service $$container is not running; skipping network connection."; \
 		fi; \
 	done
+	@$(COMPOSE_CMD) up -d --wait
 
-up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
+up-core: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Runtime mode loaded from $(ENV_FILE), with loopback UI.
-up-core: _up-core ## Start the stack at http://localhost:8080 using ENV_FILE.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Runtime mode loaded from $(ENV_FILE), on the private Docker network.
+up-core: _up-core ## Start the private stack using ENV_FILE.
 
 up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-local: BUILD_STACK = 0
 up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Python local development using $(ENV_FILE).
-up-core-local: _up-core ## Reuse the Python local cutover images and publish the UI.
-	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
-		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
-	else \
-		echo "Skipping UI asset publish (UI_AUTO_BUILD=$(UI_AUTO_BUILD))."; \
-	fi
+up-core-local: _up-core ## Start the stack with a local service issuer and crawler.
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Reverse-proxy mode loaded from $(ENV_FILE).
-up-core-server: _up-core ## Start without a host UI port, using ENV_FILE.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Runtime settings loaded from $(ENV_FILE).
+up-core-server: _up-core ## Start the headless stack using ENV_FILE.
 
 # ==============================================================================
 # Health and service diagnostics
@@ -310,38 +257,27 @@ health: ## Check required and optional containers plus service endpoints.
 			echo "WARN"; \
 		fi; \
 	}; \
-	check_url() { \
-		label="$$1"; url="$$2"; required="$${3:-1}"; \
-		printf "%-38s" "$$label:"; \
-		if curl -fsS -m 5 "$$url" >/dev/null 2>&1; then \
-			echo "OK"; \
-		elif [ "$$required" = "1" ]; then \
-			echo "FAIL"; failed=1; \
-		else \
-			echo "WARN"; \
-		fi; \
-	}; \
 	echo "Container status"; \
 	check_running hawki_rag_postgres 1; \
 	check_running temporal 1; \
-	check_running hawki_backend 1; \
+	check_running rag_backend 1; \
 	check_running hawki_qdrant 1; \
-	check_running hawki_rag_neo4j 1; \
+	check_running neo4j 1; \
 	check_running $(OLLAMA_CONTAINER) 1; \
-	check_running hawki_rag_rerank 0; \
-	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_workflow_worker )" 1; \
-	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_scraper_worker )" 1; \
-	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_converter_worker )" 1; \
-	check_running "$$( $(COMPOSE_CMD) ps -q rawki_local_indexer_worker )" 1; \
+	check_running rag_reranker 0; \
+	check_running "$$( $(COMPOSE_CMD) ps -q workflow_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q scraper_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q converter_worker )" 1; \
+	check_running "$$( $(COMPOSE_CMD) ps -q indexer_worker )" 1; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
-	check_exec "FastAPI readiness" hawki_backend "python -m hawki_backend.readiness --live" 1; \
+	check_exec "FastAPI readiness" rag_backend "python -m hawki_backend.readiness --live" 1; \
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
-	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
+	check_exec "Neo4j browser" neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
-	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
-	check_url "FastAPI HTTP" "http://127.0.0.1:8080/v1/health" 1; \
+	check_exec "Local reranker" rag_reranker "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
+	check_exec "FastAPI HTTP" rag_backend "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1/v1/health\", timeout=5).read()'" 1; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
 		echo "Health checks completed."; \
@@ -351,7 +287,7 @@ health: ## Check required and optional containers plus service endpoints.
 	fi
 
 # ==============================================================================
-# Python and frontend tests
+# Python tests
 # ==============================================================================
 
 ##@ Tests
@@ -362,9 +298,6 @@ test-backend: ## Run the Python API tests.
 test-rag: ## Run deterministic Python worker/package tests.
 	@cd python_rag && uv run --frozen pytest -m "not integration"
 
-test-frontend: ## Run the standalone frontend tests and build.
-	@npm test
-	@npm run build
 
 # ==============================================================================
 # Ollama model management
@@ -385,7 +318,7 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 ##@ Logs
 
 logs-core: ## Follow logs for the complete core stack.
-	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_backend hawki_rag_ui_gateway hawki_rag_frontend hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant neo4j $(OLLAMA_SERVICE) rag_backend rag_reranker workflow_worker scraper_worker converter_worker indexer_worker
 
 # ==============================================================================
 # Stack shutdown and restart
@@ -431,7 +364,7 @@ teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
 	echo "Teardown complete. Recreate everything with: make up-core"
 
 # ==============================================================================
-# External crawler and file-converter tools, plus Temporal workflow monitor
+# External crawler and file-converter tools
 # ==============================================================================
 
 ##@ External tools
@@ -470,30 +403,8 @@ down-file-converter-tool: ## Stop the sibling file-converter container.
 	@cd "$(FILE_CONVERTER_DIR)" && \
 		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
 
-up-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
-up-monitor-workflows-tool: network ## Start the Temporal workflow UI (compose profile temporal-ui).
-	@echo "Starting the Temporal workflow UI (profile temporal-ui)..."
-	@$(COMPOSE_CMD) up -d temporal-ui
-	@set -e; \
-	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
-	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
-	echo "Temporal workflow UI: http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
-
-down-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
-down-monitor-workflows-tool: ## Stop the Temporal workflow UI without touching the core stack.
-	@$(COMPOSE_CMD) rm --stop --force temporal-ui
-
-up-tools: up-crawler-tool up-file-converter-tool up-monitor-workflows-tool ## Start all external tools.
-	@set -e; \
-	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
-	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
-	echo ""; \
-	echo "External tools are starting:"; \
-	echo "  crawler:           internal permanent-job-v2 API (use the Python UI boundary)"; \
-	echo "  converter health:  http://localhost:8004/health"; \
-	echo "  temporal UI:       http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
-
-down-tools: down-crawler-tool down-file-converter-tool down-monitor-workflows-tool ## Stop all external tools.
+up-tools: up-crawler-tool up-file-converter-tool ## Start the local crawler and converter.
+down-tools: down-crawler-tool down-file-converter-tool ## Stop the local crawler and converter.
 
 # ==============================================================================
 # Destructive data maintenance
@@ -503,10 +414,10 @@ down-tools: down-crawler-tool down-file-converter-tool down-monitor-workflows-to
 
 neo4j-fresh: ## DESTRUCTIVE: recreate Neo4j with an empty persisted store.
 	@echo "Stopping Neo4j service..."
-	@$(COMPOSE_CMD) stop hawki_rag_neo4j >/dev/null 2>&1 || true
-	@$(COMPOSE_CMD) rm -f hawki_rag_neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) stop neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) rm -f neo4j >/dev/null 2>&1 || true
 	@echo "Removing persisted Neo4j data (databases, transactions)..."
-	@$(COMPOSE_CMD) run --rm --entrypoint bash hawki_rag_neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
+	@$(COMPOSE_CMD) run --rm --entrypoint bash neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
 	@echo "Starting Neo4j service..."
-	@$(COMPOSE_CMD) up -d hawki_rag_neo4j >/dev/null
+	@$(COMPOSE_CMD) up -d neo4j >/dev/null
 	@echo "Neo4j store reset complete."

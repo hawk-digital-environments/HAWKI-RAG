@@ -46,7 +46,7 @@ class CancelledTextWriterProof:
 
 @pytest.mark.integration
 def test_real_cancelled_activity_cannot_outlive_verified_deletion(env, monkeypatch):
-    if os.environ.get("HAWKI_EPOCH9_LIVE") != "1":
+    if os.environ.get("RAG_EPOCH9_LIVE") != "1":
         pytest.skip("Requires the disposable epoch9 Temporal/Qdrant containers")
     from hawki_indexer_worker.activities import index
     from hawki_indexer_worker.indexing.point_identity import deterministic_point_id
@@ -110,11 +110,11 @@ def test_real_cancelled_activity_cannot_outlive_verified_deletion(env, monkeypat
     server = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setenv(
-        "HAWKI_RAG_WORKER_CALLBACK_URL",
+        "RAG_WORKER_CALLBACK_URL",
         f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events",
     )
-    monkeypatch.setenv("HAWKI_RAG_WORKER_CALLBACK_SECRET", "event-test-secret")
-    monkeypatch.setenv("HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", "1")
+    monkeypatch.setenv("RAG_WORKER_CALLBACK_SECRET", "event-test-secret")
+    monkeypatch.setenv("RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", "1")
     for name, value in {
         "QDRANT_SCHEME": "http",
         "QDRANT_HOST": "127.0.0.1",

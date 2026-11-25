@@ -9,8 +9,8 @@ def test_crawler_defaults_match_external_crawler_contract() -> None:
     with patch.dict(
         "os.environ",
         {
-            "HAWKI_RAG_WORKER_CALLBACK_URL": "http://laravel.test/api/internal/pipeline/worker-events",
-            "HAWKI_RAG_WORKER_CALLBACK_SECRET": "test-secret",
+            "RAG_WORKER_CALLBACK_URL": "http://laravel.test/api/internal/pipeline/worker-events",
+            "RAG_WORKER_CALLBACK_SECRET": "test-secret",
         },
         clear=True,
     ):

@@ -21,25 +21,25 @@ def test_an_unrelated_variable_does_not_configure_the_database() -> None:
 
 def test_the_connection_string_is_required() -> None:
     with pytest.raises(DatabaseConfigurationError, match="DSN"):
-        load_database_settings({"HAWKI_BACKEND_DB_POOL_SIZE": "5"})
+        load_database_settings({"RAG_BACKEND_DB_POOL_SIZE": "5"})
 
 
 def test_an_empty_connection_string_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="DSN"):
-        load_database_settings({"HAWKI_BACKEND_DB_DSN": "  "})
+        load_database_settings({"RAG_BACKEND_DB_DSN": "  "})
 
 
 def test_a_connection_string_without_a_host_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="host"):
         load_database_settings(
-            {"HAWKI_BACKEND_DB_DSN": "postgresql+psycopg:///hawki_rag"}
+            {"RAG_BACKEND_DB_DSN": "postgresql+psycopg:///hawki_rag"}
         )
 
 
 def test_a_connection_string_with_whitespace_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="whitespace"):
         load_database_settings(
-            {"HAWKI_BACKEND_DB_DSN": "postgresql+psycopg://a b@postgres/hawki_rag"}
+            {"RAG_BACKEND_DB_DSN": "postgresql+psycopg://a b@postgres/hawki_rag"}
         )
 
 
@@ -47,7 +47,7 @@ def test_a_connection_string_with_a_fragment_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="fragment"):
         load_database_settings(
             {
-                "HAWKI_BACKEND_DB_DSN": (
+                "RAG_BACKEND_DB_DSN": (
                     "postgresql+psycopg://rag_user@postgres/hawki_rag#other"
                 )
             }
@@ -57,7 +57,7 @@ def test_a_connection_string_with_a_fragment_is_refused() -> None:
 def test_another_driver_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="scheme"):
         load_database_settings(
-            {"HAWKI_BACKEND_DB_DSN": "postgresql://rag_user@postgres/hawki_rag"}
+            {"RAG_BACKEND_DB_DSN": "postgresql://rag_user@postgres/hawki_rag"}
         )
 
 
@@ -65,8 +65,8 @@ def test_an_unknown_database_variable_is_refused() -> None:
     with pytest.raises(DatabaseConfigurationError, match="unknown"):
         load_database_settings(
             {
-                "HAWKI_BACKEND_DB_DSN": _DSN,
-                "HAWKI_BACKEND_DB_HOST": "postgres",
+                "RAG_BACKEND_DB_DSN": _DSN,
+                "RAG_BACKEND_DB_HOST": "postgres",
             }
         )
 
@@ -74,8 +74,8 @@ def test_an_unknown_database_variable_is_refused() -> None:
 def test_the_testing_marker_is_known_and_changes_nothing() -> None:
     settings = load_database_settings(
         {
-            "HAWKI_BACKEND_DB_DSN": _DSN,
-            "HAWKI_BACKEND_DB_TESTING": "1",
+            "RAG_BACKEND_DB_DSN": _DSN,
+            "RAG_BACKEND_DB_TESTING": "1",
         }
     )
 
@@ -85,7 +85,7 @@ def test_the_testing_marker_is_known_and_changes_nothing() -> None:
 
 
 def test_the_defaults_are_used_when_nothing_else_is_set() -> None:
-    settings = load_database_settings({"HAWKI_BACKEND_DB_DSN": _DSN})
+    settings = load_database_settings({"RAG_BACKEND_DB_DSN": _DSN})
 
     assert settings is not None
     assert settings.dsn == _DSN
@@ -99,12 +99,12 @@ def test_the_defaults_are_used_when_nothing_else_is_set() -> None:
 def test_the_timeouts_can_be_configured() -> None:
     settings = load_database_settings(
         {
-            "HAWKI_BACKEND_DB_DSN": _DSN,
-            "HAWKI_BACKEND_DB_POOL_SIZE": "9",
-            "HAWKI_BACKEND_DB_POOL_TIMEOUT_SECONDS": "7",
-            "HAWKI_BACKEND_DB_POOL_RECYCLE_SECONDS": "60",
-            "HAWKI_BACKEND_DB_CONNECT_TIMEOUT_SECONDS": "2",
-            "HAWKI_BACKEND_DB_STATEMENT_TIMEOUT_MS": "1500",
+            "RAG_BACKEND_DB_DSN": _DSN,
+            "RAG_BACKEND_DB_POOL_SIZE": "9",
+            "RAG_BACKEND_DB_POOL_TIMEOUT_SECONDS": "7",
+            "RAG_BACKEND_DB_POOL_RECYCLE_SECONDS": "60",
+            "RAG_BACKEND_DB_CONNECT_TIMEOUT_SECONDS": "2",
+            "RAG_BACKEND_DB_STATEMENT_TIMEOUT_MS": "1500",
         }
     )
 
@@ -133,14 +133,14 @@ def test_an_out_of_range_value_is_refused(name: str, value: str) -> None:
     with pytest.raises(DatabaseConfigurationError, match=name):
         load_database_settings(
             {
-                "HAWKI_BACKEND_DB_DSN": _DSN,
-                f"HAWKI_BACKEND_DB_{name}": value,
+                "RAG_BACKEND_DB_DSN": _DSN,
+                f"RAG_BACKEND_DB_{name}": value,
             }
         )
 
 
 def test_the_settings_are_immutable() -> None:
-    settings = load_database_settings({"HAWKI_BACKEND_DB_DSN": _DSN})
+    settings = load_database_settings({"RAG_BACKEND_DB_DSN": _DSN})
 
     assert settings is not None
     with pytest.raises(Exception):

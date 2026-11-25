@@ -1,8 +1,15 @@
-# Installation
+# Run HAWKI-RAG
 
-1. Configure the shared infrastructure from `.env.example` and backend options from `python_backend/.env.example`. The backend template at `docker/env/epoch15c.cutover.env.example` contains placeholders, not usable credentials.
-2. Provision PostgreSQL, a dedicated restricted runtime role, and Alembic revision 0009 using an operator migration DSN. The runtime role must not have DDL or historical public-schema authority.
-3. Configure HTTPS issuer/JWKS verification, audience, registered service clients, scopes, tenant grants and server-side gateway credentials. Configure the default HAWKI management approval endpoint or select the explicit loopback local profile.
-4. Configure model providers, embedding contract, reranker, Qdrant/Neo4j, shared storage and a compliant crawler. Preserve certificate verification and signed callbacks.
-5. Build/start with the commands in the [deployment guide](../Operations/python_runtime.md). Require 26/26 live readiness before accepting traffic.
-6. Run disposable ingestion/retrieval checks from the [testing guide](../Developer/testing.md), followed by cleanup audits. Keep credentials out of command output and browser assets.
+1. Configure the environment from `.env.example` for local builds, or
+   `_docker_production/.env.example` for registry images. Supply the database
+   settings, signed callback secret, service JWT issuer and model configuration.
+2. Provision Alembic revision `0009` and a dedicated runtime role using the
+   instructions in [Python RAG deployment](../Operations/python_runtime.md).
+3. Apply the provider and crawler addons you need.
+4. From the project network, check `http://rag_backend/v1/health` and use a
+   registered service JWT on `GET /v1/query/datasets`. Verify live readiness
+   from within the backend container.
+
+Production requires the matching published Python images and an established
+schema rollout procedure. The current model readiness probe requires Ollama
+even though Compose can connect to an external or self-hosted LiteLLM gateway.

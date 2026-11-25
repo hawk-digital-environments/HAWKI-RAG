@@ -130,7 +130,5 @@ jobs:
 
       - name: Validate Compose model
         env:
-          HAWKI_RAG_COMPOSE_ENV_FILE: .env.example
-        run: |
-          cp docker/env/epoch15c.cutover.env.example docker/env/epoch15c.cutover.env
-          docker compose --env-file .env.example config --quiet
+          RAG_COMPOSE_ENV_FILE: .env.example
+        run: docker compose --env-file .env.example config --quiet

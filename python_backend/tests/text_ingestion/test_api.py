@@ -228,7 +228,7 @@ def test_service_text_ingestion_and_callback_need_no_laravel(env, monkeypatch):
     from hawki_backend.auth.models import PrincipalKind
     from hawki_backend.persistence.schema import metadata
 
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     principal = replace(
         env.principal, kind=PrincipalKind.SERVICE, client_id="hawki-service"
     )

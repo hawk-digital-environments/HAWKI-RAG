@@ -27,7 +27,7 @@ from .conftest import RSA_KID
 def test_hawki_service_jwt_preserves_crypto_tenant_and_scope_checks(
     monkeypatch, auth_settings, rsa_signing_key, rsa_public_key, clock, change, expected
 ):
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     settings = replace(
         auth_settings,
         clients={

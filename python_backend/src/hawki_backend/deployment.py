@@ -8,11 +8,11 @@ from .auth.models import PrincipalKind
 from .settings import load_auth_settings, load_database_settings
 
 ENABLE_FLAGS = (
-    "HAWKI_WORKFLOW_CONTROL_ENABLED",
-    "HAWKI_BACKEND_URL_INGESTION_ENABLED",
-    "HAWKI_BACKEND_TEXT_INGESTION_ENABLED",
-    "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
-    "HAWKI_RAG_TEMPORAL_ENABLED",
+    "RAG_WORKFLOW_CONTROL_ENABLED",
+    "RAG_BACKEND_URL_INGESTION_ENABLED",
+    "RAG_BACKEND_TEXT_INGESTION_ENABLED",
+    "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED",
+    "RAG_TEMPORAL_ENABLED",
 )
 REQUIRED_REVISION = "0009"
 
@@ -64,18 +64,18 @@ def configuration_checks(env: Mapping[str, str]) -> dict[str, str]:
         checks["query_config"] = "FAIL"
     checks["database_dataset_source"] = (
         "PASS"
-        if env.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE") == "database"
-        and "HAWKI_BACKEND_QUERY_DATASETS" not in env
+        if env.get("RAG_BACKEND_QUERY_DATASET_SOURCE") == "database"
+        and "RAG_BACKEND_QUERY_DATASETS" not in env
         else "FAIL"
     )
     checks["callback_secret"] = (
-        "PASS" if env.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", "").strip() else "FAIL"
+        "PASS" if env.get("RAG_WORKER_CALLBACK_SECRET", "").strip() else "FAIL"
     )
     try:
         checks["callback_replay_window"] = (
             "PASS"
             if 1
-            <= int(env.get("HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS", "0"))
+            <= int(env.get("RAG_WORKER_CALLBACK_MAX_AGE_SECONDS", "0"))
             <= 3600
             else "FAIL"
         )
@@ -84,16 +84,16 @@ def configuration_checks(env: Mapping[str, str]) -> dict[str, str]:
     checks["callback_url"] = (
         "PASS"
         if http_url(
-            env.get("HAWKI_RAG_WORKER_CALLBACK_URL", ""),
+            env.get("RAG_WORKER_CALLBACK_URL", ""),
             "/internal/pipeline/worker-events",
         )
         else "FAIL"
     )
     checks["control_destination"] = (
-        "PASS" if http_url(env.get("HAWKI_WORKFLOW_CONTROL_URL", ""), "") else "FAIL"
+        "PASS" if http_url(env.get("RAG_WORKFLOW_CONTROL_URL", ""), "") else "FAIL"
     )
     checks["service_only"] = (
-        "PASS" if enabled(env, "HAWKI_BACKEND_SERVICE_ONLY") else "FAIL"
+        "PASS" if enabled(env, "RAG_BACKEND_SERVICE_ONLY") else "FAIL"
     )
     try:
         auth = load_auth_settings(env)
@@ -118,7 +118,7 @@ def configuration_checks(env: Mapping[str, str]) -> dict[str, str]:
 
 
 def enabled(env: Mapping[str, str], name: str) -> bool:
-    if name == "HAWKI_BACKEND_TEXT_INGESTION_ENABLED":
+    if name == "RAG_BACKEND_TEXT_INGESTION_ENABLED":
         # The direct-text runtime accepts 'on' and strips whitespace.
         return env.get(name, "false").strip().lower() in {"1", "true", "yes", "on"}
     return env.get(name, "false").lower() in {"1", "true", "yes"}

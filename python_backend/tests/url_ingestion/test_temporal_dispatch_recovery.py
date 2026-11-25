@@ -1,6 +1,6 @@
 """Opt-in PostgreSQL + Temporal checks of dispatch crash and duplicate windows.
 
-Use the disposable *_test DSN and HAWKI_EPOCH11_TEMPORAL_ADDRESS. An isolated
+Use the disposable *_test DSN and RAG_EPOCH11_TEMPORAL_ADDRESS. An isolated
 probe workflow/queue exercises the real SDK/server without crawling or sinks.
 """
 
@@ -53,13 +53,13 @@ class DispatchProbe:
 
 @pytest.fixture
 def live(pg):
-    address = os.environ.get("HAWKI_EPOCH11_TEMPORAL_ADDRESS")
+    address = os.environ.get("RAG_EPOCH11_TEMPORAL_ADDRESS")
     if not address:
-        pytest.skip("Set HAWKI_EPOCH11_TEMPORAL_ADDRESS for real Temporal validation")
+        pytest.skip("Set RAG_EPOCH11_TEMPORAL_ADDRESS for real Temporal validation")
     settings = WorkflowControlSettings(
         temporal_address=address,
         temporal_namespace=os.environ.get(
-            "HAWKI_EPOCH11_TEMPORAL_NAMESPACE", "default"
+            "RAG_EPOCH11_TEMPORAL_NAMESPACE", "default"
         ),
         workflow_type="Epoch11DispatchRecoveryProbe",
         workflow_task_queue="epoch11-dispatch-test-" + uuid.uuid4().hex,

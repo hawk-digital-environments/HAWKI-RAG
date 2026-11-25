@@ -1,2 +1,0 @@
-# The standalone frontend publishes the configurable local HTTP port.
-services: {}

@@ -1,4 +1,4 @@
-"""Signed Laravel pipeline callback client."""
+"""Signed Python backend pipeline callback client."""
 
 from hawki_pipeline_callbacks.client import (
     CallbackEvent,

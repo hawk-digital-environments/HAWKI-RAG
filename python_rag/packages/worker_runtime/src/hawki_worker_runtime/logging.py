@@ -40,9 +40,9 @@ def _worker_log_path(stage: str | None) -> str | None:
     stage_key = (stage or "").strip().replace("-", "_").upper()
     candidates: list[str | None] = []
     if stage_key:
-        candidates.append(os.getenv(f"HAWKI_RAG_TEMPORAL_{stage_key}_LOG_PATH"))
+        candidates.append(os.getenv(f"RAG_TEMPORAL_{stage_key}_LOG_PATH"))
 
-    candidates.append(os.getenv("HAWKI_RAG_TEMPORAL_WORKER_LOG_PATH"))
+    candidates.append(os.getenv("RAG_TEMPORAL_WORKER_LOG_PATH"))
 
     if stage_key:
         candidates.append(f"/shared/logs/{stage_key.lower()}_worker.log")

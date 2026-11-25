@@ -28,7 +28,10 @@ Direct-text worker stage spans were not exposed by this run's event projection; 
 | pdf_graph | 6 | 7 | 8 | PASS |
 | direct_text_vectors | 5 | 0 | 0 | PASS |
 
-Reproduce from repository root: `python_backend/.venv/bin/python scripts/benchmark_local_ingestion.py`. Requires the local stack and management service boundary. The generated PDF is `/tmp/rawki-synthetic-3mb.pdf`.
+Run `python_backend/.venv/bin/python scripts/benchmark_local_ingestion.py` from
+the repository root. Set `RAWKI_API_BASE_URL` to the reachable API URL ending
+in `/v1` and supply a scoped service JWT via `RAWKI_API_TOKEN_FILE`.
+The generated PDF is `/tmp/rawki-synthetic-3mb.pdf`.
 
 Detailed receipts and checks: `/tmp/rawki-ingestion-benchmark.json`
 

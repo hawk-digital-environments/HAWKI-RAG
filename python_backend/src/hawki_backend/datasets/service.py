@@ -1,7 +1,7 @@
 """Authoritative dataset management over the Python-owned schema.
 
 The service is the only writer of dataset metadata, grants and one-time grant
-tokens in Python dataset mode. It never reads Laravel's ``public`` schema and
+tokens in Python dataset mode. It does not read the historical ``public`` schema and
 never derives physical scope from caller input beyond the documented
 compatibility fields.
 """

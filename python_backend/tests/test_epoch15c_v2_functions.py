@@ -27,9 +27,9 @@ def test_exact_function_requirements(managed, url, text, expected):
     readiness.verify_privileges(
         Catalog(),
         {
-            "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED": str(managed).lower(),
-            "HAWKI_BACKEND_URL_INGESTION_ENABLED": str(url).lower(),
-            "HAWKI_BACKEND_TEXT_INGESTION_ENABLED": str(text).lower(),
+            "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED": str(managed).lower(),
+            "RAG_BACKEND_URL_INGESTION_ENABLED": str(url).lower(),
+            "RAG_BACKEND_TEXT_INGESTION_ENABLED": str(text).lower(),
         },
     )
     assert len(seen) == expected

@@ -1,118 +1,74 @@
 # Python RAG deployment
 
-This guide covers configuration, startup and operations for the Python RAG system.
-
-## Architecture and authority
-
-```mermaid
-flowchart LR
-    Browser --> Frontend[nginx + static Svelte]
-    Frontend -->|/ui-api/v1| Gateway[Python UI gateway]
-    Gateway -->|service JWT| API[hawki_backend FastAPI]
-    HAWKI -->|service JWT| API
-    API --> DB[PostgreSQL hawki_backend]
-    API --> Temporal
-    Temporal --> Workers[Python workers]
-    Workers -->|signed internal callbacks| API
-    Workers --> Crawler[permanent-job-v2 crawler]
-    Workers --> Qdrant
-    Workers --> Neo4j
-```
-
-HAWKI owns human login and management authorization. FastAPI authenticates
-registered service identities using asymmetric JWT validation and HTTPS JWKS,
-then enforces tenant, action/scope and exact dataset grants. It has no mirrored
-human account, password or browser-session implementation.
-
-The default UI gateway mode checks a HAWKI authorization endpoint (204 means
-management approved; all other outcomes deny access) and injects its own service JWT.
-The explicit local overlay uses `HAWKI_RAG_UI_ACCESS_MODE=local`: loopback-only
-nginx and Host/origin checks form the trusted boundary. The browser supplies no
-username, password, Basic/Bearer token or identity cookie. The internal local
-issuer exposes only HTTPS service token/JWKS/health endpoints; it has no browser
-login or `/authorize` route.
-Service tokens, signing keys, client secrets and database credentials never enter
-frontend JavaScript or browser-visible environment variables. Its exact origin
-check protects mutations. Worker callbacks retain signed HMAC bytes, replay-window
-checks and durable ownership; public nginx blocks `/internal/*`.
+HAWKI-RAG serves the authenticated `/v1/*` API on the private Docker network.
+Only `/v1/health` and the published schema are available without a service JWT.
+The API verifies issuer, audience, key, scopes and tenant before applying
+exact dataset grants. Workers sign internal callbacks.
 
 ## Configuration and schema
 
-Use `.env.example` for shared infrastructure/worker settings and
-`docker/env/epoch15c.cutover.env.example` for backend-only settings. The latter
-is a placeholder template for the ignored `docker/env/epoch15c.cutover.env`.
-`python_backend/.env.example` documents the full API settings.
+Use `.env.example` for repository builds and `_docker_production/.env.example` for
+registry releases. The current backend requires Alembic revision **0009** and a
+separate runtime login with only the grants verified by readiness. Keep the
+migration DSN outside the application environment. For inspected local setup,
+`make migrate-core` uses an explicit operator-supplied migration DSN.
 
-Provision these before starting:
+Keep deployment values in the untracked project `.env` and provider fragments.
+The tracked files under `docker/env/` and `_docker_production/env/` apply service
+defaults, private routes, and safeguards. Production uses these files to pass
+each service only its required settings. Compose resolves substitutions in the
+service files against its project environment. Load addon fragments after the
+production `.env` when using `docker compose` directly.
 
-1. PostgreSQL database, dedicated restricted runtime role, and Alembic revision
-   **0009**. Run `make migrate-core` only with an operator-supplied migration DSN;
-   the API runtime role must not have DDL or access to historical public tables.
-2. An HTTPS asymmetric JWT issuer/JWKS, issuer/audience/key ID and registered
-   **service** clients. Configure the HAWKI management authorization endpoint,
-   exact UI origin and server-only service credentials/CA trust.
-3. Explicit query/model/provider/reranker/store configuration. Local graph
-   extraction uses real configured models, not browser-selected physical scope.
-4. A crawler advertising genuine `permanent-job-v2`, signed callback credentials,
-   and shared artifact permissions. The safety/readiness contract is mandatory.
+When upgrading, rename `HAWKI_BACKEND_*` to `RAG_BACKEND_*`, `HAWKI_RAG_*` to
+`RAG_*`, and other `HAWKI_*` settings to `RAG_*` in your project files,
+deployment variables, and service overrides. Preserve the values, including
+the JWT audience. Regenerate the local development backend settings with
+`scripts/provision_local_api.py` and use images from the matching release.
 
-Keep credentials in ignored operator files/external secret mounts. No real
-credential is supplied by this repository. `HAWKI_BACKEND_SERVICE_ONLY=true`,
-`HAWKI_BACKEND_LARAVEL_OFF=true` and schema readiness remain enforced. The latter
-flag is retained because it refuses legacy deletion dispatch/receipts and selects
-the direct Python callback policy; it does not enable a removed runtime.
+The deployment requires a service issuer and its public JWKS key ID, model and
+store configuration, signed callback credentials, and the shared artifact
+permissions. Enable URL ingestion only with a reviewed `permanent-job-v2`
+crawler. Preserve the Compose project name and existing volumes on upgrades.
 
-## Build and start
+## Local development
 
-The current base model contains FastAPI, the UI gateway, static frontend, current
-Python workers, PostgreSQL, Temporal, Qdrant, Neo4j, reranker and provider services.
-Production operators configure the external crawler URL; the explicit local overlay supplies the pinned upgraded crawler and
-development HTTPS service issuer.
-
-For the already-provisioned local deployment:
-
-```sh
-docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml config --quiet
-docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml build \
-  hawki_backend hawki_rag_frontend rawki_local_workflow_worker \
-  rawki_local_scraper_worker rawki_local_converter_worker rawki_local_indexer_worker \
-  rawki_local_crawler
-docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml up -d
-docker compose -f docker-compose.yml -f docker-compose.cutover.local.yml \
-  exec -T hawki_backend python -m hawki_backend.readiness --live
-```
-
-The gateway reuses the newly built `hawki-backend:local` image. Optional local
-provisioning is implemented by `scripts/provision_local_cutover.py` and
-`scripts/local_cutover_database.py`; review their explicit local-only guards
-before initial use. Do not rerun provisioning to rotate an existing issuer as
-part of routine startup. The local crawler source is prepared reproducibly with
-`scripts/prepare_local_crawler.py`; follow `docker/crawler/README.md`.
-
-`make up-core-local` selects the Python local overlay. `make up-core` uses the
-base deployment settings; neither runs migrations implicitly. Stop/recreate
-services without deleting persisted volumes. Avoid data-reset targets on deployments with retained data. When manually replacing backend/gateway containers, reload the
-frontend nginx routing after their replacement if its resolved upstream address
-changed.
-
-## Frontend and development
+The base Compose builds the Python services. The local overlay supplies a
+development HTTPS issuer, a pinned crawler, and dedicated Temporal queues.
+Prepare the crawler per [its guide](crawler_v2_local_upgrade.md), then run
+`python_backend/.venv/bin/python scripts/provision_local_api.py` with a local
+Docker context and a configured root environment. The script creates ignored
+service issuer material and a backend-only settings file in `.secrets/local-api/`.
+Apply the schema and runtime grants before starting the local stack. The
+`scripts/bootstrap_local_database.py` helper is restricted to the local
+PostgreSQL container and counts historical tables before and after bootstrap.
+If the local runtime role already exists, provision its existing password as
+`.secrets/local-api/runtime-db-password` with restrictive permissions before
+running the provisioning script. The former gateway credential directory may
+also contain database or issuer material. Check its contents before retiring it.
 
 ```sh
-npm ci
-npm test
-npm run build
-npm run dev
+make up-core-local
+python_backend/.venv/bin/python -m pytest python_backend/tests/test_deployment_configuration.py
 ```
 
-`vite.frontend.config.js` builds `frontend/index.html`, `frontend/main.js` and
-the existing `resources/js` Svelte/DOM modules and `resources/css` into ignored
-`public/frontend`. `docker/frontend.Dockerfile` serves that output and the favicon
-with nginx. The frontend uses a standalone Vite build and server-side service credentials. `/v1/*` intentionally
-exposes the authenticated API; `/api/*` returns 410 for obsolete clients.
+The graph and URL smoke tools and ingestion benchmarks accept an explicit
+`RAWKI_API_BASE_URL` ending in `/v1` and a short-lived service JWT via
+`RAWKI_API_TOKEN_FILE`. Run them from a trusted client that can reach the
+backend. Use a service with the required query, ingestion and management scopes.
+These tools create disposable datasets.
 
-Use `make test-backend`, `make test-rag`, and `make test-frontend` for the current
-test entry points. The [testing guide](../Developer/testing.md) records platform
-baselines and integration requirements. Python and frontend CI require no PHP.
+## Production
+
+Use `_docker_production/docker-compose.yml` and the relevant addons. The stack
+keeps FastAPI on the private Docker network and leaves its host port unpublished.
+If upgrading from the former backend-only overlay, transfer the required backend
+settings to the configured environment before startup.
+
+The current branch needs matching published Python images, operator-provisioned
+roles and credentials, and an approved schema rollout. Live model readiness
+currently checks Ollama inventories. A LiteLLM deployment requires a reviewed
+provider-specific probe.
 
 ## Historical evidence and reservations
 
@@ -133,53 +89,19 @@ or corrupted configured archive evidence makes new admission fail closed.
 Historical crawler imports retain their own unsealed state and identity/root
 reservations.
 
-## Acceptance and operations
+## Readiness and reconciliation
 
-Required live readiness is **26/26 PASS**. Authorized UI checks include
-`/ui-api/v1/ops/stats`, `/ops/health` and `/query/datasets`; missing or invalid
-JWTs must return 401. Query, managed/text/URL ingestion, graph operations, download
-and deletion run through Python. Graph and URL smoke scripts create unique
-datasets, retire content through the API, then use separate read-only audits to
-verify stores, artifacts and workflow quiescence. Immutable audit/tombstone rows
-are retained by the normal lifecycle.
+Run `python -m hawki_backend.readiness --live` in the backend. Use
+`python_backend/scripts/check_readiness.py --live` for read-only cross-service
+configuration checks. Existing signed historical deletion starts and receipts
+always refuse dispatch or acknowledgement. Managed, text and URL cleanup still
+verify durable ownership, writer quiescence and exact sink scope.
 
-File uploads prepare their named dataset through the existing creation and
-ingest-grant APIs before posting multipart data. Existing datasets still require
-an exact ingest grant. Completed pipeline tasks request query access through the
-existing readiness-checked self-grant API so indexed documents appear in lists.
-Run `node scripts/smoke_local_ui_upload.mjs` to exercise the real frontend helpers,
-FormData, managed indexing, listing, download and cleanup on a disposable dataset.
-See [the UI API route diagnosis](ui_api_route_fixes.md).
-
-The local crawler provides the permanent-job API without a saved profile/task UI.
-`/ui-api/v1/scraper/tasks` reports an empty catalog with an explanatory message
-only after validating that API's full contract and health. A configured separate
-catalog, custom path, malformed contract or unhealthy upstream still fails closed.
-
-Current deployment validation is
-`python -m hawki_backend.readiness --live` and the Python-only
-`python_backend/scripts/cutover_readiness.py --live`.
-
-
-## Runtime validation and retained reconciliation
-
-Run `python -m hawki_backend.readiness --live` without a phase selector.
-Readiness no longer supports Laravel staging/cutover modes or BFF signing-key
-configuration. Set `HAWKI_BACKEND_READINESS_JWKS_KEY_ID` to an active public
-service-issuer key ID. Keep `HAWKI_BACKEND_SERVICE_ONLY=true`; registered user
-clients are rejected by the JWT authenticator even if that flag is false.
-Tenant, scopes, exact dataset grants, cryptographic validation, and callback
-HMAC checks remain mandatory. Old `*_BACKEND` authority selectors and
-`HAWKI_QUERY_BFF_*` settings are not required by readiness.
-
-The removed `scripts/query_storage.py` was an unused migration probe. Use the
-current live readiness checks for configured storage destinations and access.
-Historical principal values, identity encodings, fixtures, and schema migrations
-remain unchanged. The hidden graph clear admission/receipt routes remain because
-an uncertain durable `graph_clear` operation can require receipt reconciliation;
-removing them without verified closure could strand its dataset fence. Legacy
-deletion rejection handlers and ownership checks also remain fail-closed.
-
+Previously recorded graph-clear operations can be reconciled on the private
+backend connection using its authenticated receipt endpoint and verified sink
+evidence. Graph clearing uses the Python-owned operation. Background dataset
+cleanup remains
+disabled in both Compose models pending verified historical handoff.
 
 Qdrant collections are created lazily on first indexing. Live readiness still
 probes every configured Qdrant client, but an active dataset with valid canonical
@@ -192,8 +114,8 @@ readiness; this exception does not recreate or repair missing collections.
 New managed file uploads carry `managed_upload_protocol=2` and start directly
 with conversion, followed by indexing and ready projection. The converter
 prepares the local raw artifact through the shared root-confined upload stager;
-no scraper activity or external crawler is invoked. The pipeline UI projects
-Scrape as skipped and has no scraper events for these uploads. URL ingestion
+no scraper activity or external crawler is invoked. The pipeline API projects
+scraping as skipped and has no scraper events for these uploads. URL ingestion
 keeps its crawler stage, while direct text starts at indexing. Upload histories
 without the version field retain their recorded scraper staging sequence for
 Temporal replay. Deploy converter/workflow workers before enabling new backend

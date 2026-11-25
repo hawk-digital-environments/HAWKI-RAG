@@ -41,7 +41,7 @@ async def verify_managed_deletion_writers(payload: dict[str, Any]) -> None:
             if not execution_absent(error):
                 raise
             # Absence proves neither termination nor release. Read the exact
-            # operation's signed durable barrier from Laravel; outages refuse.
+            # operation's signed durable barrier from the owning backend; outages refuse.
             await require_durable_proof(body, writer, settings)
             continue
         if description.status not in {

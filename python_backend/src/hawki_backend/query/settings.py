@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
 
-_PREFIX = "HAWKI_BACKEND_QUERY_"
+_PREFIX = "RAG_BACKEND_QUERY_"
 
 _KNOWN_SUFFIXES = frozenset(
     {
@@ -174,13 +174,13 @@ def load_query_settings(
         environ: The environment to read. Defaults to ``os.environ`` when it is
             not supplied, so the call site decides what is read.
         dataset_scope_resolver: The database-backed dataset authority. When it
-            is supplied, ``HAWKI_BACKEND_QUERY_DATASETS`` must be absent and
-            ``HAWKI_BACKEND_QUERY_DATASET_SOURCE`` must be ``database`` (or
+            is supplied, ``RAG_BACKEND_QUERY_DATASETS`` must be absent and
+            ``RAG_BACKEND_QUERY_DATASET_SOURCE`` must be ``database`` (or
             absent). The two authorities are never combined.
 
     Returns:
         The validated configuration, or ``None`` when no
-        ``HAWKI_BACKEND_QUERY_*`` variable is present. ``None`` means the
+        ``RAG_BACKEND_QUERY_*`` variable is present. ``None`` means the
         query scope registry is not configured and the query route must fail
         closed.
 
@@ -199,19 +199,19 @@ def load_query_settings(
     if dataset_scope_resolver is None:
         if authority == "database":
             raise QueryConfigurationError(
-                "HAWKI_BACKEND_QUERY_DATASET_SOURCE=database requires a "
+                "RAG_BACKEND_QUERY_DATASET_SOURCE=database requires a "
                 "database-backed dataset registry"
             )
         datasets = _datasets(source)
     else:
         if authority == "environment":
             raise QueryConfigurationError(
-                "HAWKI_BACKEND_QUERY_DATASET_SOURCE=environment conflicts with "
+                "RAG_BACKEND_QUERY_DATASET_SOURCE=environment conflicts with "
                 "a database-backed dataset registry"
             )
         if _env_name("DATASETS") in source:
             raise QueryConfigurationError(
-                "HAWKI_BACKEND_QUERY_DATASETS must be absent in database dataset mode"
+                "RAG_BACKEND_QUERY_DATASETS must be absent in database dataset mode"
             )
         datasets = {}
     models = _models(source)
@@ -272,7 +272,7 @@ def _dataset_source(source: Mapping[str, str]) -> str:
 
 
 def _reject_unknown_names(present: set[str]) -> None:
-    """Reject an unknown ``HAWKI_BACKEND_QUERY_*`` variable as a typo."""
+    """Reject an unknown ``RAG_BACKEND_QUERY_*`` variable as a typo."""
 
     known = {_env_name(suffix) for suffix in _KNOWN_SUFFIXES}
     unknown = sorted(present - known)

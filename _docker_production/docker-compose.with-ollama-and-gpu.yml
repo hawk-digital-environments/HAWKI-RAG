@@ -10,15 +10,15 @@ x-nvidia: &nvidia
                   capabilities: [gpu]
 
 services:
-    hawki_rag_rerank:
-        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-gpu-${HAWKI_RAG_VERSION:?Set the Python production release version}
+    rag_reranker:
+        image: ${RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-gpu-${RAG_VERSION:?Set the Python production release version}
         deploy: *nvidia
 
     hawki-rag-indexer-worker:
-        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-gpu-${HAWKI_RAG_VERSION:?Set the Python production release version}
+        image: ${RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-gpu-${RAG_VERSION:?Set the Python production release version}
         deploy: *nvidia
 
     ollama:
-        environment:
-            NVIDIA_VISIBLE_DEVICES: all
+        env_file:
+            - ./env/ollama-gpu.env
         deploy: *nvidia

@@ -6,7 +6,7 @@ import pytest
 import sqlalchemy as sa
 
 from hawki_backend import readiness
-from test_epoch15c_readiness import environment
+from test_readiness import environment
 
 HISTORY = (
     "managed_documents",

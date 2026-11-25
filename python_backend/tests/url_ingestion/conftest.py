@@ -129,7 +129,7 @@ def env(tmp_path, monkeypatch):
     import os
 
     for key in tuple(os.environ):
-        if key.startswith(("HAWKI_BACKEND_", "HAWKI_WORKFLOW_", "TEMPORAL_")):
+        if key.startswith(("RAG_BACKEND_", "RAG_WORKFLOW_", "TEMPORAL_")):
             monkeypatch.delenv(key)
     engine = sa.create_engine(
         "sqlite://",

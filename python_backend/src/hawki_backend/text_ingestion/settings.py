@@ -1,6 +1,6 @@
 """Server-owned configuration for the Python direct-text ingestion boundary.
 
-Only ``HAWKI_BACKEND_TEXT_INGESTION_*`` is read here. The public size limits
+Only ``RAG_BACKEND_TEXT_INGESTION_*`` is read here. The public size limits
 are constants because they are part of the external contract, not deployment
 tuning. API clients and the management UI share these limits.
 """
@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from hawki_rag_contracts.source_metadata import MAX_BYTES as MAX_METADATA_BYTES
 
-_PREFIX = "HAWKI_BACKEND_TEXT_INGESTION_"
+_PREFIX = "RAG_BACKEND_TEXT_INGESTION_"
 
 _KNOWN_SUFFIXES = frozenset(
     {
@@ -101,7 +101,7 @@ def load_sink_settings(env: Mapping[str, str] | None = None) -> TextIngestionSet
     """Managed and URL cleanup share this existing runtime sink contract."""
     source = os.environ if env is None else env
     return TextIngestionSettings(
-        shared_root=source.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared"),
+        shared_root=source.get("RAG_TEMPORAL_SHARED_ROOT", "/shared"),
         qdrant_url=source.get("QDRANT_HTTP_URL", "http://qdrant:6333"),
         qdrant_api_key=source.get("QDRANT_API_KEY", ""),
     )

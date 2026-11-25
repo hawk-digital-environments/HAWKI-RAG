@@ -34,7 +34,7 @@ def load_url_ingestion_settings(
             or parts.fragment
         ):
             raise ValueError("EXTERNAL_SCRAPER_URL must be a server-owned HTTP URL")
-    root = env.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared")
+    root = env.get("RAG_TEMPORAL_SHARED_ROOT", "/shared")
     if (
         not Path(root).is_absolute()
         or Path(root) == Path("/")
@@ -42,11 +42,11 @@ def load_url_ingestion_settings(
     ):
         raise ValueError("URL ingestion requires an absolute shared artifact root")
     return UrlIngestionSettings(
-        enabled=env.get("HAWKI_BACKEND_URL_INGESTION_ENABLED", "false").lower()
+        enabled=env.get("RAG_BACKEND_URL_INGESTION_ENABLED", "false").lower()
         in {"1", "true", "yes"},
         scraper_url=scraper.rstrip("/"),
         shared_root=root,
-        profile_root=env.get("HAWKI_URL_SITE_PROFILE_ROOT") or None,
+        profile_root=env.get("RAG_URL_SITE_PROFILE_ROOT") or None,
         scraper_token=env.get(
             "EXTERNAL_SCRAPER_TOKEN", env.get("CUSTOM_CRAWLER_API_KEY", "")
         ),

@@ -128,7 +128,7 @@ def signed(
 @pytest.fixture
 def control(monkeypatch):
     for key in tuple(__import__("os").environ):
-        if key.startswith(("TEMPORAL_", "HAWKI_BACKEND_", "HAWKI_WORKFLOW_")):
+        if key.startswith(("TEMPORAL_", "RAG_BACKEND_", "RAG_WORKFLOW_")):
             monkeypatch.delenv(key)
     engine = sa.create_engine(
         "sqlite://", execution_options={"schema_translate_map": {"hawki_backend": None}}
@@ -321,7 +321,7 @@ def test_additive_migration_compiles_without_touching_laravel(control, monkeypat
     from alembic.config import Config
 
     monkeypatch.setenv(
-        "HAWKI_BACKEND_DB_DSN", "postgresql+psycopg://control:test@db/backend"
+        "RAG_BACKEND_DB_DSN", "postgresql+psycopg://control:test@db/backend"
     )
     output = io.StringIO()
     config = Config(
@@ -545,41 +545,7 @@ def test_sdk_absence_classification_survives_workflow_control_api(control, failu
         assert "private error" not in result.text
 
 
-def test_historical_deletion_scope_and_writers_reach_same_workflow(control):
-    _, port, app, _ = control
-    value = {
-        "operation_id": "delete_" + "a" * 64,
-        "managed_document_id": "adoc-a",
-        "dataset_id": "dataset-a",
-        "writers": [{"workflow_id": "ingest-source-source-old", "run_id": "old-run"}],
-        "targets": [
-            {
-                "output_id": 1,
-                "doc_id": "old-doc",
-                "source_id": "source-old",
-                "collection": "historic_collection",
-                "neo4j_namespace": "historic_namespace",
-            }
-        ],
-    }
-    identity = "managed-" + value["operation_id"]
-    port.start_managed_deletion.return_value = {
-        "workflow_id": identity,
-        "run_id": "delete-run",
-        "status": "pending",
-    }
-    assert (
-        request(
-            app, "deletion/start", {"workflow_id": identity, "workflow_input": value}
-        ).status_code
-        == 200
-    )
-    forwarded = port.start_managed_deletion.call_args.kwargs["workflow_input"]
-    assert forwarded["targets"] == value["targets"]
-    assert forwarded["writers"] == value["writers"]
-
-
-def test_workflow_identity_matches_historical_php_values():
+def test_workflow_identity_matches_historical_values():
     assert (
         text_workflow("task-a")
         == "ingest-text-" + hashlib.sha256(b"task-a").hexdigest()[:32]
@@ -601,45 +567,30 @@ def test_backend_runtime_has_no_worker_dependency():
     assert "hawki-workflow-worker" not in metadata
     assert "hawki-indexer-worker" not in metadata
     assert (
-        "HAWKI_BACKEND_SERVICE_ONLY=true" in (root.parent / ".env.example").read_text()
+        "RAG_BACKEND_SERVICE_ONLY=true" in (root.parent / ".env.example").read_text()
     )
 
 
 @pytest.mark.parametrize("count", [1, 1728])
-def test_historical_deletion_wire_reaches_backend(control, count):
-    _, port, app, _ = control
-    value = {
-        "operation_id": "delete_" + "b" * 64,
-        "managed_document_id": "adoc-a",
-        "dataset_id": "dataset-a",
-        "writers": [],
-        "targets": [
-            {
-                "output_id": index + 1,
-                "doc_id": "old-doc",
-                "source_id": "old-source",
-                "collection": "historic_collection",
-                "neo4j_namespace": "historic_namespace",
-            }
-            for index in range(count)
-        ],
-    }
+@pytest.mark.parametrize("previous_flag", [None, "false"])
+def test_signed_historical_deletion_cannot_dispatch(
+    control, monkeypatch, count, previous_flag
+):
+    _, port, app, engine = control
+    if previous_flag is None:
+        monkeypatch.delenv("RAG_BACKEND_LARAVEL_OFF", raising=False)
+    else:
+        monkeypatch.setenv("RAG_BACKEND_LARAVEL_OFF", previous_flag)
     wire = historical_wire("backend-deletion-" + str(count))
     app.state.workflow_control_secret = "contract-test-secret"
-    identity = "managed-" + value["operation_id"]
-    port.start_managed_deletion.return_value = {
-        "workflow_id": identity,
-        "run_id": "delete-run",
-        "status": "pending",
-    }
     response = request(
         app, "deletion/start", content=wire["body"], headers=wire["headers"]
     )
-    assert response.status_code == 200, response.text
-    assert (
-        port.start_managed_deletion.call_args.kwargs["workflow_input"]["targets"]
-        == value["targets"]
-    )
+    assert response.status_code == 409
+    assert response.json() == {"detail": "legacy_deletion_requires_drain"}
+    port.start_managed_deletion.assert_not_awaited()
+    with engine.connect() as connection:
+        assert connection.execute(sa.select(operations)).first() is None
 
 
 def test_historical_replacement_selects_restricted_reuse(control):

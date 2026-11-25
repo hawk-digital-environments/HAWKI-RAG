@@ -166,9 +166,9 @@ def test_production_sandbox_retries_and_records_final_outcome_before_closing(
 ):
     from hawki_workflow_control.settings import WorkflowControlSettings
 
-    address = os.environ.get("HAWKI_EPOCH11_TEMPORAL_ADDRESS")
+    address = os.environ.get("RAG_EPOCH11_TEMPORAL_ADDRESS")
     if not address:
-        pytest.skip("Set HAWKI_EPOCH11_TEMPORAL_ADDRESS for real Temporal validation")
+        pytest.skip("Set RAG_EPOCH11_TEMPORAL_ADDRESS for real Temporal validation")
     root = Path(__file__).resolve().parents[3]
     monkeypatch.syspath_prepend(
         str(root / "python_rag/services/hawki_workflow_worker/src")

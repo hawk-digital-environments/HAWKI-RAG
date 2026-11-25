@@ -388,7 +388,7 @@ def test_authorized_grant_executes_query() -> None:
 def test_service_query_uses_exact_tenant_grant_and_server_scope(monkeypatch) -> None:
     from dataclasses import replace
 
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     principal = replace(
         _principal(), kind=PrincipalKind.SERVICE, client_id="hawki-service"
     )
@@ -750,7 +750,7 @@ def test_unconfigured_query_service_fails_closed(monkeypatch) -> None:
     """No scope registry means no query execution, never a guessed fallback."""
 
     for name in list(os.environ):
-        if name.startswith("HAWKI_BACKEND_QUERY_"):
+        if name.startswith("RAG_BACKEND_QUERY_"):
             monkeypatch.delenv(name, raising=False)
 
     application = create_app(
@@ -767,7 +767,7 @@ def test_unconfigured_query_service_fails_closed(monkeypatch) -> None:
 def test_create_app_rejects_invalid_query_configuration(monkeypatch) -> None:
     """A malformed scope registry must stop the application at startup."""
 
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASETS", "{not-json")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASETS", "{not-json")
 
     with pytest.raises(QueryConfigurationError):
         create_app(
@@ -812,7 +812,7 @@ def test_legacy_flat_filters_cannot_target_protected_paths(field):
 def test_matching_metadata_cannot_expand_service_grant(monkeypatch):
     from dataclasses import replace
 
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     principal = replace(
         _principal(), kind=PrincipalKind.SERVICE, client_id="search-service"
     )

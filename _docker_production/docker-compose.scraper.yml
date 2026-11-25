@@ -1,22 +1,17 @@
 # Add after docker-compose.yml and include .env.scraper in Compose's env files.
 # Use a published permanent-job-v2 CustomCrawler image with Linux browser
 # isolation. The historical scraper image has no verified v2 contract.
-x-addon-crawler-client: &addon_crawler_client
-    EXTERNAL_SCRAPER_URL: http://scraper:8080
-    EXTERNAL_SCRAPER_TOKEN: ""
-    CUSTOM_CRAWLER_API_KEY: ""
-
 services:
     scraper:
         container_name: hawki_rag_scraper
-        image: ${HAWKI_RAG_SCRAPER_IMAGE:?Set the published permanent-job-v2 crawler image reference}
+        image: ${RAG_SCRAPER_IMAGE:?Set the published permanent-job-v2 crawler image reference}
         pull_policy: always
         init: true
         user: "${PUID:-33}:${PGID:-33}"
         # The backend entrypoint prepares the root of a new shared volume.
         # Once it has started, wait for the non-root crawler to have access.
         depends_on:
-            hawki_backend:
+            rag_backend:
                 condition: service_started
         entrypoint:
             - /bin/sh
@@ -38,11 +33,8 @@ services:
                 exec python -m uvicorn "$$@"
             - crawler
         command: ["hawki_crawler.app.main:app", "--host=0.0.0.0", "--port=8080", "--workers=1"]
-        environment:
-            DATA_PATH: /shared
-            HOME: /tmp
-            MAX_CONCURRENT_TASKS: "5"
-            LOG_LEVEL: INFO
+        env_file:
+            - ./env/crawler.env
         volumes:
             - shared_storage:/shared
         security_opt:
@@ -85,27 +77,18 @@ services:
                 max-size: "128m"
                 max-file: "3"
 
-    hawki_backend:
-        environment:
-            <<: *addon_crawler_client
-            HAWKI_BACKEND_URL_INGESTION_ENABLED: "true"
+    rag_backend:
+        env_file:
+            - ./env/crawler-backend.env
         networks:
             - default
             - crawler
         # Backend readiness probes the full crawler contract once the crawler
         # starts. A Compose health dependency here would block volume setup.
 
-    hawki_rag_ui_gateway:
-        environment: *addon_crawler_client
-        networks:
-            - default
-            - crawler
-
     hawki-rag-temporal-scraper-worker:
-        environment:
-            <<: *addon_crawler_client
-            EXTERNAL_SCRAPER_START_PATH: /crawl
-            EXTERNAL_SCRAPER_STATUS_PATH: /status/{job_id}
+        env_file:
+            - ./env/crawler-worker.env
         networks:
             - default
             - crawler

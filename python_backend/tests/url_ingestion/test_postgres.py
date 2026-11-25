@@ -23,14 +23,14 @@ from .test_lifecycle import generation, ready, writer, event
 
 @pytest.fixture
 def pg(tmp_path, monkeypatch):
-    dsn = os.environ.get("HAWKI_EPOCH11_TEST_DSN")
+    dsn = os.environ.get("RAG_EPOCH11_TEST_DSN")
     if not dsn:
         pytest.skip(
-            "Set HAWKI_EPOCH11_TEST_DSN to a disposable *_test PostgreSQL database"
+            "Set RAG_EPOCH11_TEST_DSN to a disposable *_test PostgreSQL database"
         )
     if not sa.engine.make_url(dsn).database.endswith("_test"):
         pytest.fail("Refusing a non-test database")
-    monkeypatch.setenv("HAWKI_BACKEND_DB_DSN", dsn)
+    monkeypatch.setenv("RAG_BACKEND_DB_DSN", dsn)
     command.upgrade(
         Config(str(Path(__file__).resolve().parents[2] / "alembic.ini")), "head"
     )

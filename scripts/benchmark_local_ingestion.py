@@ -15,6 +15,8 @@ from uuid import uuid4
 
 import httpx
 
+from local_api_client import api_url, service_headers
+
 
 def synthetic_pdf(marker=""):
     """Build a six-page searchable PDF with a 3 MB uncompressed RGB illustration."""
@@ -175,7 +177,7 @@ def markdown(report):
         "",
         "Reproduce from repository root: "
         "`python_backend/.venv/bin/python scripts/benchmark_local_ingestion.py`. "
-        "Requires the local stack and management service boundary. "
+        "Requires the local stack and a scoped service JWT. "
         "The generated PDF is `/tmp/rawki-synthetic-3mb.pdf`.",
         "",
         f"Detailed receipts and checks: `{report['json_report']}`",
@@ -213,16 +215,16 @@ def main():
         args.report.write_text(json.dumps(report, indent=2) + "\n")
         args.markdown.write_text(markdown(report))
 
-    base = "http://localhost:8080/ui-api/v1"
     with httpx.Client(
         timeout=240,
         trust_env=False,
         follow_redirects=False,
-        headers={"Origin": "http://localhost:8080", "X-Hawki-Browser": "1"},
+        base_url=api_url(),
+        headers=service_headers(),
     ) as client:
 
         def request(method, path, **kwargs):
-            r = client.request(method, base + path, **kwargs)
+            r = client.request(method, path, **kwargs)
             if r.status_code not in {200, 201, 202}:
                 raise RuntimeError(f"{method} {path}: HTTP {r.status_code}")
             return r.json()
@@ -230,7 +232,7 @@ def main():
         def retire(path, key):
             deadline = time.monotonic() + 300
             while time.monotonic() < deadline:
-                r = client.delete(base + path, headers={"Idempotency-Key": key})
+                r = client.delete(path, headers={"Idempotency-Key": key})
                 if r.status_code == 200:
                     return
                 if r.status_code != 202:
@@ -367,7 +369,7 @@ def main():
                     document = request("GET", "/documents/" + doc)["document"]
                     assert document["status"] == "indexed"
                     download = client.get(
-                        base + "/documents/uploads/download",
+                        "/documents/uploads/download",
                         params={"document_id": doc},
                     )
                     assert download.status_code == 200 and download.content == pdf

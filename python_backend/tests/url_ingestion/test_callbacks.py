@@ -57,11 +57,11 @@ def test_unknown_workflow_fails_closed_and_task_absence_is_explicit(env):
 @pytest.mark.parametrize(
     "wire,owner",
     [
-        ({"managed_document_id": "managed"}, "laravel"),
-        ({"source_id": "legacy"}, "laravel"),
+        ({"managed_document_id": "managed"}, "historical"),
+        ({"source_id": "legacy"}, "historical"),
     ],
 )
-def test_signed_pre_cutover_and_managed_operations_are_not_adopted_as_urls(
+def test_signed_historical_and_managed_operations_are_not_adopted_as_urls(
     env, wire, owner
 ):
     with env.engine.begin() as connection:
@@ -116,4 +116,4 @@ def test_mutations_require_explicit_non_url_ownership_to_keep_existing_handlers(
     response = signed(env, "ownership", {"job_id": "existing-job", "mutation": True})
     assert response.status_code == expected
     if expected == 200:
-        assert response.json() == {"owner": "laravel"}
+        assert response.json() == {"owner": "historical"}

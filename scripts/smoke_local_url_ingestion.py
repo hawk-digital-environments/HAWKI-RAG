@@ -1,6 +1,6 @@
 """Exercise the protected local URL API; never print credentials or grant tokens.
 
-Requires the explicit cutover and crawler-smoke overlays, plus dedicated local
+Requires the local API and crawler-smoke overlays, plus dedicated local
 workers. New content belongs to one uniquely named disposable Python dataset.
 """
 
@@ -11,11 +11,11 @@ from uuid import uuid4
 
 import httpx
 
-BASE = "http://localhost:8080/ui-api/v1"
+from local_api_client import api_url, service_headers
 
 
 def request(client: httpx.Client, method: str, path: str, **kwargs) -> dict:
-    response = client.request(method, BASE + path, **kwargs)
+    response = client.request(method, path, **kwargs)
     if response.status_code not in {200, 201, 202}:
         raise RuntimeError(f"{method} {path}: HTTP {response.status_code}")
     return response.json()
@@ -42,7 +42,7 @@ def wait_ready(client: httpx.Client, task_id: str, timeout: int = 300) -> dict:
 def retire(client: httpx.Client, path: str, key: str) -> dict:
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        response = client.delete(BASE + path, headers={"Idempotency-Key": key})
+        response = client.delete(path, headers={"Idempotency-Key": key})
         if response.status_code == 200:
             return response.json()
         if response.status_code != 202:
@@ -58,7 +58,8 @@ def main() -> None:
     with httpx.Client(
         timeout=180,
         trust_env=False,
-        headers={"Origin": "http://localhost:8080", "X-Hawki-Browser": "1"},
+        base_url=api_url(),
+        headers=service_headers(),
     ) as client:
         creation = request(
             client,
@@ -124,7 +125,7 @@ def main() -> None:
         summary["sitemap_jobs"] = wait_ready(client, sitemap["task_id"])["jobs"]
         summary["checks"]["sitemap_ready"] = True
         denied = client.post(
-            BASE + "/pipeline/tasks/start",
+            "/pipeline/tasks/start",
             json={
                 "dataset_id": run,
                 "urls": ["http://169.254.169.254/latest/meta-data/"],

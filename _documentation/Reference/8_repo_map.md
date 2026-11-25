@@ -8,7 +8,6 @@
 | `python_backend/tests` | unit/integration tests, frozen fixtures and inert compatibility models |
 | `python_rag/services` | workflow and activity workers, indexer/converter/scraper, reranker |
 | `python_rag/packages` | shared typed contracts, stores, artifacts, runtime adapters |
-| `resources/js`, `resources/css`, `frontend` | Svelte/DOM frontend and standalone Vite entry |
 | `docker`, Compose files | deployment images, networking, local crawler and service issuer |
 | `scripts` | explicit provisioning, disposable smoke checks and read-only audits |
 

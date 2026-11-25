@@ -42,12 +42,12 @@ from hawki_backend.text_ingestion.writers import WriterEvent, WriterConflict
 
 @pytest.fixture
 def pg(env, monkeypatch):
-    dsn = os.environ.get("HAWKI_EPOCH9_TEST_DSN")
+    dsn = os.environ.get("RAG_EPOCH9_TEST_DSN")
     if not dsn:
-        pytest.skip("Set HAWKI_EPOCH9_TEST_DSN to a disposable *_test database")
+        pytest.skip("Set RAG_EPOCH9_TEST_DSN to a disposable *_test database")
     if not sa.engine.make_url(dsn).database.endswith("_test"):
         pytest.fail("refusing non-test database")
-    monkeypatch.setenv("HAWKI_BACKEND_DB_DSN", dsn)
+    monkeypatch.setenv("RAG_BACKEND_DB_DSN", dsn)
     command.upgrade(
         Config(str(Path(__file__).resolve().parents[2] / "alembic.ini")), "head"
     )

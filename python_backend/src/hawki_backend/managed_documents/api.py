@@ -134,7 +134,7 @@ def error_response(error: ManagedError) -> JSONResponse:
 
 async def execute_mutation(instance: ManagedService, *args: Any) -> tuple[int, dict]:
     # SQLAlchemy, shared-file hashing and sink clients are synchronous. Keep them
-    # off the ASGI event loop while reusing the exact Epoch 8 async dispatcher.
+    # off the ASGI event loop while reusing the durable async dispatcher.
     return await run_in_threadpool(lambda: asyncio.run(instance.mutate(*args)))
 
 
@@ -202,7 +202,7 @@ async def mutation(
             raw["converter_start_path"] = os.environ.get(
                 "EXTERNAL_CONVERTER_START_PATH", "/extract"
             )
-        # Public Python input is the same normalized form forwarded by the BFF.
+        # The public request uses the canonical normalized upload form.
         body = ManagedInput.model_validate(raw)
         key = request.headers.get("Idempotency-Key")
         if not batch:
@@ -431,10 +431,9 @@ async def writer(request: Request) -> JSONResponse:
 
 @internal_router.post("/internal/managed-documents/ownership")
 async def ownership(request: Request) -> JSONResponse:
-    """Classify only from a unique durable Epoch 8 operation and expected revision.
+    """Classify from a unique durable operation and its expected revision.
 
-    Old Laravel-managed input is deliberately ambiguous in Python mode. It must
-    be drained before cutover; this route never adopts it into Python authority.
+    Historical preparations without a managed revision remain outside current authority.
     """
     try:
         raw = await signed_body(request)

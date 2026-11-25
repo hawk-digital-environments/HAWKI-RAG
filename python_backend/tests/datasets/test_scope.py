@@ -32,7 +32,7 @@ MODELS = '{"ollama":{"chat_model":"llama3.1","vision_model":"llava"}}'
 
 def _settings(**extra: str) -> dict[str, str]:
     return {
-        "HAWKI_BACKEND_QUERY_MODELS": MODELS,
+        "RAG_BACKEND_QUERY_MODELS": MODELS,
         **extra,
     }
 
@@ -43,7 +43,7 @@ def _settings(**extra: str) -> dict[str, str]:
 def test_environment_is_the_default_dataset_source() -> None:
     settings = load_query_settings(
         _settings(
-            HAWKI_BACKEND_QUERY_DATASETS=(
+            RAG_BACKEND_QUERY_DATASETS=(
                 '{"dataset-a":{"qdrant_collection":"hawki_a",'
                 '"embedding_provider":"ollama","embedding_model":"bge-m3"}}'
             )
@@ -57,7 +57,7 @@ def test_environment_is_the_default_dataset_source() -> None:
 
 def test_a_database_source_requires_a_resolver() -> None:
     with pytest.raises(QueryConfigurationError):
-        load_query_settings(_settings(HAWKI_BACKEND_QUERY_DATASET_SOURCE="database"))
+        load_query_settings(_settings(RAG_BACKEND_QUERY_DATASET_SOURCE="database"))
 
 
 def test_a_resolver_requires_the_database_source() -> None:
@@ -67,7 +67,7 @@ def test_a_resolver_requires_the_database_source() -> None:
         load_query_settings(_settings(), dataset_scope_resolver=resolver)
     with pytest.raises(QueryConfigurationError):
         load_query_settings(
-            _settings(HAWKI_BACKEND_QUERY_DATASET_SOURCE="environment"),
+            _settings(RAG_BACKEND_QUERY_DATASET_SOURCE="environment"),
             dataset_scope_resolver=resolver,
         )
 
@@ -78,8 +78,8 @@ def test_database_mode_forbids_the_static_dataset_registry() -> None:
     with pytest.raises(QueryConfigurationError):
         load_query_settings(
             _settings(
-                HAWKI_BACKEND_QUERY_DATASET_SOURCE="database",
-                HAWKI_BACKEND_QUERY_DATASETS='{"dataset-a":{}}',
+                RAG_BACKEND_QUERY_DATASET_SOURCE="database",
+                RAG_BACKEND_QUERY_DATASETS='{"dataset-a":{}}',
             ),
             dataset_scope_resolver=resolver,
         )
@@ -89,7 +89,7 @@ def test_database_mode_carries_only_the_resolver_and_models() -> None:
     store = FakeDatasetStore()
     resolver = DatabaseDatasetScopeRegistry(store)
     settings = load_query_settings(
-        _settings(HAWKI_BACKEND_QUERY_DATASET_SOURCE="database"),
+        _settings(RAG_BACKEND_QUERY_DATASET_SOURCE="database"),
         dataset_scope_resolver=resolver,
     )
 
@@ -101,7 +101,7 @@ def test_database_mode_carries_only_the_resolver_and_models() -> None:
 
 def test_an_unknown_dataset_source_is_refused() -> None:
     with pytest.raises(QueryConfigurationError):
-        load_query_settings(_settings(HAWKI_BACKEND_QUERY_DATASET_SOURCE="laravel"))
+        load_query_settings(_settings(RAG_BACKEND_QUERY_DATASET_SOURCE="laravel"))
 
 
 def test_two_authorities_cannot_be_combined_in_memory() -> None:
@@ -176,22 +176,22 @@ def test_query_settings_pass_the_authenticated_tenant_to_the_resolver() -> None:
 
 
 def test_an_invalid_runtime_selector_fails_startup(monkeypatch) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "laravel")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "laravel")
 
     with pytest.raises(QueryConfigurationError):
         create_app(authenticator=FakeAuthenticator(service_principal()))
 
 
 def test_database_mode_without_a_database_fails_startup(monkeypatch) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "database")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "database")
 
     with pytest.raises(QueryConfigurationError):
         create_app(authenticator=FakeAuthenticator(service_principal()))
 
 
 def test_database_mode_exposes_the_dataset_router_without_restart(monkeypatch) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "database")
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_MODELS", MODELS)
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "database")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_MODELS", MODELS)
     app = create_app(
         authenticator=FakeAuthenticator(service_principal()),
         database_settings=DatabaseSettings("postgresql+psycopg://user@host/db"),
@@ -205,7 +205,7 @@ def test_database_mode_exposes_the_dataset_router_without_restart(monkeypatch) -
 
 
 def test_database_mode_requires_the_model_registry(monkeypatch) -> None:
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "database")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "database")
 
     with pytest.raises(QueryConfigurationError):
         create_app(

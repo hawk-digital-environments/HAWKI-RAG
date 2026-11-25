@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      HAWKI_BACKEND_DB_DSN: postgresql+psycopg://hawki:hawki@localhost:5432/hawki_backend_test
-      HAWKI_BACKEND_DB_TESTING: "1"
+      RAG_BACKEND_DB_DSN: postgresql+psycopg://hawki:hawki@localhost:5432/hawki_backend_test
+      RAG_BACKEND_DB_TESTING: "1"
     services:
       postgres:
         image: postgres:16

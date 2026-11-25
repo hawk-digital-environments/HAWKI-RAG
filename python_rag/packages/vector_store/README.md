@@ -1,6 +1,6 @@
 # HAWKI vector store
 
-This package owns RAWKI's vector persistence boundary and Qdrant adapter. It
+This package owns HAWKI-RAG's vector persistence boundary and Qdrant adapter. It
 contains vector value contracts, request construction,
 response parsing, transport retry policy, and scoped collection behavior.
 Retrieval ranking and fallback strategies remain application-owned. It has no

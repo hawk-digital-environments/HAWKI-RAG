@@ -155,9 +155,9 @@ async def _cancelled_writer_live() -> None:
 
     try:
         callback_env = {
-            "HAWKI_RAG_WORKER_CALLBACK_URL": f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events",
-            "HAWKI_RAG_WORKER_CALLBACK_SECRET": secret,
-            "HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS": "1",
+            "RAG_WORKER_CALLBACK_URL": f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events",
+            "RAG_WORKER_CALLBACK_SECRET": secret,
+            "RAG_WORKER_CALLBACK_RETRY_ATTEMPTS": "1",
         }
         with (
             patch.dict(os.environ, callback_env),
@@ -229,7 +229,7 @@ def test_registered_ingestion_creates_only_its_missing_collection():
         os.environ,
         {
             **disposable_environment(),
-            "HAWKI_RAG_WORKER_CALLBACK_SECRET": "isolated-adapter-test-secret",
+            "RAG_WORKER_CALLBACK_SECRET": "isolated-adapter-test-secret",
         },
     ):
         token = uuid4().hex
@@ -446,8 +446,8 @@ def test_vector_only_passthrough_grant_covers_real_canonical_graph_cleanup():
         )
         try:
             callback_env = {
-                "HAWKI_RAG_WORKER_CALLBACK_URL": f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events",
-                "HAWKI_RAG_WORKER_CALLBACK_SECRET": secret,
+                "RAG_WORKER_CALLBACK_URL": f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events",
+                "RAG_WORKER_CALLBACK_SECRET": secret,
             }
             with (
                 patch.dict(os.environ, callback_env),

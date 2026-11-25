@@ -101,10 +101,8 @@ async def authorized_body(request: Request, operation: str) -> dict:
 async def control(operation: str, request: Request) -> dict:
     body = await authorized_body(request, operation)
     if operation == "deletion/start":
-        import os
-
-        if os.environ.get("HAWKI_BACKEND_LARAVEL_OFF", "false").lower() == "true":
-            raise HTTPException(409, "legacy_deletion_requires_drain")
+        # Historical dispatch cannot prove the durable deletion owner.
+        raise HTTPException(409, "legacy_deletion_requires_drain")
     service = request.app.state.workflow_control
     try:
         if operation == "relay-readiness":
@@ -141,7 +139,6 @@ async def control(operation: str, request: Request) -> dict:
         if operation in {
             "source/start",
             "text/start",
-            "deletion/start",
             "schedule/upsert",
         }:
             value = Start.model_validate(body)

@@ -8,7 +8,7 @@
 
 # Dependencies installed inside images
 node_modules/
-vendor/
+/vendor/
 
 # Environment, secrets, and local overrides
 .env
@@ -20,10 +20,8 @@ auth.json
 docker-compose.override.yml
 *.local
 
-# Local historical storage and obsolete generated build outputs
-public/build/
-public/hot
-public/storage/
+# Historical local storage
+public/
 storage/**
 
 # Local RAG/runtime data and generated artifacts
@@ -58,7 +56,6 @@ python_rag/workers/
 # Documentation and local tooling not needed in runtime images
 _documentation/
 _documentation.build/
-resources/js/crawler/
 .agents/
 .codex/
 .github/
@@ -72,5 +69,6 @@ docs/
 npm-debug.log
 yarn-error.log
 
-# Server-side UI service credentials never enter a build context.
+# Local service credentials and production deployment inputs stay out of builds.
 .secrets/
+_docker_production/

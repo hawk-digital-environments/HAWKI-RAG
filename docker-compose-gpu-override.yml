@@ -5,7 +5,7 @@
 # ============================================================================
 
 services:
-  hawki_rag_rerank:
+  rag_reranker:
     build:
       target: reranker-runtime
       args:
@@ -19,7 +19,7 @@ services:
               count: 1
               capabilities: [ gpu ]
 
-  rawki_local_indexer_worker:
+  indexer_worker:
     build:
       target: indexer-runtime
       args:

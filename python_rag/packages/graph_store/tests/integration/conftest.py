@@ -74,7 +74,6 @@ def live_neo4j() -> LiveNeo4j:
             os.environ.get("NEO4J_URI", ""),
             os.environ.get("NEO4J_BOLT_URL", ""),
             "bolt://127.0.0.1:7687",
-            "bolt://hawki_rag_neo4j:7687",
             "bolt://neo4j:7687",
         ]
     )

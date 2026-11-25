@@ -71,7 +71,7 @@ def send(
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     for key in tuple(__import__("os").environ):
-        if key.startswith(("HAWKI_BACKEND_", "HAWKI_WORKFLOW_", "TEMPORAL_")):
+        if key.startswith(("RAG_BACKEND_", "RAG_WORKFLOW_", "TEMPORAL_")):
             monkeypatch.delenv(key)
     engine = sa.create_engine(
         "sqlite://",

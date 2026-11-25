@@ -238,7 +238,7 @@ def test_loader_rejects_graph_enabled_without_namespace() -> None:
     """The graph invariant is enforced by the production loader, not the test."""
 
     environ = deepcopy(FIXTURE["registry"]["environ"])
-    environ["HAWKI_BACKEND_QUERY_DATASETS"] = (
+    environ["RAG_BACKEND_QUERY_DATASETS"] = (
         '{"dataset-graph":{"qdrant_collection":"hawki_dataset_graph",'
         '"embedding_provider":"openai","embedding_model":"text-embedding-3-large",'
         '"graph_enabled":true}}'
@@ -252,7 +252,7 @@ def test_loader_rejects_a_provider_without_models() -> None:
     """Every referenced provider must have a server-owned model entry."""
 
     environ = deepcopy(FIXTURE["registry"]["environ"])
-    environ["HAWKI_BACKEND_QUERY_MODELS"] = (
+    environ["RAG_BACKEND_QUERY_MODELS"] = (
         '{"ollama":{"chat_model":"llama3.1","vision_model":"llava"}}'
     )
 
@@ -264,7 +264,7 @@ def test_loader_rejects_an_unknown_query_variable() -> None:
     """A typo must fail at startup instead of being silently ignored."""
 
     environ = deepcopy(FIXTURE["registry"]["environ"])
-    environ["HAWKI_BACKEND_QUERY_UNKNOWN"] = "value"
+    environ["RAG_BACKEND_QUERY_UNKNOWN"] = "value"
 
     with pytest.raises(QueryConfigurationError):
         load_query_settings(environ)

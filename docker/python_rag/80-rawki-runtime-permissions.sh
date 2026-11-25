@@ -28,7 +28,7 @@ if [ -d /shared ]; then
     chmod 2775 /shared
 fi
 
-for writable_dir in /home/rawki /app/public /app/rag_storage; do
+for writable_dir in /home/rawki /app/rag_storage; do
     if [ -d "$writable_dir" ]; then
         chown -R www-data:www-data "$writable_dir"
     fi

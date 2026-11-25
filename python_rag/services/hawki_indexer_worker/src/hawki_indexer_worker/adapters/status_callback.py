@@ -1,4 +1,4 @@
-"""Build indexer-owned status events and send them to Laravel."""
+"""Build indexer-owned status events and send them to the backend."""
 
 from __future__ import annotations
 

@@ -6,6 +6,6 @@ Authorization requires both the action's coarse scope and an exact grant on the 
 
 The canonical dataset determines Qdrant collection, Neo4j namespace, embedding provider/model and graph capability. Caller metadata cannot select physical storage scope or another tenant. Authorization precedes retrieval/context generation and ingestion side effects.
 
-The browser uses the UI gateway's existing service identity, with exact Origin checks for mutations. The explicit local mode trusts only loopback ingress; other deployments delegate management approval to HAWKI. Provider credentials and service JWTs never enter frontend assets.
+External applications handle human authentication and call HAWKI-RAG with their own scoped service JWTs. The issuer registers each client and the backend verifies tenant-specific dataset grants.
 
 [Runtime deployment and security configuration](../Operations/python_runtime.md).

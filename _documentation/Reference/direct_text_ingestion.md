@@ -1,10 +1,10 @@
 # Normalized text ingestion
 
-RAWKI accepts normalized text and source metadata, indexes the text, retrieves and reranks chunks, and manages the indexed source through deletion. An upstream integration can acquire a file, page or database record and extract its text before submission. Managed file and URL ingestion remain available as compatibility adapters.
+HAWKI-RAG accepts normalized text and source metadata, indexes the text, retrieves and reranks chunks, and manages the indexed source through deletion. An upstream integration can acquire a file, page or database record and extract its text before submission. Managed file and URL ingestion remain available as compatibility adapters.
 
 ## Submit a source
 
-Use `POST /v1/text-ingestions` with a registered service JWT, the `rag:ingest` scope, an exact ingest grant on the active dataset, and a stable `Idempotency-Key` header. The browser gateway uses `/ui-api/v1/text-ingestions`.
+Use `POST /v1/text-ingestions` with a registered service JWT, the `rag:ingest` scope, an exact ingest grant on the active dataset, and a stable `Idempotency-Key` header.
 
 ```json
 {

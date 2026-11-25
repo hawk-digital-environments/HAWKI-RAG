@@ -1,4 +1,4 @@
-"""Live disposable graph acceptance through the protected local Python gateway.
+"""Live disposable graph acceptance through the authenticated local service API.
 
 Uses real converter/indexer/model/store services. No credentials enter the report.
 Run the separate read-only storage audit after this smoke completes.
@@ -12,7 +12,8 @@ from uuid import uuid4
 
 import httpx
 
-BASE = "http://localhost:8080/ui-api/v1"
+from local_api_client import api_url, service_headers
+
 REPORT = Path("/tmp/rawki-orphan-graph-smoke.json")
 CONTENT = b"""# Project Cedar acceptance fixture
 
@@ -45,11 +46,12 @@ def main() -> None:
     with httpx.Client(
         timeout=240,
         trust_env=False,
-        headers={"Origin": "http://localhost:8080", "X-Hawki-Browser": "1"},
+        base_url=api_url(),
+        headers=service_headers(),
     ) as client:
 
         def request(method: str, path: str, **kwargs) -> dict:
-            response = client.request(method, BASE + path, **kwargs)
+            response = client.request(method, path, **kwargs)
             if response.status_code not in {200, 201, 202}:
                 raise RuntimeError(f"{method} {path}: HTTP {response.status_code}")
             return response.json()
@@ -57,7 +59,7 @@ def main() -> None:
         def retire(path: str, key: str) -> None:
             deadline = time.monotonic() + 240
             while time.monotonic() < deadline:
-                response = client.delete(BASE + path, headers={"Idempotency-Key": key})
+                response = client.delete(path, headers={"Idempotency-Key": key})
                 if response.status_code == 200:
                     return
                 if response.status_code != 202:
@@ -163,7 +165,7 @@ def main() -> None:
             assert query["hits"] and query["kg"]
             check("query", {"hits": len(query["hits"]), "kg": len(query["kg"])})
             download = client.get(
-                BASE + "/documents/uploads/download",
+                "/documents/uploads/download",
                 params={"document_id": document_id},
             )
             assert download.status_code == 200 and download.content == CONTENT

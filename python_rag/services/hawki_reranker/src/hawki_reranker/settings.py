@@ -17,13 +17,13 @@ class RerankerSettings:
 def load_settings() -> RerankerSettings:
     return RerankerSettings(
         model_name=os.getenv(
-            "HAWKI_RERANKER_MODEL",
+            "RAG_RERANKER_MODEL",
             "mixedbread-ai/mxbai-rerank-base-v1",
         ).strip(),
-        host=os.getenv("HAWKI_RERANKER_HOST", "0.0.0.0").strip(),
-        port=int(os.getenv("HAWKI_RERANKER_PORT", "8000")),
+        host=os.getenv("RAG_RERANKER_HOST", "0.0.0.0").strip(),
+        port=int(os.getenv("RAG_RERANKER_PORT", "8000")),
         api_key=os.getenv(
-            "HAWKI_RERANKER_API_KEY", os.getenv("RERANKER_API_KEY", "")
+            "RAG_RERANKER_API_KEY", os.getenv("RERANKER_API_KEY", "")
         ).strip(),
     )
 

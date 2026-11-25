@@ -1,6 +1,6 @@
 # hawki-rag-retrieval
 
-Shared RAG query/retrieval package for RAWKI.
+Shared RAG query/retrieval package for HAWKI-RAG.
 
 This package contains the core retrieval logic extracted from the bridge service,
 including:

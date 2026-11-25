@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploys the HAWKI RAG production stack: pulls the images pinned through
-# HAWKI_RAG_VERSION in .env, runs the database migrations through the one-shot
-# migrator service, and starts every service in dependency order. The Ollama
+# RAG_VERSION and RAG_BACKEND_IMAGE in .env and starts services in
+# dependency order. Provision the Python schema and runtime role before startup. The Ollama
 # models are pulled by the ollama-entrypoint.sh when the ollama addon service
 # starts, so no model handling happens here.
 #
@@ -11,16 +11,14 @@
 # after it (it requires the Ollama addon):
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml ./deploy.sh
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml ./deploy.sh
-# The gateway (docker-compose.with-litellm.yml), the Temporal UI
-# (docker-compose.with-temporal-ui.yml) and the scraper
-# (docker-compose.scraper.yml) chain the same way.
+# Add the optional LiteLLM gateway or crawler with their Compose files.
 
 # Env assembly: the core .env is always loaded; provider/addon fragments
 # (.env.ollama, .env.litellm, .env.scraper - copies of the matching
 # .env.*.example files) are picked up automatically when present, both for
 # ${...} interpolation here and for the services' env_file lists. Passing
 # them explicitly matters for values the COMPOSE FILES interpolate
-# (image tags like HAWKI_RAG_SCRAPER_VERSION or LITELLM_PORT), which resolve
+# (image tags like RAG_SCRAPER_IMAGE or LITELLM_PORT), which resolve
 # from the project environment only.
 ENV_FILE_ARGS="--env-file .env"
 for fragment in .env.ollama .env.litellm .env.scraper; do

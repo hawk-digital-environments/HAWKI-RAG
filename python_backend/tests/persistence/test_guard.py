@@ -14,7 +14,7 @@ _APPLICATION_DSN = "postgresql+psycopg://rag_user:change_me@postgres:5432/hawki_
 
 
 def test_a_marked_test_database_is_allowed() -> None:
-    assert is_disposable_database(_TEST_DSN, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert is_disposable_database(_TEST_DSN, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_an_unmarked_test_database_is_refused() -> None:
@@ -23,39 +23,39 @@ def test_an_unmarked_test_database_is_refused() -> None:
 
 def test_a_marked_application_database_is_refused() -> None:
     assert not is_disposable_database(
-        _APPLICATION_DSN, {"HAWKI_BACKEND_DB_TESTING": "1"}
+        _APPLICATION_DSN, {"RAG_BACKEND_DB_TESTING": "1"}
     )
 
 
 def test_the_marking_must_be_exactly_one() -> None:
     for value in ("0", "true", "yes", "on", " 1", "1 ", "11"):
         assert not is_disposable_database(
-            _TEST_DSN, {"HAWKI_BACKEND_DB_TESTING": value}
+            _TEST_DSN, {"RAG_BACKEND_DB_TESTING": value}
         ), value
 
 
 def test_a_database_without_a_test_suffix_is_refused() -> None:
     for name in ("hawki_rag", "hawki_backend", "test", "production", "test_hawki_rag"):
         dsn = f"postgresql+psycopg://hawki:hawki@postgres:5432/{name}"
-        assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"}), name
+        assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"}), name
 
 
 def test_a_database_with_a_test_suffix_is_allowed() -> None:
     for name in ("hawki_backend_test", "hawki_test", "a_test", "x_test"):
         dsn = f"postgresql+psycopg://hawki:hawki@postgres:5432/{name}"
-        assert is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"}), name
+        assert is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"}), name
 
 
 def test_a_connection_string_without_a_database_is_refused() -> None:
     dsn = "postgresql+psycopg://hawki:hawki@postgres:5432"
 
-    assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_a_connection_string_that_cannot_be_parsed_is_refused() -> None:
     dsn = "postgresql+psycopg://user:secret@[bad:host:5432/db"
 
-    assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_the_database_name_is_read_from_the_path() -> None:
@@ -70,7 +70,7 @@ def test_a_database_named_in_the_query_string_is_refused() -> None:
     dsn = "postgresql+psycopg://hawki:hawki@postgres:5432/?dbname=hawki_backend_test"
 
     assert database_name(dsn) is None
-    assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_a_query_string_database_cannot_bypass_the_guard() -> None:
@@ -81,7 +81,7 @@ def test_a_query_string_database_cannot_bypass_the_guard() -> None:
         "hawki_backend_test?dbname=hawki_rag"
     )
 
-    assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_a_query_string_database_is_refused_even_when_both_names_are_safe() -> None:
@@ -90,7 +90,7 @@ def test_a_query_string_database_is_refused_even_when_both_names_are_safe() -> N
         "hawki_backend_test?dbname=hawki_backend_test"
     )
 
-    assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"})
+    assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"})
 
 
 def test_a_query_string_database_is_refused_whatever_its_case() -> None:
@@ -99,7 +99,7 @@ def test_a_query_string_database_is_refused_whatever_its_case() -> None:
             f"postgresql+psycopg://hawki:hawki@localhost:5432/"
             f"hawki_backend_test?{parameter}=hawki_rag"
         )
-        assert not is_disposable_database(dsn, {"HAWKI_BACKEND_DB_TESTING": "1"}), (
+        assert not is_disposable_database(dsn, {"RAG_BACKEND_DB_TESTING": "1"}), (
             parameter
         )
 
@@ -123,9 +123,9 @@ def test_the_guard_never_depends_on_anything_but_the_two_facts(
     # else, so the same environment decides for every connection string.
     for environ in (
         {},
-        {"HAWKI_BACKEND_DB_TESTING": "1"},
-        {"HAWKI_BACKEND_DB_TESTING": "0"},
+        {"RAG_BACKEND_DB_TESTING": "1"},
+        {"RAG_BACKEND_DB_TESTING": "0"},
     ):
         assert is_disposable_database(dsn, environ) == (
-            environ.get("HAWKI_BACKEND_DB_TESTING") == "1" and dsn.endswith("_test")
+            environ.get("RAG_BACKEND_DB_TESTING") == "1" and dsn.endswith("_test")
         )

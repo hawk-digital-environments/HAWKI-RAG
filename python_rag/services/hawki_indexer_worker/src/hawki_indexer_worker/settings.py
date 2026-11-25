@@ -48,26 +48,26 @@ class IndexerSettings:
                 "TEMPORAL_RAG_ACTIVITY_WORKER_THREADS", 2
             ),
             callback_url=_env(
-                "HAWKI_RAG_WORKER_CALLBACK_URL",
-                "http://hawki_backend/internal/pipeline/worker-events",
+                "RAG_WORKER_CALLBACK_URL",
+                "http://rag_backend/internal/pipeline/worker-events",
             ),
-            callback_secret=os.getenv("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
+            callback_secret=os.getenv("RAG_WORKER_CALLBACK_SECRET", ""),
             callback_timeout_seconds=float(
-                _env("HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", "10")
+                _env("RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", "10")
             ),
             callback_retry_attempts=_positive_int(
-                "HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3
+                "RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3
             ),
             rag_working_dir=Path(_env("RAG_WORKING_DIR", "/app/rag_storage")),
             legacy_task_queue=legacy_queue,
         )
         if not settings.callback_secret:
             raise RuntimeError(
-                "HAWKI_RAG_WORKER_CALLBACK_SECRET is required for indexer status events."
+                "RAG_WORKER_CALLBACK_SECRET is required for indexer status events."
             )
         if settings.callback_timeout_seconds <= 0:
             raise RuntimeError(
-                "HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS must be positive"
+                "RAG_WORKER_CALLBACK_TIMEOUT_SECONDS must be positive"
             )
         return settings
 

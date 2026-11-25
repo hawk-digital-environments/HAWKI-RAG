@@ -1,4 +1,4 @@
-"""Authoritative identities, matching the existing persisted Laravel projections."""
+"""Deterministic identities compatible with existing persisted projections."""
 
 import hashlib
 import re

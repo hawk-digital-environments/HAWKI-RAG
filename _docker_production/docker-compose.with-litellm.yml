@@ -1,9 +1,5 @@
 # Add after docker-compose.yml and include .env.litellm in Compose's env files.
 # Configure the deployed routes in ./litellm/litellm-config.yml.
-x-litellm-client: &litellm_client
-    LITELLM_API_URL: http://litellm:4000/v1
-    LITELLM_API_KEY: ${LITELLM_API_KEY:?Set the stateless LiteLLM gateway key}
-
 services:
     litellm:
         container_name: hawki_litellm
@@ -12,8 +8,7 @@ services:
         env_file:
             - path: .env.litellm
               required: false
-        environment:
-            LITELLM_API_KEY: ${LITELLM_API_KEY:?Set the stateless LiteLLM gateway key}
+            - ./env/litellm.env
         command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
         volumes:
             - type: bind
@@ -32,14 +27,16 @@ services:
             retries: 10
             start_period: 30s
 
-    hawki_backend:
-        environment: *litellm_client
+    rag_backend:
+        env_file:
+            - ./env/litellm-client.env
         depends_on:
             litellm:
                 condition: service_healthy
 
     hawki-rag-indexer-worker:
-        environment: *litellm_client
+        env_file:
+            - ./env/litellm-client.env
         depends_on:
             litellm:
                 condition: service_healthy

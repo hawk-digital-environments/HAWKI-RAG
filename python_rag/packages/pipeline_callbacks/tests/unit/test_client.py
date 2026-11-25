@@ -1,4 +1,4 @@
-"""Transport-level contract tests for signed Laravel worker callbacks."""
+"""Transport-level contract tests for signed The backend worker callbacks."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from hawki_pipeline_callbacks import (
 )
 
 
-ENDPOINT = "https://laravel.example/api/internal/pipeline/worker-events"
+ENDPOINT = "https://backend.example/internal/pipeline/worker-events"
 SECRET = "test-signing-secret"
 
 
@@ -151,7 +151,7 @@ def test_timeout_is_explicit_and_retried_without_reflecting_secrets(
     assert all(set(extension.values()) == {0.125} for extension in timeout_extensions)
     assert sleeps == [1]
     assert str(caught.value) == (
-        "Laravel did not accept worker event event-123: request timed out."
+        "The backend did not accept worker event event-123: request timed out."
     )
     assert caught.value.__cause__ is None
     assert "timeout-ultra-secret" not in str(caught.value)
@@ -241,7 +241,7 @@ def test_conflicting_event_id_is_reported_without_retry() -> None:
         "pipeline_worker_event_state_unavailable",
     ],
 )
-def test_transient_laravel_conflicts_are_retried(
+def test_transient_backend_conflicts_are_retried(
     error_code: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

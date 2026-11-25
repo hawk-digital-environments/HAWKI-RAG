@@ -1,7 +1,6 @@
 """Dataset authority API.
 
-The management routes are internal-BFF routes: they require the
-``rag:datasets:manage`` scope that only the trusted BFF signer can mint. The
+The management routes require ``rag:datasets:manage`` on a registered service JWT. The
 self-grant routes are user routes and keep the exact public query/ingest
 grant semantics. None of the routes accepts a physical scope or a tenant from
 the caller.
@@ -37,9 +36,9 @@ _IngestPrincipal = Annotated[
 
 
 class DatasetCreateBody(BaseModel):
-    """The documented Laravel creation payload, in either spelling.
+    """The documented dataset creation payload, in either spelling.
 
-    Unknown fields are ignored, matching Laravel's validated-input behaviour:
+    Unknown fields are ignored for input compatibility:
     only the documented fields are ever forwarded to the authority. The
     physical, embedding and scope fields are declared so the service can
     refuse an explicit caller-selected value instead of silently ignoring it.

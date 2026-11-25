@@ -11,7 +11,7 @@ const githubProject = 'HAWKI-RAG';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-    title: 'HAWKI RAG Docs - Learn how to HAWKI',
+    title: 'HAWKI-RAG Docs - Learn how to HAWKI',
     tagline: 'Latest documentation',
     favicon: 'img/favicon-32x32.png',
 

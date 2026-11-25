@@ -37,7 +37,7 @@ def database_settings() -> DatabaseSettings:
     if not is_disposable_database(settings.dsn, os.environ):
         pytest.skip(
             "the persistence tests need a disposable test database: set "
-            "HAWKI_BACKEND_DB_TESTING=1 and use a database whose name ends "
+            "RAG_BACKEND_DB_TESTING=1 and use a database whose name ends "
             "with _test"
         )
     return settings

@@ -232,7 +232,7 @@ def response(
 
 
 async def reconcile(service: "UrlIngestionService") -> list[dict]:
-    """Resume accepted task intents even when the BFF never retries."""
+    """Resume accepted task intents even when the caller never retries."""
     with service.repository.engine.connect() as connection:
         rows = list(
             connection.execute(

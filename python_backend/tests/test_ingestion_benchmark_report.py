@@ -5,15 +5,20 @@ from pathlib import Path
 
 import pytest
 
-spec = importlib.util.spec_from_file_location(
-    "ingestion_benchmark",
-    Path(__file__).resolve().parents[2] / "scripts/benchmark_local_ingestion.py",
-)
-benchmark = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(benchmark)
+
+@pytest.fixture
+def benchmark(monkeypatch):
+    scripts = Path(__file__).resolve().parents[2] / "scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    spec = importlib.util.spec_from_file_location(
+        "ingestion_benchmark", scripts / "benchmark_local_ingestion.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_worker_spans_use_timestamps_instead_of_event_delivery_order():
+def test_worker_spans_use_timestamps_instead_of_event_delivery_order(benchmark):
     events = [
         {
             "stage": "convert",
@@ -51,5 +56,5 @@ def test_worker_spans_use_timestamps_instead_of_event_delivery_order():
         ],
     ],
 )
-def test_unmeasured_or_skipped_stage_is_not_reported_as_zero(events):
+def test_unmeasured_or_skipped_stage_is_not_reported_as_zero(events, benchmark):
     assert all(value is None for value in benchmark.stage_spans(events).values())

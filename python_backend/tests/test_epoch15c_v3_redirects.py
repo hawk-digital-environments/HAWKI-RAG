@@ -32,7 +32,7 @@ def test_http_status_precedes_body_validation(monkeypatch, status):
 
     monkeypatch.setattr(requests, "post", post)
     env = {
-        "HAWKI_BACKEND_QUERY_RERANKER": "external",
+        "RAG_BACKEND_QUERY_RERANKER": "external",
         "RERANKER_API_URL": "http://canonical/v1/rerank",
         "RERANKER_MODEL": "reviewed",
     }
@@ -79,7 +79,7 @@ def test_redirect_target_is_never_contacted(monkeypatch, target_status):
     with pytest.raises(ValueError):
         readiness._reranker(
             {
-                "HAWKI_BACKEND_QUERY_RERANKER": "external",
+                "RAG_BACKEND_QUERY_RERANKER": "external",
                 "RERANKER_API_URL": "http://canonical/v1/rerank",
                 "RERANKER_MODEL": "reviewed",
             }

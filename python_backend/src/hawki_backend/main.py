@@ -178,7 +178,7 @@ def create_app(
             )
             if dataset_database is None:
                 raise QueryConfigurationError(
-                    "HAWKI_BACKEND_QUERY_DATASET_SOURCE=database requires a "
+                    "RAG_BACKEND_QUERY_DATASET_SOURCE=database requires a "
                     "configured database"
                 )
             owned_engine = build_engine(dataset_database)
@@ -198,10 +198,10 @@ def create_app(
     control_secret = (
         workflow_control_secret
         if workflow_control_secret is not None
-        else os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", "")
+        else os.environ.get("RAG_WORKER_CALLBACK_SECRET", "")
     )
     if resolved_workflow_control is None and os.environ.get(
-        "HAWKI_WORKFLOW_CONTROL_ENABLED", ""
+        "RAG_WORKFLOW_CONTROL_ENABLED", ""
     ).lower() in {"1", "true", "yes"}:
         if owned_engine is None:
             control_database = database_settings or load_database_settings()
@@ -242,7 +242,7 @@ def create_app(
     )
     resolved_managed_service = managed_document_service
     if resolved_managed_service is None and os.environ.get(
-        "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED", "false"
+        "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED", "false"
     ).lower() in {"1", "true", "yes"}:
         if owned_engine is None:
             managed_database = database_settings or load_database_settings()
@@ -284,10 +284,10 @@ def create_app(
             dataset_store,
             QdrantCatalog.from_env(),
             embedding_provider=os.environ.get(
-                "HAWKI_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama"
+                "RAG_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama"
             ),
             embedding_model=os.environ.get(
-                "HAWKI_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"
+                "RAG_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"
             ),
             graph_enabled=_dataset_graph_default(),
             cleanup=DatasetCleanupCoordinator(
@@ -304,7 +304,7 @@ def create_app(
         cleanup_task: asyncio.Task[None] | None = None
         url_task: asyncio.Task[None] | None = None
         if (
-            os.environ.get("HAWKI_BACKEND_REQUIRE_READY_SCHEMA", "false").lower()
+            os.environ.get("RAG_BACKEND_REQUIRE_READY_SCHEMA", "false").lower()
             == "true"
         ):
             from hawki_backend.readiness import check_database
@@ -317,7 +317,7 @@ def create_app(
                 ) from None
         if (
             resolved_dataset_service is not None
-            and os.environ.get("HAWKI_BACKEND_DATASET_CLEANUP_ENABLED", "true").lower()
+            and os.environ.get("RAG_BACKEND_DATASET_CLEANUP_ENABLED", "true").lower()
             == "true"
         ):
             await _reconcile_once(resolved_dataset_service)
@@ -326,7 +326,7 @@ def create_app(
             )
         if (
             resolved_url_service is not None
-            and os.environ.get("HAWKI_BACKEND_URL_RECONCILE_ENABLED", "true").lower()
+            and os.environ.get("RAG_BACKEND_URL_RECONCILE_ENABLED", "true").lower()
             == "true"
         ):
             url_task = asyncio.create_task(
@@ -357,7 +357,7 @@ def create_app(
     application.include_router(health_router, prefix="/v1")
     application.include_router(callback_router)
     application.include_router(query_router, prefix="/v1")
-    # UI administration remains callable but is omitted from public API docs.
+    # Service-authenticated operations stay outside the public query schema.
     application.include_router(ops_router, prefix="/v1", include_in_schema=False)
     if resolved_dataset_service is not None:
         application.include_router(dataset_router, prefix="/v1")
@@ -415,7 +415,7 @@ async def _reconcile_once(service: DatasetService) -> None:
 async def _reconcile_periodically(service: DatasetService) -> None:
     """Re-drive durable archived rows until the application shuts down."""
 
-    interval = _positive_int("HAWKI_BACKEND_DATASET_CLEANUP_INTERVAL_SECONDS", 30)
+    interval = _positive_int("RAG_BACKEND_DATASET_CLEANUP_INTERVAL_SECONDS", 30)
     while True:
         await asyncio.sleep(interval)
         await _reconcile_once(service)
@@ -424,7 +424,7 @@ async def _reconcile_periodically(service: DatasetService) -> None:
 async def _reconcile_urls_periodically(service: UrlIngestionService) -> None:
     from hawki_backend.url_ingestion.scheduler import tick
 
-    interval = _positive_int("HAWKI_BACKEND_URL_RECONCILE_INTERVAL_SECONDS", 30)
+    interval = _positive_int("RAG_BACKEND_URL_RECONCILE_INTERVAL_SECONDS", 30)
     while True:
         await asyncio.sleep(interval)
         try:
@@ -434,22 +434,22 @@ async def _reconcile_urls_periodically(service: UrlIngestionService) -> None:
 
 
 def _dataset_graph_default() -> bool:
-    value = os.environ.get("HAWKI_BACKEND_DATASET_GRAPH_ENABLED", "false").lower()
+    value = os.environ.get("RAG_BACKEND_DATASET_GRAPH_ENABLED", "false").lower()
     if value not in {"true", "false"}:
-        raise ValueError("HAWKI_BACKEND_DATASET_GRAPH_ENABLED must be true or false")
+        raise ValueError("RAG_BACKEND_DATASET_GRAPH_ENABLED must be true or false")
     return value == "true"
 
 
 def _dataset_source() -> Literal["environment", "database"]:
     """Return the selected runtime dataset authority or fail startup."""
 
-    raw = os.environ.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE")
+    raw = os.environ.get("RAG_BACKEND_QUERY_DATASET_SOURCE")
     if raw is None:
         return "environment"
     source = raw.strip().lower()
     if source not in {"environment", "database"}:
         raise QueryConfigurationError(
-            "HAWKI_BACKEND_QUERY_DATASET_SOURCE must be environment or database"
+            "RAG_BACKEND_QUERY_DATASET_SOURCE must be environment or database"
         )
     return "database" if source == "database" else "environment"
 

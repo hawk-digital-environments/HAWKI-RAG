@@ -121,12 +121,12 @@
   },
   "registry": {
     "environ": {
-      "HAWKI_BACKEND_QUERY_DATASETS": "{\"dataset-alpha\":{\"qdrant_collection\":\"hawki_dataset_alpha\",\"neo4j_namespace\":\"hawki_dataset_alpha\",\"embedding_provider\":\"ollama\",\"embedding_model\":\"bge-m3\",\"graph_enabled\":false},\"dataset-graph\":{\"qdrant_collection\":\"hawki_dataset_graph\",\"neo4j_namespace\":\"hawki_dataset_graph\",\"embedding_provider\":\"openai\",\"embedding_model\":\"text-embedding-3-large\",\"graph_enabled\":true}}",
-      "HAWKI_BACKEND_QUERY_MODELS": "{\"ollama\":{\"chat_model\":\"llama3.1\",\"vision_model\":\"llava\"},\"openai\":{\"chat_model\":\"gpt-4o-mini\",\"vision_model\":\"gpt-4o\"}}",
-      "HAWKI_BACKEND_QUERY_RERANKER": "none",
-      "HAWKI_BACKEND_QUERY_RERANK_TOP_N": "20",
-      "HAWKI_BACKEND_QUERY_RERANKER_MIX_MODE": "true",
-      "HAWKI_BACKEND_QUERY_RERANKER_MIX_WEIGHT": "0.5"
+      "RAG_BACKEND_QUERY_DATASETS": "{\"dataset-alpha\":{\"qdrant_collection\":\"hawki_dataset_alpha\",\"neo4j_namespace\":\"hawki_dataset_alpha\",\"embedding_provider\":\"ollama\",\"embedding_model\":\"bge-m3\",\"graph_enabled\":false},\"dataset-graph\":{\"qdrant_collection\":\"hawki_dataset_graph\",\"neo4j_namespace\":\"hawki_dataset_graph\",\"embedding_provider\":\"openai\",\"embedding_model\":\"text-embedding-3-large\",\"graph_enabled\":true}}",
+      "RAG_BACKEND_QUERY_MODELS": "{\"ollama\":{\"chat_model\":\"llama3.1\",\"vision_model\":\"llava\"},\"openai\":{\"chat_model\":\"gpt-4o-mini\",\"vision_model\":\"gpt-4o\"}}",
+      "RAG_BACKEND_QUERY_RERANKER": "none",
+      "RAG_BACKEND_QUERY_RERANK_TOP_N": "20",
+      "RAG_BACKEND_QUERY_RERANKER_MIX_MODE": "true",
+      "RAG_BACKEND_QUERY_RERANKER_MIX_WEIGHT": "0.5"
     }
   },
   "dataset_inventory": [
@@ -1752,7 +1752,7 @@
         "key": "reranker_mode",
         "laravel_source": "RERANKER_MODE",
         "laravel_effective": "external",
-        "python_source": "HAWKI_BACKEND_QUERY_RERANKER",
+        "python_source": "RAG_BACKEND_QUERY_RERANKER",
         "python_default": "none",
         "classification": "CUTOVER_BLOCKER",
         "blocker": "C-RERANKER"
@@ -1761,7 +1761,7 @@
         "key": "rerank_top_n",
         "laravel_source": "bridge QueryRequest default",
         "laravel_effective": 20,
-        "python_source": "HAWKI_BACKEND_QUERY_RERANK_TOP_N",
+        "python_source": "RAG_BACKEND_QUERY_RERANK_TOP_N",
         "python_default": 20,
         "classification": "MUST_MATCH",
         "blocker": null
@@ -1770,7 +1770,7 @@
         "key": "mix_mode",
         "laravel_source": "RERANKER_MIX_MODE",
         "laravel_effective": true,
-        "python_source": "HAWKI_BACKEND_QUERY_RERANKER_MIX_MODE",
+        "python_source": "RAG_BACKEND_QUERY_RERANKER_MIX_MODE",
         "python_default": true,
         "classification": "MUST_MATCH",
         "blocker": null
@@ -1779,7 +1779,7 @@
         "key": "mix_weight",
         "laravel_source": "RERANKER_MIX_WEIGHT",
         "laravel_effective": 0.5,
-        "python_source": "HAWKI_BACKEND_QUERY_RERANKER_MIX_WEIGHT",
+        "python_source": "RAG_BACKEND_QUERY_RERANKER_MIX_WEIGHT",
         "python_default": 0.5,
         "classification": "MUST_MATCH",
         "blocker": null
@@ -1788,7 +1788,7 @@
         "key": "chat_model",
         "laravel_source": "SettingsService::modelRuntimeForProvider()['graph_model']",
         "laravel_effective": "deployment-configured",
-        "python_source": "HAWKI_BACKEND_QUERY_MODELS[provider].chat_model",
+        "python_source": "RAG_BACKEND_QUERY_MODELS[provider].chat_model",
         "python_default": "static registry",
         "classification": "CUTOVER_BLOCKER",
         "blocker": "C-MODELS"
@@ -1797,7 +1797,7 @@
         "key": "vision_model",
         "laravel_source": "SettingsService::modelRuntimeForProvider()['vision_model']",
         "laravel_effective": "deployment-configured",
-        "python_source": "HAWKI_BACKEND_QUERY_MODELS[provider].vision_model",
+        "python_source": "RAG_BACKEND_QUERY_MODELS[provider].vision_model",
         "python_default": "static registry",
         "classification": "CUTOVER_BLOCKER",
         "blocker": "C-MODELS"
@@ -1826,7 +1826,7 @@
     {
       "id": "G1",
       "area": "authorization",
-      "description": "Laravel defaults HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=true; Python always requires an explicit grant. Epoch 6 must not add query-all behavior to Python."
+      "description": "Laravel defaults RAG_QUERY_ALL_DATASETS_BY_DEFAULT=true; Python always requires an explicit grant. Epoch 6 must not add query-all behavior to Python."
     },
     {
       "id": "G2",
@@ -1846,7 +1846,7 @@
     {
       "id": "C-RERANKER",
       "area": "retrieval-configuration",
-      "description": "Deployment RERANKER_MODE=external while Python HAWKI_BACKEND_QUERY_RERANKER defaults to none. Cutover requires identical reranker mode."
+      "description": "Deployment RERANKER_MODE=external while Python RAG_BACKEND_QUERY_RERANKER defaults to none. Cutover requires identical reranker mode."
     },
     {
       "id": "C-MODELS",

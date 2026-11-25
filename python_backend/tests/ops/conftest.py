@@ -127,7 +127,7 @@ def configure(engine):
 @pytest.fixture
 def env(monkeypatch):
     for name in tuple(__import__("os").environ):
-        if name.startswith(("HAWKI_BACKEND_", "HAWKI_WORKFLOW_")):
+        if name.startswith(("RAG_BACKEND_", "RAG_WORKFLOW_")):
             monkeypatch.delenv(name)
     engine = sa.create_engine(
         "sqlite://",

@@ -57,17 +57,17 @@ class ScraperWorkerSettings:
         runtime = load_worker_runtime_settings()
         callback = PipelineCallbackSettings(
             endpoint=_environment_value(
-                "HAWKI_RAG_WORKER_CALLBACK_URL",
-                "http://hawki_backend/internal/pipeline/worker-events",
+                "RAG_WORKER_CALLBACK_URL",
+                "http://rag_backend/internal/pipeline/worker-events",
             ),
-            secret=os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
+            secret=os.environ.get("RAG_WORKER_CALLBACK_SECRET", ""),
             timeout_seconds=max(
                 0.1,
-                _environment_float("HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", 10.0),
+                _environment_float("RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", 10.0),
             ),
             retry_attempts=max(
                 1,
-                _environment_int("HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3),
+                _environment_int("RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3),
             ),
         )
         return cls(

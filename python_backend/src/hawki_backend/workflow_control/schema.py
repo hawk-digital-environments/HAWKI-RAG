@@ -1,4 +1,4 @@
-"""Durable dispatch state, separate from Laravel and the query authorization tables."""
+"""Durable workflow dispatch state in the operational schema."""
 
 import sqlalchemy as sa
 

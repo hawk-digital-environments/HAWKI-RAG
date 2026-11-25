@@ -8,7 +8,7 @@ from .conftest import call
 def test_service_graph_views_preserve_tenant_principal_and_dataset_grants(
     env, monkeypatch
 ):
-    monkeypatch.setenv("HAWKI_BACKEND_SERVICE_ONLY", "true")
+    monkeypatch.setenv("RAG_BACKEND_SERVICE_ONLY", "true")
     with env.engine.begin() as connection:
         for principal in ("management", "other-management"):
             connection.execute(

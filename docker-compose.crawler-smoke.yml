@@ -5,8 +5,8 @@ services:
     image: hawki-backend:local
     pull_policy: never
     entrypoint: ["python", "/opt/smoke/fixture.py"]
-    environment:
-      RAWKI_CRAWLER_SMOKE_FIXTURE: "true"
+    env_file:
+      - ./docker/env/crawler-smoke.env
     volumes:
       - ./scripts/crawler_smoke_fixture.py:/opt/smoke/fixture.py:ro
     networks:

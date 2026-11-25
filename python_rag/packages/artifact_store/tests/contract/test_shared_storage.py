@@ -15,9 +15,8 @@ ROOT = PYTHON_ROOT.parent
 COMPOSE_FILE = ROOT / "docker-compose.yml"
 COMPOSE_FILES = (
     COMPOSE_FILE,
-    ROOT / "docker-compose.cutover.local.yml",
+    ROOT / "docker-compose.local.yml",
     ROOT / "docker-compose-gpu-override.yml",
-    ROOT / "docker-compose.ui.yml",
 )
 ENV_EXAMPLE_FILE = ROOT / ".env.example"
 MAKEFILE = ROOT / "Makefile"
@@ -32,7 +31,6 @@ GRAPH_PREPARE = (
     / "indexing"
     / "graph_prepare.py"
 )
-PYTHON_RUNTIME_ENV = ROOT / "docker" / "python_rag"
 PYTHON_PERMISSIONS_HOOK = (
     ROOT / "docker" / "python_rag" / "80-rawki-runtime-permissions.sh"
 )
@@ -65,7 +63,7 @@ def test_make_uses_explicit_python_migrations() -> None:
 
 
 def test_backend_requires_live_readiness_and_removed_services_cannot_start() -> None:
-    backend = _service_block("hawki_backend")
+    backend = _service_block("rag_backend")
     assert '"hawki_backend.readiness", "--live"' in backend
     assert "hawki_rag_app:" not in COMPOSE_FILE.read_text()
     assert "hawki_rag_bridge:" not in COMPOSE_FILE.read_text()
@@ -75,52 +73,55 @@ def test_backend_requires_live_readiness_and_removed_services_cannot_start() -> 
 def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract() -> (
     None
 ):
-    runtime_env = PYTHON_RUNTIME_ENV.read_text(encoding="utf-8")
+    runtime_env = ENV_EXAMPLE_FILE.read_text(encoding="utf-8")
     permissions_hook = PYTHON_PERMISSIONS_HOOK.read_text(encoding="utf-8")
 
-    assert re.search(r"(?m)^PUID=10001$", runtime_env)
-    assert re.search(r"(?m)^PGID=10001$", runtime_env)
+    assert re.search(r"(?m)^PUID=[1-9][0-9]*$", runtime_env)
+    assert re.search(r"(?m)^PGID=[1-9][0-9]*$", runtime_env)
     assert 'shared_gid="${PIPELINE_SHARED_STORAGE_GID:-}"' in permissions_hook
     assert 'usermod --append --groups "$shared_group" www-data' in permissions_hook
     assert 'chown -R www-data:www-data "$writable_dir"' in permissions_hook
 
     for name in (
-        "rawki_local_scraper_worker",
-        "rawki_local_converter_worker",
-        "rawki_local_indexer_worker",
+        "scraper_worker",
+        "converter_worker",
+        "indexer_worker",
     ):
         service = _service_block(name)
         assert "user:" not in service
         assert "dockerfile: python_rag/Dockerfile" in service
         assert "stop_grace_period: 15s" in service
         assert "hawki_rag_app:" not in service
-        assert "hawki_backend:" in service
+        assert "rag_backend:" in service
         assert "condition: service_healthy" in service
         assert '  - "${PGID}"' in service
 
 
-def test_compose_keeps_cutover_security_settings_server_side() -> None:
+def test_compose_keeps_security_settings_server_side() -> None:
     base_compose = COMPOSE_FILE.read_text(encoding="utf-8")
     assert "x-service-env: &service_env" in base_compose
-    assert "${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}" in base_compose
-    backend = _service_block("hawki_backend")
-    assert 'HAWKI_BACKEND_SERVICE_ONLY: "true"' in backend
-    assert 'HAWKI_BACKEND_REQUIRE_READY_SCHEMA: "true"' in backend
+    assert "${RAG_COMPOSE_ENV_FILE:-.env}" in base_compose
+    backend = _service_block("rag_backend")
+    backend_env = (ROOT / "docker/env/backend.env").read_text()
+    assert "./docker/env/backend.env" in backend
+    assert "RAG_BACKEND_SERVICE_ONLY=true" in backend_env.splitlines()
+    assert "RAG_BACKEND_REQUIRE_READY_SCHEMA=true" in backend_env.splitlines()
+    callback_env = (ROOT / "docker/env/worker-callback.env").read_text()
+    assert (
+        "RAG_WORKER_CALLBACK_URL=http://rag_backend/internal/pipeline/worker-events"
+        in callback_env.splitlines()
+    )
     for name in (
-        "rawki_local_scraper_worker",
-        "rawki_local_converter_worker",
-        "rawki_local_indexer_worker",
+        "scraper_worker",
+        "converter_worker",
+        "indexer_worker",
     ):
-        assert "http://hawki_backend/internal/pipeline/worker-events" in _service_block(
-            name
-        )
-    frontend = _service_block("hawki_rag_frontend")
-    assert "TOKEN" not in frontend
-    assert "SECRET" not in frontend
+        assert "./docker/env/worker-callback.env" in _service_block(name)
+    assert "ports:" not in backend
 
 
 def test_neo4j_receives_only_its_server_auth_adapter() -> None:
-    neo4j = _service_block("hawki_rag_neo4j")
+    neo4j = _service_block("neo4j")
     neo4j_env = NEO4J_ENV_FILE.read_text(encoding="utf-8")
 
     assert "env_file:\n      - docker/env/neo4j.env" in neo4j
@@ -136,9 +137,9 @@ def test_legacy_ui_json_artifacts_are_not_configured_or_generated() -> None:
         GRAPH_PREPARE.read_text(encoding="utf-8"),
     )
     legacy_names = (
-        "HAWKI_RAG_INGEST_STATUS_PATH",
-        "HAWKI_RAG_INGEST_STATUS_PATH_NEO4J",
-        "HAWKI_RAG_GRAPH_VISUALIZATION_PATH",
+        "RAG_INGEST_STATUS_PATH",
+        "RAG_INGEST_STATUS_PATH_NEO4J",
+        "RAG_GRAPH_VISUALIZATION_PATH",
         "neo4j_graph_visualization.json",
         "write_graph_visualization",
     )

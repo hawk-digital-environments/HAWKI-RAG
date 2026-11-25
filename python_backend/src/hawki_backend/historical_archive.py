@@ -57,7 +57,7 @@ def create_archive(directory: Path, record: dict) -> Path:
 
 def require_unreserved(identifiers: Mapping[str, object]) -> None:
     """Fence new admission/dispatch; archives cannot authorize reads or cleanup."""
-    configured = os.environ.get("HAWKI_BACKEND_HISTORICAL_ARCHIVE_ROOT")
+    configured = os.environ.get("RAG_BACKEND_HISTORICAL_ARCHIVE_ROOT")
     if not configured:
         return
     try:

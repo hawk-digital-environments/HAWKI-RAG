@@ -153,11 +153,11 @@ async def _run_isolated_live() -> None:
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    os.environ["HAWKI_RAG_WORKER_CALLBACK_URL"] = (
+    os.environ["RAG_WORKER_CALLBACK_URL"] = (
         f"http://127.0.0.1:{server.server_port}/api/internal/pipeline/worker-events"
     )
-    os.environ["HAWKI_RAG_WORKER_CALLBACK_SECRET"] = secret
-    os.environ["HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS"] = "1"
+    os.environ["RAG_WORKER_CALLBACK_SECRET"] = secret
+    os.environ["RAG_WORKER_CALLBACK_RETRY_ATTEMPTS"] = "1"
     settings = replace(
         load_settings(), workflow_task_queue=queue
     )

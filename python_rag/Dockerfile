@@ -122,7 +122,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOME=/home/rawki
 WORKDIR /var/www/html
-RUN mkdir -p /home/rawki /app/public /app/rag_storage
+RUN mkdir -p /home/rawki /app/rag_storage
 COPY docker/python_rag/80-rawki-runtime-permissions.sh /container/custom/entrypoint/80-rawki-runtime-permissions.sh
 RUN chmod 0755 /container/custom/entrypoint/80-rawki-runtime-permissions.sh
 

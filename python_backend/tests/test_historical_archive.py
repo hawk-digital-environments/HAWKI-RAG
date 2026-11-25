@@ -42,7 +42,7 @@ def archived(tmp_path, monkeypatch):
         "legacy_rows": [{"table": "public.ingestion_sources", "sha256": "b" * 64}],
     }
     path = create_archive(tmp_path, record)
-    monkeypatch.setenv("HAWKI_BACKEND_HISTORICAL_ARCHIVE_ROOT", str(tmp_path))
+    monkeypatch.setenv("RAG_BACKEND_HISTORICAL_ARCHIVE_ROOT", str(tmp_path))
     return path, record
 
 
@@ -153,7 +153,7 @@ def test_reserved_dataset_cannot_be_recreated_under_another_tenant(archived):
 
 
 def test_graph_default_is_server_owned_and_scope_stays_derived(monkeypatch):
-    monkeypatch.delenv("HAWKI_BACKEND_HISTORICAL_ARCHIVE_ROOT", raising=False)
+    monkeypatch.delenv("RAG_BACKEND_HISTORICAL_ARCHIVE_ROOT", raising=False)
     store = FakeDatasetStore()
     service = DatasetService(
         store,
@@ -166,6 +166,6 @@ def test_graph_default_is_server_owned_and_scope_stays_derived(monkeypatch):
     assert result.record.graph_enabled is True
     assert result.record.neo4j_namespace == result.record.qdrant_collection
     assert result.record.qdrant_collection != "graph-fixture"
-    monkeypatch.setenv("HAWKI_BACKEND_DATASET_GRAPH_ENABLED", "maybe")
+    monkeypatch.setenv("RAG_BACKEND_DATASET_GRAPH_ENABLED", "maybe")
     with pytest.raises(ValueError):
         _dataset_graph_default()

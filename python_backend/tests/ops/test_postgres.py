@@ -26,14 +26,14 @@ from .conftest import configure
 
 @pytest.fixture
 def pg(monkeypatch):
-    dsn = os.environ.get("HAWKI_EPOCH14_TEST_DSN")
+    dsn = os.environ.get("RAG_EPOCH14_TEST_DSN")
     if not dsn:
         pytest.skip(
-            "Set HAWKI_EPOCH14_TEST_DSN to a disposable *_test PostgreSQL database"
+            "Set RAG_EPOCH14_TEST_DSN to a disposable *_test PostgreSQL database"
         )
     if not sa.engine.make_url(dsn).database.endswith("_test"):
         pytest.fail("Refusing a non-test database")
-    monkeypatch.setenv("HAWKI_BACKEND_DB_DSN", dsn)
+    monkeypatch.setenv("RAG_BACKEND_DB_DSN", dsn)
     command.upgrade(
         Config(str(Path(__file__).resolve().parents[2] / "alembic.ini")), "head"
     )
@@ -166,7 +166,7 @@ def test_concurrent_clear_has_one_durable_owner(pg):
 
 
 def test_unregistered_compatibility_dispatch_cannot_enter_python_graph(pg, monkeypatch):
-    monkeypatch.setenv("HAWKI_BACKEND_QUERY_DATASET_SOURCE", "database")
+    monkeypatch.setenv("RAG_BACKEND_QUERY_DATASET_SOURCE", "database")
     payload = {
         "workflow_input": {
             "dataset_id": "one",

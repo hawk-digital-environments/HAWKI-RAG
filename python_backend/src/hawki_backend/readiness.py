@@ -37,7 +37,7 @@ def required_tables(env):
     def require(table, *privileges):
         tables.setdefault(table, set()).update(privileges)
 
-    if env.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE") == "database":
+    if env.get("RAG_BACKEND_QUERY_DATASET_SOURCE") == "database":
         require(snapshots, "SELECT", "INSERT", "DELETE")
         require(datasets, "INSERT", "UPDATE")
         require(dataset_grants, "INSERT")
@@ -53,22 +53,22 @@ def required_tables(env):
         for table in (ingest_text_operations, revisions, generations):
             require(table, "SELECT", "UPDATE")
     for flag, group in (
-        ("HAWKI_WORKFLOW_CONTROL_ENABLED", [operations]),
+        ("RAG_WORKFLOW_CONTROL_ENABLED", [operations]),
         (
-            "HAWKI_BACKEND_TEXT_INGESTION_ENABLED",
+            "RAG_BACKEND_TEXT_INGESTION_ENABLED",
             [ingest_text_operations, ingest_text_events],
         ),
-        ("HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED", managed),
-        ("HAWKI_BACKEND_URL_INGESTION_ENABLED", urls),
+        ("RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED", managed),
+        ("RAG_BACKEND_URL_INGESTION_ENABLED", urls),
     ):
         if enabled(env, flag):
             for table in group:
                 require(table, "SELECT", "INSERT", "UPDATE")
-    if enabled(env, "HAWKI_BACKEND_TEXT_INGESTION_ENABLED"):
+    if enabled(env, "RAG_BACKEND_TEXT_INGESTION_ENABLED"):
         # Text events use a plain SELECT. Managed and URL event lookups use
         # SELECT FOR UPDATE and therefore retain UPDATE privilege.
         tables[ingest_text_events] = {"SELECT", "INSERT"}
-    if enabled(env, "HAWKI_BACKEND_URL_INGESTION_ENABLED"):
+    if enabled(env, "RAG_BACKEND_URL_INGESTION_ENABLED"):
         require(dataset_grants, "UPDATE")  # require_grant locks both join inputs.
     return tables
 
@@ -130,17 +130,17 @@ def verify_privileges(connection, env):
     if any(
         enabled(env, flag)
         for flag in (
-            "HAWKI_BACKEND_TEXT_INGESTION_ENABLED",
-            "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
-            "HAWKI_BACKEND_URL_INGESTION_ENABLED",
+            "RAG_BACKEND_TEXT_INGESTION_ENABLED",
+            "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED",
+            "RAG_BACKEND_URL_INGESTION_ENABLED",
         )
     ):
         functions.add("pg_catalog.pg_advisory_xact_lock(bigint)")
     if any(
         enabled(env, flag)
         for flag in (
-            "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
-            "HAWKI_BACKEND_URL_INGESTION_ENABLED",
+            "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED",
+            "RAG_BACKEND_URL_INGESTION_ENABLED",
         )
     ):
         functions.update(
@@ -187,7 +187,7 @@ def check_database(env: Mapping[str, str]) -> None:
                     "SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f') AND has_table_privilege(current_user,c.oid,'SELECT'))"
                 )
             ).scalar_one():
-                raise ValueError("Runtime role reads Laravel tables")
+                raise ValueError("Runtime role reads historical public tables")
             if (
                 connection.execute(
                     sa.text(
@@ -217,11 +217,11 @@ def _control(env: Mapping[str, str]) -> None:
     path = "/internal/workflow-control/health"
     signed = f"hawki-workflow-control-v1\nPOST\n{path}\n{stamp}\n".encode() + raw
     signature = hmac.new(
-        env["HAWKI_RAG_WORKER_CALLBACK_SECRET"].encode(), signed, hashlib.sha256
+        env["RAG_WORKER_CALLBACK_SECRET"].encode(), signed, hashlib.sha256
     ).hexdigest()
     with httpx.Client(timeout=5, trust_env=False, follow_redirects=False) as client:
         response = client.post(
-            env["HAWKI_WORKFLOW_CONTROL_URL"].rstrip("/") + path,
+            env["RAG_WORKFLOW_CONTROL_URL"].rstrip("/") + path,
             content=raw,
             headers={
                 "Content-Type": "application/json",
@@ -269,7 +269,7 @@ def _graph(env: Mapping[str, str]) -> None:
 
 
 def _storage(env: Mapping[str, str]) -> None:
-    root = Path(env.get("HAWKI_RAG_TEMPORAL_SHARED_ROOT", "/shared"))
+    root = Path(env.get("RAG_TEMPORAL_SHARED_ROOT", "/shared"))
     if (
         not root.is_absolute()
         or root == Path("/")
@@ -277,7 +277,7 @@ def _storage(env: Mapping[str, str]) -> None:
         or not os.access(root, os.R_OK | os.W_OK | os.X_OK)
     ):
         raise ValueError("Shared storage is unavailable")
-    if env.get("HAWKI_BACKEND_TEXT_INGESTION_SHARED_ROOT", str(root)) != str(root):
+    if env.get("RAG_BACKEND_TEXT_INGESTION_SHARED_ROOT", str(root)) != str(root):
         raise ValueError("Shared roots differ")
 
 
@@ -297,7 +297,7 @@ def _jwks(env: Mapping[str, str]) -> None:
 
     provider = JwksKeyProvider(load_auth_settings(env))
     try:
-        name = "HAWKI_BACKEND_READINESS_JWKS_KEY_ID"
+        name = "RAG_BACKEND_READINESS_JWKS_KEY_ID"
         if provider.get_key(env[name], "RS256") is None:
             raise ValueError("Configured public signing key unavailable")
     finally:
@@ -305,7 +305,7 @@ def _jwks(env: Mapping[str, str]) -> None:
 
 
 def _models(env: Mapping[str, str]) -> None:
-    models = json.loads(env["HAWKI_BACKEND_QUERY_MODELS"])
+    models = json.loads(env["RAG_BACKEND_QUERY_MODELS"])
     if set(models) != {"ollama"}:
         raise ValueError("Model availability needs a reviewed provider-specific probe")
     from hawki_model_providers.ollama import ollama_api_url
@@ -345,14 +345,14 @@ def qdrant_consumers(env: Mapping[str, str]) -> dict[str, Any]:
     )
 
     consumers = {"query": qdrant_settings_from_env(env)}
-    if env.get("HAWKI_BACKEND_QUERY_DATASET_SOURCE") == "database":
+    if env.get("RAG_BACKEND_QUERY_DATASET_SOURCE") == "database":
         consumers["dataset_catalog"] = QdrantCatalog.from_env(env)
         consumers["ops_catalog"] = QdrantCatalog.from_env(env)
-    if enabled(env, "HAWKI_BACKEND_TEXT_INGESTION_ENABLED"):
+    if enabled(env, "RAG_BACKEND_TEXT_INGESTION_ENABLED"):
         consumers["text_deletion"] = load_text_ingestion_settings(env)
     for flag, name in (
-        ("HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED", "managed_deletion"),
-        ("HAWKI_BACKEND_URL_INGESTION_ENABLED", "url_deletion"),
+        ("RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED", "managed_deletion"),
+        ("RAG_BACKEND_URL_INGESTION_ENABLED", "url_deletion"),
     ):
         if enabled(env, flag):
             consumers[name] = load_sink_settings(env)
@@ -461,9 +461,9 @@ def graph_required(env: Mapping[str, str]) -> bool:
     if any(
         enabled(env, flag)
         for flag in (
-            "HAWKI_WORKFLOW_CONTROL_ENABLED",
-            "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
-            "HAWKI_BACKEND_URL_INGESTION_ENABLED",
+            "RAG_WORKFLOW_CONTROL_ENABLED",
+            "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED",
+            "RAG_BACKEND_URL_INGESTION_ENABLED",
         )
     ):
         return True
@@ -491,7 +491,7 @@ def graph_required(env: Mapping[str, str]) -> bool:
 
 
 def _reranker(env):
-    mode = env.get("HAWKI_BACKEND_QUERY_RERANKER", "none").lower().strip()
+    mode = env.get("RAG_BACKEND_QUERY_RERANKER", "none").lower().strip()
     if mode in {"none", "cosine"}:
         return
     if mode != "external":
@@ -549,19 +549,19 @@ def live_checks(env: Mapping[str, str]) -> dict[str, str]:
     ingestion = any(
         enabled(env, name)
         for name in (
-            "HAWKI_BACKEND_TEXT_INGESTION_ENABLED",
-            "HAWKI_BACKEND_MANAGED_DOCUMENTS_ENABLED",
-            "HAWKI_BACKEND_URL_INGESTION_ENABLED",
+            "RAG_BACKEND_TEXT_INGESTION_ENABLED",
+            "RAG_BACKEND_MANAGED_DOCUMENTS_ENABLED",
+            "RAG_BACKEND_URL_INGESTION_ENABLED",
         )
     )
-    if ingestion or enabled(env, "HAWKI_WORKFLOW_CONTROL_ENABLED"):
+    if ingestion or enabled(env, "RAG_WORKFLOW_CONTROL_ENABLED"):
         probes.update(
             workflow_control_relay=lambda: _control(env),
             temporal=lambda: asyncio.run(asyncio.wait_for(_temporal(env), 5)),
         )
     if ingestion:
         probes["shared_storage_permissions"] = lambda: _storage(env)
-    if enabled(env, "HAWKI_BACKEND_URL_INGESTION_ENABLED"):
+    if enabled(env, "RAG_BACKEND_URL_INGESTION_ENABLED"):
         probes["crawler_contract"] = lambda: _crawler(env)
     result = configuration_results
     for name, probe in probes.items():

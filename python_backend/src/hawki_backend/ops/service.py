@@ -185,7 +185,7 @@ class OpsService:
         provider = (
             latest.embedding_provider
             if latest
-            else os.environ.get("HAWKI_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama")
+            else os.environ.get("RAG_BACKEND_DATASET_EMBEDDING_PROVIDER", "ollama")
         )
         model = self.settings.models.get(provider)
         runtime = {
@@ -194,7 +194,7 @@ class OpsService:
             "query_model": model.chat_model if model else None,
             "embedding_model": latest.embedding_model
             if latest
-            else os.environ.get("HAWKI_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"),
+            else os.environ.get("RAG_BACKEND_DATASET_EMBEDDING_MODEL", "bge-m3"),
             "latest_dataset": latest.dataset_id if latest else None,
         }
         return {
@@ -229,7 +229,7 @@ class OpsService:
                 ).split(","),
                 "customConverter": {
                     "enabled": os.environ.get(
-                        "HAWKI_BACKEND_CUSTOM_UPLOADS_ENABLED", "false"
+                        "RAG_BACKEND_CUSTOM_UPLOADS_ENABLED", "false"
                     ).lower()
                     == "true",
                     "configured": bool(os.environ.get("EXTERNAL_CONVERTER_URL")),

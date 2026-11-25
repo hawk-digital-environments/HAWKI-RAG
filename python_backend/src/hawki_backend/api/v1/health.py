@@ -37,5 +37,5 @@ def readiness(
 
 @router.get("/readiness/identity", include_in_schema=False)
 def readiness_identity(principal=Depends(require_scopes("rag:datasets:manage"))):
-    """Non-mutating proof that the deployed BFF key/claims pass this verifier."""
+    """Non-mutating proof that the registered service key and claims pass this verifier."""
     return {"tenant_id": principal.tenant_id, "client_id": principal.client_id}

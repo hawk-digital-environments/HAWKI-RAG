@@ -52,7 +52,7 @@ async def owner(request: Request, workflow_id: str) -> str:
     except UrlIngestionError:
         raise HTTPException(409, "callback_ownership_unconfirmed") from None
     if value not in {"text", "managed", "url"}:
-        # Legacy work must be drained before the cutover. Absence is not proof
+        # Historical work requires a separate ownership handoff. Absence is not proof
         # of ownership, and must never create or adopt a Python operation.
         raise HTTPException(409, "callback_ownership_unconfirmed")
     return value
@@ -88,6 +88,6 @@ async def legacy_deletion(request: Request):
     await signed_body(request)
     # Python-owned deletion already runs through the family services with
     # frozen targets, quiescence and verified sink cleanup. These Temporal
-    # receipts belong to the legacy Laravel deletion ledger. Acknowledge
+    # receipts belong to the historical deletion ledger. Acknowledge
     # neither completion nor writer release without that durable authority.
     raise HTTPException(409, "legacy_deletion_requires_drain")

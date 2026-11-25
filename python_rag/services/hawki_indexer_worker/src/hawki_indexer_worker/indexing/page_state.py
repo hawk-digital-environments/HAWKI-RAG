@@ -2,7 +2,7 @@
 
 Content points already carry the stable source identity and content hash. Keeping
 that data with the indexed content avoids a second Python-owned SQL registry and
-lets Laravel remain the only owner of PostgreSQL metadata.
+leaves operational PostgreSQL metadata under backend ownership.
 """
 
 from __future__ import annotations

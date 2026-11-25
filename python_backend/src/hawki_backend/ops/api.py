@@ -12,7 +12,7 @@ from hawki_backend.auth.models import AuthenticatedPrincipal
 from hawki_backend.api.v1.query import QueryRequestBody, query
 from .schemas import ExpandBody, ClearBody, ClearReceipt
 from .service import OpsService
-from .admission import prepare_clear, finish_clear
+from .admission import finish_clear
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ops", tags=["graph-ops"])
@@ -142,28 +142,10 @@ def clear(request: Request, principal: Manager, body: ClearBody):
     return execute(lambda: service(request).clear(principal, body.dataset_id))
 
 
-@router.post("/graph/clear-admission", include_in_schema=False)
-def clear_admission(request: Request, principal: Manager, body: ClearBody):
-    """Legacy executor uses the same Python-owned durable admission decision."""
-
-    def run():
-        ops = service(request)
-        ops.dataset(principal, body.dataset_id, manager=True)
-        operation, namespace = prepare_clear(
-            ops.engine, principal.tenant_id, body.dataset_id
-        )
-        return {
-            "ok": True,
-            "operation_id": operation,
-            "dataset_id": body.dataset_id,
-            "neo4j_namespace": namespace,
-        }
-
-    return execute(run)
-
-
 @router.post("/graph/clear-receipt", include_in_schema=False)
 def clear_receipt(request: Request, principal: Manager, body: ClearReceipt):
+    """Reconcile a previously recorded graph-clear operation on the private network."""
+
     def run():
         ops = service(request)
         with ops.engine.connect() as connection:
