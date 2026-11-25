@@ -60,6 +60,7 @@ final class IngestTextRequest extends FormRequest
                 'required',
                 'string',
                 'not_regex:/\A\s*\z/u',
+                'max:'.(int) config('config.text_ingestion.max_text_characters'),
             ],
             'content_format' => 'required|string|in:plain_text,markdown',
             'display_name' => 'nullable|string|max:255',

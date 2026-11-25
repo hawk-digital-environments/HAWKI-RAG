@@ -155,6 +155,18 @@ final class TextIngestionReqTest extends TestCase
             ->assertJsonValidationErrors('metadata');
     }
 
+    public function test_oversized_text_is_rejected(): void
+    {
+        $this->send($this->validPayload([
+            'text' => str_repeat(
+                'x',
+                (int) config('config.text_ingestion.max_text_characters') + 1,
+            ),
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('text');
+    }
+
     public function test_oversized_metadata_is_rejected(): void
     {
         $this->send($this->validPayload([
