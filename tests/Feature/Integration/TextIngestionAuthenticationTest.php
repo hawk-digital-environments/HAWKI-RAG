@@ -10,6 +10,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Tests\TestCase;
 
 final class TextIngestionAuthenticationTest extends TestCase
@@ -139,6 +141,27 @@ final class TextIngestionAuthenticationTest extends TestCase
             'HTTP_AUTHORIZATION' => 'Bearer '.$plainTextToken,
             'HTTP_IDEMPOTENCY_KEY' => 'oversized-request-v1',
         ], $body)
+            ->assertStatus(413)
+            ->assertJsonPath('error', 'text_ingestion_request_too_large');
+
+        Http::assertNothingSent();
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_request_body_one_byte_over_128_mib_is_rejected(): void
+    {
+        ini_set('memory_limit', '512M');
+        $user = $this->user('oversized-default-limit');
+        $this->grant($user, $this->dataset);
+        $plainTextToken = $user->createToken('ingest', ['rag:text-ingest'])->plainTextToken;
+
+        $this->call('POST', '/api/integrations/text-ingestions', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_AUTHORIZATION' => 'Bearer '.$plainTextToken,
+            'HTTP_IDEMPOTENCY_KEY' => 'oversized-default-limit-v1',
+        ], str_pad(json_encode($this->payload(), JSON_THROW_ON_ERROR), 134_217_729))
             ->assertStatus(413)
             ->assertJsonPath('error', 'text_ingestion_request_too_large');
 

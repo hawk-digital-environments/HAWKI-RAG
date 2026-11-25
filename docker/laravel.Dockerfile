@@ -31,6 +31,10 @@ RUN rm -rf /var/www/html/public/build \
 
 FROM neunerlei/php-nginx:8.4 AS laravel-app
 
+ENV NGINX_CLIENT_MAX_BODY_SIZE=128M \
+    PHP_POST_MAX_SIZE=128M \
+    PHP_UPLOAD_MAX_FILESIZE=128M
+
 ARG DOCKER_PROJECT_HOST=ixdlab.hawk.de
 ARG DOCKER_PROJECT_PATH=/hawki-rag/
 ARG DOCKER_PROJECT_PROTOCOL=https

@@ -102,6 +102,27 @@ final class TextIngestionApiTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.embedding_model') === 'bge-m3');
     }
 
+    public function test_text_above_the_previous_character_and_byte_limits_is_accepted(): void
+    {
+        $text = str_repeat("Large document text.\n", 220_000);
+        $payload = $this->payload(['text' => $text]);
+        $this->assertGreaterThan(4_300_000, strlen($text));
+
+        $this->send($payload)->assertAccepted();
+
+        $markdownPath = (string) PipelineJob::query()->sole()->local_path;
+        $contentHash = hash('sha256', $text);
+        $this->assertFileExists($markdownPath);
+        $this->assertSame($contentHash, hash_file('sha256', $markdownPath));
+
+        [$request] = Http::recorded()->sole();
+        $workflowInput = $request->data()['workflow_input'];
+        $this->assertSame($markdownPath, $workflowInput['markdown_path']);
+        $this->assertSame($contentHash, $workflowInput['content_hash']);
+        $this->assertArrayNotHasKey('text', $workflowInput);
+        $this->assertLessThan(8_192, strlen($request->body()));
+    }
+
     public function test_unknown_field_is_rejected_before_any_ingestion_side_effect(): void
     {
         $this->send($this->payload([

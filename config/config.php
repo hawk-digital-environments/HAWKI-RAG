@@ -42,9 +42,8 @@ return [
     'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),
     'ingest_batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
     'text_ingestion' => [
-        'max_text_characters' => 1_048_576,
         'max_metadata_bytes' => 65_536,
-        'max_request_bytes' => 4_300_000,
+        'max_request_bytes' => (int) env('TEXT_INGESTION_MAX_REQUEST_BYTES', 134_217_728),
     ],
     'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
     'provider' => env('RAG_PROVIDER'),

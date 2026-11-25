@@ -116,9 +116,9 @@ class OpenApiContractTest extends TestCase
         $this->assertStringContainsString('"413":', $operation);
 
         $contents = $this->openApiContents();
-        $this->assertStringContainsString('maxLength: 1048576', $contents);
         $this->assertStringContainsString('65,536 bytes', $contents);
-        $this->assertStringContainsString('4,300,000 bytes', $contents);
+        $this->assertStringContainsString('134,217,728 bytes', $operation);
+        $this->assertStringContainsString('`TEXT_INGESTION_MAX_REQUEST_BYTES`', $operation);
 
         $schemaStart = strpos($contents, '    TextIngestionRequest:');
         $responseStart = strpos($contents, '    TextIngestionResponse:');
@@ -131,6 +131,7 @@ class OpenApiContractTest extends TestCase
         );
         $this->assertStringContainsString('additionalProperties: false', $schema);
         $this->assertStringContainsString('additionalProperties: true', $schema);
+        $this->assertMatchesRegularExpression('/        text:\n          type: string\n          minLength: 1\n          description:/', $schema);
 
         preg_match_all('/^        ([a-z_]+):$/m', $schema, $properties);
         $this->assertSame([

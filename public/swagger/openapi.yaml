@@ -68,9 +68,10 @@ paths:
         The dataset must first be created through `POST /datasets` and must be
         active. The selected dataset—not this request—supplies the embedding
         provider, model, and Qdrant collection. Document text is never returned.
-        Text is limited to 1,048,576 characters and serialized metadata is
-        limited to 65,536 bytes. The complete JSON request is limited to
-        4,300,000 bytes. The upload rate limit also applies.
+        Serialized metadata is limited to 65,536 bytes. The complete JSON request
+        defaults to a limit of 134,217,728 bytes, configurable through
+        `TEXT_INGESTION_MAX_REQUEST_BYTES`.
+        Upstream request body limits can be lower.
       security:
         - BearerAuth: []
       parameters:
@@ -117,7 +118,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TextIngestionError"
         "413":
-          description: The complete JSON request exceeds 4,300,000 bytes.
+          description: The complete JSON request exceeds the configured body limit (134,217,728 bytes by default).
           content:
             application/json:
               schema:
@@ -1721,7 +1722,6 @@ components:
         text:
           type: string
           minLength: 1
-          maxLength: 1048576
           description: Non-whitespace plain text or Markdown stored without file conversion.
         content_format:
           type: string

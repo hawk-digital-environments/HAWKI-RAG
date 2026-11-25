@@ -101,14 +101,25 @@ Unknown top-level fields are rejected.
 |---|---|---|
 | `external_document_id` | Yes | Up to 191 characters; alphanumeric first, then letters/digits/`._:-` |
 | `dataset_id` | Yes | Up to 160 characters with the same identifier syntax; active and explicitly writable by this user |
-| `text` | Yes | Nonblank string, maximum 1,048,576 characters |
+| `text` | Yes | Nonblank string within the request body limit |
 | `content_format` | Yes | `plain_text` or `markdown` |
 | `display_name` | No | Maximum 255 characters |
 | `source_url` | No | HTTP(S) URL, maximum 2048 characters; descriptive, not the source identity |
 | `metadata` | No | JSON object, maximum 65,536 serialized bytes; validator also accepts null or an empty array; caller data cannot override trusted storage/model scope |
 
-The complete request body limit is 4,300,000 bytes. `Idempotency-Key` is required,
-maximum 191 characters, using the same restricted identifier syntax.
+The complete JSON request body limit defaults to 134,217,728 bytes (128 MiB) and
+is configurable through `TEXT_INGESTION_MAX_REQUEST_BYTES`. JSON escaping and
+metadata count toward the body limit. Metadata has its own 65,536-byte limit.
+Development and production images default to 128 MiB for Nginx
+(`NGINX_CLIENT_MAX_BODY_SIZE`) and PHP (`PHP_POST_MAX_SIZE`). If you change the
+Laravel cap, align both settings and any external proxy's body limit.
+
+Laravel stores the decoded text on the shared volume and sends its artifact
+reference and hash to Temporal. The indexer reads the file into memory, so
+indexing time and memory usage grow with the number of chunks and embeddings.
+
+`Idempotency-Key` is required, maximum 191 characters, using the same restricted
+identifier syntax.
 Do not supply graph, collection, namespace, provider, or model controls.
 
 ## Wait for readiness and query
