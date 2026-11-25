@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from hawki_backend.api.v1.health import router as health_router
-from hawki_backend.auth.jwks import JwksKeyProvider, KeyProvider
+from hawki_backend.auth.jwks import KeyProvider, PyJwkClientKeyProvider
 from hawki_backend.auth.jwt import JwtAuthenticator
 from hawki_backend.settings import AuthSettings, load_auth_settings
 
@@ -56,13 +56,13 @@ def create_app(
 
 def _build_authenticator(
     settings: AuthSettings | None, key_provider: KeyProvider | None
-) -> tuple[JwtAuthenticator | None, JwksKeyProvider | None]:
+) -> tuple[JwtAuthenticator | None, KeyProvider | None]:
     """Build the authenticator and the key provider the application owns."""
     if settings is None:
         return None, None
     if key_provider is not None:
         return JwtAuthenticator(settings, key_provider), None
-    provider = JwksKeyProvider(settings)
+    provider = PyJwkClientKeyProvider(settings)
     return JwtAuthenticator(settings, provider), provider
 
 

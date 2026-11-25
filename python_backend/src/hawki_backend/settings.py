@@ -40,7 +40,6 @@ _DEFAULT_JWKS_CACHE_TTL_SECONDS = 600
 _DEFAULT_JWKS_MIN_REFRESH_SECONDS = 60
 _DEFAULT_JWKS_MAX_STALE_SECONDS = 3600
 _DEFAULT_JWKS_TIMEOUT_SECONDS = 3
-_DEFAULT_JWKS_MAX_BYTES = 512 * 1024
 
 _DEFAULT_DB_POOL_SIZE = 5
 _DEFAULT_DB_POOL_TIMEOUT_SECONDS = 3
@@ -57,8 +56,6 @@ _MIN_JWKS_MIN_REFRESH_SECONDS = 1
 _MIN_JWKS_MAX_STALE_SECONDS = 0
 _MIN_JWKS_TIMEOUT_SECONDS = 1
 _MAX_JWKS_TIMEOUT_SECONDS = 30
-_MIN_JWKS_MAX_BYTES = 1024
-_MAX_JWKS_MAX_BYTES = 10 * 1024 * 1024
 
 _KNOWN_SUFFIXES = frozenset(
     {
@@ -74,7 +71,6 @@ _KNOWN_SUFFIXES = frozenset(
         "JWKS_MIN_REFRESH_SECONDS",
         "JWKS_MAX_STALE_SECONDS",
         "JWKS_TIMEOUT_SECONDS",
-        "JWKS_MAX_BYTES",
     }
 )
 
@@ -139,7 +135,6 @@ class AuthSettings:
     jwks_min_refresh_seconds: int = _DEFAULT_JWKS_MIN_REFRESH_SECONDS
     jwks_max_stale_seconds: int = _DEFAULT_JWKS_MAX_STALE_SECONDS
     jwks_timeout_seconds: int = _DEFAULT_JWKS_TIMEOUT_SECONDS
-    jwks_max_bytes: int = _DEFAULT_JWKS_MAX_BYTES
 
     def __post_init__(self) -> None:
         """Freeze the collections so the settings cannot be mutated."""
@@ -239,13 +234,6 @@ def load_auth_settings(environ: Mapping[str, str] | None = None) -> AuthSettings
             _DEFAULT_JWKS_TIMEOUT_SECONDS,
             _MIN_JWKS_TIMEOUT_SECONDS,
             _MAX_JWKS_TIMEOUT_SECONDS,
-        ),
-        jwks_max_bytes=_integer(
-            source,
-            "JWKS_MAX_BYTES",
-            _DEFAULT_JWKS_MAX_BYTES,
-            _MIN_JWKS_MAX_BYTES,
-            _MAX_JWKS_MAX_BYTES,
         ),
     )
 

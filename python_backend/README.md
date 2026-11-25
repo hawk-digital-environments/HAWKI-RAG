@@ -37,10 +37,9 @@ All settings are read from `HAWKI_BACKEND_AUTH_*` environment variables.
 | `HAWKI_BACKEND_AUTH_LEEWAY_SECONDS` | no | `30` | 0 to 300. Clock skew allowance for `exp`, `nbf` and `iat`. |
 | `HAWKI_BACKEND_AUTH_MAX_TOKEN_TTL_SECONDS` | no | `3600` | 1 to 86400. Cap on a token's lifetime. |
 | `HAWKI_BACKEND_AUTH_JWKS_CACHE_TTL_SECONDS` | no | `600` | How long a fetched key set is served. |
-| `HAWKI_BACKEND_AUTH_JWKS_MIN_REFRESH_SECONDS` | no | `60` | Minimum interval between refresh attempts. |
-| `HAWKI_BACKEND_AUTH_JWKS_MAX_STALE_SECONDS` | no | `3600` | How long a cached key set may be served after a failed refresh. |
+| `HAWKI_BACKEND_AUTH_JWKS_MIN_REFRESH_SECONDS` | no | `60` | Minimum interval between forced refreshes for unknown key ids. |
+| `HAWKI_BACKEND_AUTH_JWKS_MAX_STALE_SECONDS` | no | `3600` | How long a cached key set may be served after the key service fails. |
 | `HAWKI_BACKEND_AUTH_JWKS_TIMEOUT_SECONDS` | no | `3` | 1 to 30. Timeout of a key service request. |
-| `HAWKI_BACKEND_AUTH_JWKS_MAX_BYTES` | no | `524288` | Maximum size of a key set response, in bytes. |
 
 Two states are possible and only two:
 
@@ -107,10 +106,11 @@ this API or resource, not an OAuth client. There is no check on the token
 `typ`, so an ID token minted for the same audience by the same issuer would
 be accepted as an access token. Use a dedicated audience value.
 
-**Publish a new signing key before you use it.** The key set is cached and
-refreshes are throttled to at most one per `JWKS_MIN_REFRESH_SECONDS`. A
-token whose `kid` is not in the key set is refused until the next refresh, so
-publish the new key at least that long before issuing tokens with its `kid`.
+**Publish a new signing key before you use it.** The key set is cached, and
+a key id the cached set does not hold drives at most one refresh per
+`JWKS_MIN_REFRESH_SECONDS`. A token whose `kid` is not in the key set is
+refused until the next refresh, so publish the new key at least that long
+before issuing tokens with its `kid`.
 
 **Revoked keys stay usable until the cache turns over.** A key that the
 identity provider removed is still served from the cached key set until the
