@@ -1,0 +1,49 @@
+# Add after docker-compose.yml. Include .env.ollama for server settings.
+# Set the dataset embedding provider and query model registry in .env.
+x-ollama-client: &ollama_client
+    OLLAMA_API_URL: http://ollama:11434/api
+    OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-240}
+
+services:
+    ollama:
+        container_name: hawki_ollama
+        image: ollama/ollama:0.40.13
+        pull_policy: always
+        environment:
+            NVIDIA_VISIBLE_DEVICES: void
+            GPU_MIN_FREE_MB: ${GPU_MIN_FREE_MB:-4096}
+            HAWKI_RAG_OLLAMA_MODELS: ${HAWKI_RAG_OLLAMA_MODELS:-bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b}
+            OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
+        volumes:
+            - ollama:/root/.ollama
+            - type: bind
+              source: ./ollama/ollama-entrypoint.sh
+              target: /usr/local/bin/ollama-entrypoint.sh
+              read_only: true
+              bind:
+                  create_host_path: false
+        entrypoint: ["/usr/local/bin/ollama-entrypoint.sh"]
+        command: ["serve"]
+        restart: always
+        healthcheck:
+            test: ["CMD", "ollama", "list"]
+            interval: 30s
+            timeout: 10s
+            retries: 10
+            start_period: 30s
+
+    hawki_backend:
+        environment: *ollama_client
+        depends_on:
+            ollama:
+                condition: service_healthy
+
+    hawki-rag-indexer-worker:
+        environment: *ollama_client
+        depends_on:
+            ollama:
+                condition: service_healthy
+
+volumes:
+    # Keep the existing <project>_ollama model cache.
+    ollama:

@@ -1,0 +1,45 @@
+# Add after docker-compose.yml and include .env.litellm in Compose's env files.
+# Configure the deployed routes in ./litellm/litellm-config.yml.
+x-litellm-client: &litellm_client
+    LITELLM_API_URL: http://litellm:4000/v1
+    LITELLM_API_KEY: ${LITELLM_API_KEY:?Set the stateless LiteLLM gateway key}
+
+services:
+    litellm:
+        container_name: hawki_litellm
+        image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
+        pull_policy: always
+        env_file:
+            - path: .env.litellm
+              required: false
+        environment:
+            LITELLM_API_KEY: ${LITELLM_API_KEY:?Set the stateless LiteLLM gateway key}
+        command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+        volumes:
+            - type: bind
+              source: ./litellm/litellm-config.yml
+              target: /etc/litellm/config.yaml
+              read_only: true
+              bind:
+                  create_host_path: false
+        ports:
+            - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+        restart: always
+        healthcheck:
+            test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=3)"]
+            interval: 15s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+
+    hawki_backend:
+        environment: *litellm_client
+        depends_on:
+            litellm:
+                condition: service_healthy
+
+    hawki-rag-indexer-worker:
+        environment: *litellm_client
+        depends_on:
+            litellm:
+                condition: service_healthy

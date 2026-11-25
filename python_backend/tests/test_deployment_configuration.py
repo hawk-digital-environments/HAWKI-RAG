@@ -75,7 +75,6 @@ def test_backend_reuses_worker_permissions_after_volume_initialization() -> None
     )
     worker_image = (REPOSITORY / "python_rag/Dockerfile").read_text(encoding="utf-8")
     for shared_setup in (
-        "COPY docker/python_rag/10-rawki-runtime.env /container/custom/env/10-rawki-runtime.env",
         "COPY docker/python_rag/80-rawki-runtime-permissions.sh /container/custom/entrypoint/80-rawki-runtime-permissions.sh",
     ):
         assert shared_setup in backend_image

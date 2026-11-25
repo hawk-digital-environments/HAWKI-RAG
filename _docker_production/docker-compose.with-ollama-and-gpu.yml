@@ -1,0 +1,24 @@
+# Include after docker-compose.yml and docker-compose.with-ollama.yml.
+# Requires the NVIDIA Container Toolkit and the matching Python release's
+# CUDA images. The historical tag names correspond to TORCH_VARIANT=gpu.
+x-nvidia: &nvidia
+    resources:
+        reservations:
+            devices:
+                - driver: nvidia
+                  count: 1
+                  capabilities: [gpu]
+
+services:
+    hawki_rag_rerank:
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-gpu-${HAWKI_RAG_VERSION:?Set the Python production release version}
+        deploy: *nvidia
+
+    hawki-rag-indexer-worker:
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-gpu-${HAWKI_RAG_VERSION:?Set the Python production release version}
+        deploy: *nvidia
+
+    ollama:
+        environment:
+            NVIDIA_VISIBLE_DEVICES: all
+        deploy: *nvidia

@@ -1,0 +1,17 @@
+# Add after docker-compose.yml. Access the host loopback port as an operator
+# (for example through SSH forwarding). The UI can administer workflows.
+services:
+    temporal-ui:
+        container_name: temporal_ui
+        image: temporalio/ui:2.34.0
+        pull_policy: always
+        environment:
+            TEMPORAL_ADDRESS: temporal:7233
+            TEMPORAL_DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+            TEMPORAL_CORS_ORIGINS: ${TEMPORAL_UI_CORS_ORIGINS:-http://127.0.0.1:8081}
+        ports:
+            - "127.0.0.1:${TEMPORAL_UI_HOST_PORT:-8081}:8080"
+        depends_on:
+            temporal:
+                condition: service_healthy
+        restart: always

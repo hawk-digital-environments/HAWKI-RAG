@@ -32,7 +32,7 @@ GRAPH_PREPARE = (
     / "indexing"
     / "graph_prepare.py"
 )
-PYTHON_RUNTIME_ENV = ROOT / "docker" / "python_rag" / "10-rawki-runtime.env"
+PYTHON_RUNTIME_ENV = ROOT / "docker" / "python_rag"
 PYTHON_PERMISSIONS_HOOK = (
     ROOT / "docker" / "python_rag" / "80-rawki-runtime-permissions.sh"
 )

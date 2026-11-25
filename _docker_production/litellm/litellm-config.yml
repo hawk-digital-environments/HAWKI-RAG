@@ -1,0 +1,33 @@
+# Route names must match the backend query registry and dataset embedding models.
+# Edit these routes to match your gateway and set provider credentials in
+# .env.litellm. Model values include the upstream provider prefix (openai/..., etc.).
+model_list:
+    - model_name: hawki-gpt-chat
+      litellm_params:
+          model: os.environ/LITELLM_OPENAI_CHAT_MODEL
+          api_key: os.environ/OPENAI_API_KEY
+    - model_name: hawki-openai-embedding
+      litellm_params:
+          model: os.environ/LITELLM_OPENAI_EMBED_MODEL
+          api_key: os.environ/OPENAI_API_KEY
+    - model_name: hawki-gpt-vision
+      litellm_params:
+          model: os.environ/LITELLM_OPENAI_VISION_MODEL
+          api_key: os.environ/OPENAI_API_KEY
+    # For a route served by the optional in-stack Ollama service:
+    # - model_name: hawki-ollama-embedding
+    #   litellm_params:
+    #       model: ollama/bge-m3
+    #       api_base: http://ollama:11434
+    # For a hosted Claude model, set ANTHROPIC_API_KEY in .env.litellm:
+    # - model_name: hawki-claude-chat
+    #   litellm_params:
+    #       model: anthropic/<deployment-model>
+    #       api_key: os.environ/ANTHROPIC_API_KEY
+
+litellm_settings:
+    drop_params: true
+    request_timeout: 240
+
+general_settings:
+    master_key: os.environ/LITELLM_API_KEY
