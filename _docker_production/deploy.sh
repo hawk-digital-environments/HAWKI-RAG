@@ -11,14 +11,14 @@
 # after it (it requires the Ollama addon):
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml ./deploy.sh
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.with-ollama.yml:docker-compose.with-ollama-and-gpu.yml ./deploy.sh
-# Add the optional LiteLLM gateway or crawler with their Compose files.
+# Add the optional LiteLLM gateway or website scraper with its Compose file.
 
 # Env assembly: the core .env is always loaded; provider/addon fragments
-# (.env.ollama, .env.litellm, .env.scraper - copies of the matching
+# (.env.ollama, .env.litellm, and .env.scraper, copies of the matching
 # .env.*.example files) are picked up automatically when present, both for
 # ${...} interpolation here and for the services' env_file lists. Passing
 # them explicitly matters for values the COMPOSE FILES interpolate
-# (image tags like RAG_SCRAPER_IMAGE or LITELLM_PORT), which resolve
+# (such as LITELLM_PORT or RAG_SCRAPER_IMAGE), which resolve
 # from the project environment only.
 ENV_FILE_ARGS="--env-file .env"
 for fragment in .env.ollama .env.litellm .env.scraper; do

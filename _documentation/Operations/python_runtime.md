@@ -28,8 +28,21 @@ the JWT audience. Regenerate the local development backend settings with
 
 The deployment requires a service issuer and its public JWKS key ID, model and
 store configuration, signed callback credentials, and the shared artifact
-permissions. Enable URL ingestion only with a reviewed `permanent-job-v2`
-crawler. Preserve the Compose project name and existing volumes on upgrades.
+permissions. Preserve the Compose project name and existing volumes on upgrades.
+
+## Production crawler
+
+To run the optional website scraper, copy `_docker_production/.env.scraper.example`
+to `_docker_production/.env.scraper` and add `docker-compose.scraper.yml` after the
+base file in `COMPOSE_FILE`. The addon defaults to
+`digitalenvironments/hawki-rag-scraper:latest`. Set `RAG_SCRAPER_IMAGE` to a tag or
+digest your deployment can pull. The backend and Temporal scraper worker reach
+the container at `http://scraper` on a dedicated Docker network.
+
+Verify the image implements `permanent-job-v2` before setting
+`RAG_BACKEND_URL_INGESTION_ENABLED=true` in the base `.env`. For an external
+crawler, use the base Compose file and set `EXTERNAL_SCRAPER_URL` in `.env`.
+Either crawler needs access to the shared artifact storage.
 
 ## Local development
 

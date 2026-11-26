@@ -90,4 +90,3 @@ opencode.json
 # Reproducible local-only crawler source exported by prepare_local_crawler.py.
 /.local-runtime/
 !docker/crawler/browser-seccomp.json
-!/_docker_production/scraper/browser-seccomp.json

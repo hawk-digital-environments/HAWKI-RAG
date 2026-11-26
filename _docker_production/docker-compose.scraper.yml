@@ -1,69 +1,28 @@
-# Add after docker-compose.yml and include .env.scraper in Compose's env files.
-# Use a published permanent-job-v2 CustomCrawler image with Linux browser
-# isolation. The historical scraper image has no verified v2 contract.
+# Optional website scraper. Load after the base Compose file.
 services:
     scraper:
         container_name: hawki_rag_scraper
-        image: ${RAG_SCRAPER_IMAGE:?Set the published permanent-job-v2 crawler image reference}
+        image: ${RAG_SCRAPER_IMAGE:-digitalenvironments/hawki-rag-scraper:latest}
         pull_policy: always
-        init: true
-        user: "${PUID:-33}:${PGID:-33}"
-        # The backend entrypoint prepares the root of a new shared volume.
-        # Once it has started, wait for the non-root crawler to have access.
-        depends_on:
-            rag_backend:
-                condition: service_started
-        entrypoint:
-            - /bin/sh
-            - -ec
-            - |
-                if [ "$$(id -u)" -eq 0 ]; then
-                    echo "Crawler runtime requires a non-root PUID." >&2
-                    exit 1
-                fi
-                attempt=0
-                until [ -r /shared ] && [ -w /shared ] && [ -x /shared ]; do
-                    if [ "$$attempt" -ge 60 ]; then
-                        echo "Crawler runtime cannot access /shared as its configured UID/GID." >&2
-                        exit 1
-                    fi
-                    attempt=$$((attempt + 1))
-                    sleep 1
-                done
-                exec python -m uvicorn "$$@"
-            - crawler
-        command: ["hawki_crawler.app.main:app", "--host=0.0.0.0", "--port=8080", "--workers=1"]
         env_file:
-            - ./env/crawler.env
+            - ./env/website-scraper.env
         volumes:
-            - shared_storage:/shared
-        security_opt:
-            - seccomp=./scraper/browser-seccomp.json
+            - profiles_storage:/var/www/html/profiles
+            - tasks_storage:/var/www/html/tasks
+            - output_storage:/var/www/html/output
+            - ./scraper/forbidden_urls.txt:/var/www/html/forbidden_urls.txt:ro
+            - shared_storage:/var/www/html/shared
         shm_size: 1gb
         networks:
             - crawler
         restart: always
         stop_grace_period: 60s
         healthcheck:
-            test:
-                - CMD
-                - python
-                - -c
-                - |
-                    import json
-                    import urllib.request
-
-                    base = 'http://127.0.0.1:8080'
-                    with urllib.request.urlopen(base + '/health', timeout=3) as response:
-                        if json.load(response).get('status') != 'healthy':
-                            raise SystemExit(1)
-                    with urllib.request.urlopen(base + '/openapi.json', timeout=3) as response:
-                        if json.load(response).get('x-hawki-crawler-contract') != 'permanent-job-v2':
-                            raise SystemExit(1)
-            interval: 15s
-            timeout: 8s
-            retries: 10
-            start_period: 30s
+            test: ["CMD", "curl", "-fsS", "http://127.0.0.1/80/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
         deploy:
             resources:
                 limits:
@@ -79,24 +38,22 @@ services:
 
     rag_backend:
         env_file:
-            - ./env/crawler-backend.env
+            - ./env/website-scraper-client.env
         networks:
             - default
             - crawler
-        # Backend readiness probes the full crawler contract once the crawler
-        # starts. A Compose health dependency here would block volume setup.
 
     hawki-rag-temporal-scraper-worker:
         env_file:
-            - ./env/crawler-worker.env
+            - ./env/website-scraper-client.env
         networks:
             - default
             - crawler
-        depends_on:
-            scraper:
-                condition: service_healthy
+
+volumes:
+    profiles_storage:
+    tasks_storage:
+    output_storage:
 
 networks:
-    # The browser runtime needs egress. Only its Python clients share this
-    # network; databases and reverse proxies stay off it.
     crawler:
