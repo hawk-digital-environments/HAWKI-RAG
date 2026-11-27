@@ -1,22 +1,21 @@
 """Only a verified terminal, sealed and drained crawler receipt permits retirement."""
 
 from datetime import datetime, timezone
-from urllib.parse import quote
 
-import httpx
 from pydantic import ValidationError
 from hawki_rag_contracts.pipeline.crawler import CrawlerReceipt
 
+from .crawler import ExternalCrawlerBoundary
 from .errors import UrlIngestionError
 from .repository import UrlRepository
 
 
 class ExternalJobQuiescence:
-    def __init__(self, repository: UrlRepository, *, client_factory=httpx.Client):
+    def __init__(self, repository: UrlRepository, crawler: ExternalCrawlerBoundary):
         self.repository = repository
-        self.client_factory = client_factory
+        self.crawler = crawler
 
-    def ensure(self, generation: dict) -> None:
+    async def ensure(self, generation: dict) -> None:
         operation_id = generation["url_ingestion_operation_id"]
         state = self.repository.generation(operation_id)["external_job"]
         wire = generation["workflow_input"]
@@ -48,48 +47,47 @@ class ExternalJobQuiescence:
         except (ValidationError, ValueError):
             # Old receipts without seal/ownership evidence must be reconciled.
             pass
-        services = wire["external_services"]
-        base = services["scraper_url"].rstrip("/")
-        headers = (
-            {"Authorization": "Bearer " + services["scraper_token"]}
-            if services.get("scraper_token")
-            else {}
-        )
+        scope = {
+            key: wire[key]
+            for key in (
+                "owner",
+                "job_id",
+                "dataset_id",
+                "task_id",
+                "source_id",
+                "source_url",
+                "generation",
+                "url_ingestion_operation_id",
+                "storage",
+                "raw_output_path",
+            )
+        }
+        scope["metadata"] = {
+            "scraper_configuration": wire.get("metadata", {}).get(
+                "scraper_configuration", {}
+            )
+        }
+        if wire.get("external_services"):
+            scope["external_services"] = wire["external_services"]
         try:
-            with self.client_factory(
-                timeout=5, follow_redirects=False, trust_env=False, headers=headers
-            ) as client:
-                response = client.get(base + "/status/" + quote(job_id, safe=""))
-                response.raise_for_status()
-                if accept(response.json()):
-                    return
-                if not state.get("cancel_requested_at"):
-                    self.repository.record_external_job(
-                        operation_id,
-                        {
-                            "job_id": job_id,
-                            "cancel_requested_at": datetime.now(
-                                timezone.utc
-                            ).isoformat(),
-                            "cancellation_state": "requested",
-                        },
-                    )
-                cancelled = client.post(
-                    base + "/jobs/" + quote(job_id, safe="") + "/cancel"
-                )
-                cancelled.raise_for_status()
-                # The cancellation endpoint returns the durable receipt, not
-                # permission to clean merely because cancellation was accepted.
-                if accept(cancelled.json()):
-                    return
+            if accept(await self.crawler.run("status", scope)):
+                return
+            if not state.get("cancel_requested_at"):
                 self.repository.record_external_job(
                     operation_id,
                     {
                         "job_id": job_id,
-                        "cancellation_state": "acknowledged",
+                        "cancel_requested_at": datetime.now(timezone.utc).isoformat(),
+                        "cancellation_state": "requested",
                     },
                 )
-        except (httpx.HTTPError, ValueError, TypeError):
+            if accept(await self.crawler.run("cancel", scope)):
+                return
+            self.repository.record_external_job(
+                operation_id,
+                {"job_id": job_id, "cancellation_state": "acknowledged"},
+            )
+        except (UrlIngestionError, ValueError, TypeError):
             self.repository.record_external_job(
                 operation_id,
                 {

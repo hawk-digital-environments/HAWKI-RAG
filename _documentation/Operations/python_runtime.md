@@ -30,25 +30,19 @@ The deployment requires a service issuer and its public JWKS key ID, model and
 store configuration, signed callback credentials, and the shared artifact
 permissions. Preserve the Compose project name and existing volumes on upgrades.
 
-## Production crawler
+## External crawler
 
-To run the optional website scraper, copy `_docker_production/.env.scraper.example`
-to `_docker_production/.env.scraper` and add `docker-compose.scraper.yml` after the
-base file in `COMPOSE_FILE`. The addon defaults to
-`digitalenvironments/hawki-rag-scraper:latest`. Set `RAG_SCRAPER_IMAGE` to a tag or
-digest your deployment can pull. The backend and Temporal scraper worker reach
-the container at `http://scraper` on a dedicated Docker network.
-
-Verify the image implements `permanent-job-v2` before setting
-`RAG_BACKEND_URL_INGESTION_ENABLED=true` in the base `.env`. For an external
-crawler, use the base Compose file and set `EXTERNAL_SCRAPER_URL` in `.env`.
-Either crawler needs access to the shared artifact storage.
+Production can run the published HAWKI-RAG scraper image with the optional
+`docker-compose.scraper.yml` addon. The Temporal scraper worker reaches it at
+`http://scraper` on a private Docker network. To use a separately deployed
+crawler, configure its endpoint on the worker. Use the
+[scraper worker setup](crawler_v2_local_upgrade.md) for deployment, shared
+storage, and URL ingestion readiness.
 
 ## Local development
 
 The base Compose builds the Python services. The local overlay supplies a
-development HTTPS issuer, a pinned crawler, and dedicated Temporal queues.
-Prepare the crawler per [its guide](crawler_v2_local_upgrade.md), then run
+development HTTPS issuer and dedicated Temporal queues. Run
 `python_backend/.venv/bin/python scripts/provision_local_api.py` with a local
 Docker context and a configured root environment. The script creates ignored
 service issuer material and a backend-only settings file in `.secrets/local-api/`.
@@ -70,7 +64,7 @@ Both `make up-core` and `make up-core-local` serve REST and
 private Docker network. Clients on that network use `http://rag_backend/v1` for
 REST and `http://rag_backend/mcp` for MCP.
 
-The graph and URL smoke tools and ingestion benchmarks accept an explicit
+The graph smoke tool and ingestion benchmarks accept an explicit
 `RAWKI_API_BASE_URL` ending in `/v1` and a short-lived service JWT via
 `RAWKI_API_TOKEN_FILE`. Run them from a trusted client that can reach the
 backend. Use a service with the required query, ingestion and management scopes.

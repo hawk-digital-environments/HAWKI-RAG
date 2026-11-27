@@ -15,7 +15,6 @@ from urllib.parse import urlsplit
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from .errors import UrlIngestionError
-from .crawler import ExternalCrawlerBoundary as ExternalCrawlerBoundary
 from .identity import normalize_url
 
 

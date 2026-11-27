@@ -93,7 +93,11 @@ def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract()
         assert "stop_grace_period: 15s" in service
         assert "hawki_rag_app:" not in service
         assert "rag_backend:" in service
-        assert "condition: service_healthy" in service
+        # URL readiness itself depends on the scraper worker polling Temporal.
+        backend_condition = (
+            "service_started" if name == "scraper_worker" else "service_healthy"
+        )
+        assert f"rag_backend:\n        condition: {backend_condition}" in service
         assert '  - "${PGID}"' in service
 
 

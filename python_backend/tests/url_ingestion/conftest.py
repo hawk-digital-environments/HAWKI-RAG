@@ -74,11 +74,11 @@ def configure(engine, root):
             {"ollama": ProviderModels("chat", "vision")},
         ),
         control=control,
-        settings=UrlIngestionSettings(True, "http://scraper.test", str(root)),
+        settings=UrlIngestionSettings(enabled=True, shared_root=str(root)),
         cleanup=Mock(),
         safety=UrlSafetyValidator(lambda host, port: ("93.184.215.14",)),
-        crawler=Mock(),
-        quiescence=Mock(),
+        crawler=Mock(require_contract=AsyncMock(return_value="a" * 64)),
+        quiescence=Mock(ensure=AsyncMock()),
         neo4j_database="historic_database",
     )
     authenticator = Mock(authenticate=Mock(return_value=principal))

@@ -357,29 +357,24 @@ async def readiness(request: Request) -> JSONResponse:
     instance = getattr(request.app.state, "url_ingestion_service", None)
     compatible = False
     healthy = None
-    if instance is not None:
-        from .crawler import ExternalCrawlerBoundary
-
-        if isinstance(instance.crawler, ExternalCrawlerBoundary):
-            try:
-                await run_in_threadpool(instance.crawler.require_safe_fetch, [])
-                compatible = True
-                healthy = True
-            except UrlIngestionError:
-                healthy = False
+    configured = instance is not None and instance.control is not None
+    enabled = instance is not None and instance.settings.enabled
+    if enabled and configured:
+        try:
+            await instance.crawler.require_contract()
+            compatible = True
+            healthy = True
+        except UrlIngestionError:
+            healthy = False
     return JSONResponse(
         content={
-            "enabled": instance is not None and instance.settings.enabled,
-            "scraper_configured": instance is not None
-            and bool(instance.settings.scraper_url),
-            "workflow_control_configured": instance is not None
-            and instance.control is not None,
+            "enabled": enabled,
+            "scraper_configured": enabled and configured,
+            "workflow_control_configured": configured,
             "scraper_healthy": healthy,
             "safe_fetch_supported": compatible,
             "required_crawler_contract": CRAWLER_CONTRACT,
             "schedule_generations_supported": True,
-            "ready": compatible
-            and instance.settings.enabled
-            and instance.control is not None,
+            "ready": compatible,
         }
     )

@@ -36,13 +36,7 @@ services:
                 max-size: "128m"
                 max-file: "3"
 
-    rag_backend:
-        env_file:
-            - ./env/website-scraper-client.env
-        networks:
-            - default
-            - crawler
-
+    # Only the Temporal scraper worker needs access to the crawler network.
     hawki-rag-temporal-scraper-worker:
         env_file:
             - ./env/website-scraper-client.env

@@ -2,7 +2,7 @@
 
 Run deterministic workspace tests using the [testing guide](../../_documentation/Developer/testing.md). PostgreSQL, provider and store integration tests require their explicit isolated configuration; do not point them at retained production/history data.
 
-Live acceptance uses the configured Python service boundary and disposable datasets: managed/text/graph smoke, URL smoke with its isolated fixture overlay, and separate read-only cleanup audits. Service credentials stay server-side. See [deployment](../../_documentation/Operations/python_runtime.md) and [crawler operations](../../docker/crawler/README.md).
+Live acceptance uses the configured Python service boundary and disposable datasets. URL ingestion requires a configured external crawler and the scraper worker. Service credentials stay server-side. See [deployment](../../_documentation/Operations/python_runtime.md) and [external crawler setup](../../_documentation/Operations/crawler_v2_local_upgrade.md).
 
 ## Service API text E2E
 

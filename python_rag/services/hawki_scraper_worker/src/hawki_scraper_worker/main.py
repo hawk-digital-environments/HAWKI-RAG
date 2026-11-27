@@ -11,6 +11,8 @@ from hawki_worker_runtime.logging import configure_logging
 from hawki_worker_runtime.temporal import create_activity_executor
 
 from hawki_scraper_worker.activities import scrape_source
+from hawki_scraper_worker.activities.crawler import crawler_control
+from hawki_scraper_worker.crawler_workflow import CrawlerControlWorkflow
 from hawki_scraper_worker.settings import ScraperWorkerSettings
 
 
@@ -29,7 +31,8 @@ async def run_worker(settings: ScraperWorkerSettings | None = None) -> None:
         worker = Worker(
             client,
             task_queue=resolved.task_queue,
-            activities=[scrape_source],
+            workflows=[CrawlerControlWorkflow],
+            activities=[scrape_source, crawler_control],
             activity_executor=activity_executor,
         )
         await worker.run()

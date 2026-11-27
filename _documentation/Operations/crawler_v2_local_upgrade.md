@@ -1,9 +1,51 @@
-# Local permanent-job-v2 crawler
+# External crawler setup
 
-The local crawler uses pinned CustomCrawler revision `1c327244fed3b6f99ad08ad9203814942bc10f26` plus the tracked protocol patch. Its API genuinely implements durable admission, ownership fingerprints, typed lifecycle receipts, cancellation/drainage and protected transport.
+HAWKI-RAG sends crawler requests through its Temporal scraper worker. FastAPI
+uses the scraper queue to check readiness and fetch saved profiles or job
+receipts. The ingestion workflow uses the same queue for scraping.
+The scraper worker calls the external crawler over HTTP and reports ingestion
+progress back to FastAPI.
 
-See `docker/crawler/README.md` in the repository for reproducible source preparation, images, seccomp, non-root execution, lifecycle tests and disposable URL acceptance.
+## Configure the worker
 
-The backend and local workers use `http://rawki-local-crawler:8080` on Docker networks. No crawler host port or elevated runtime capability is required. Readiness performs the full `crawler_contract` check; URL ingestion remains enabled and fails closed when the contract is unavailable.
+### Optional production addon
 
-The local API does not include a saved-profile/task UI. An empty optional catalog is distinct from failed execution readiness. Historical archived records keep their identity/root reservations and cannot be sealed or adopted as new work. Preserve original artifacts and the offline archive sidecar.
+From `_docker_production`, copy `.env.scraper.example` to `.env.scraper` and
+include the addon after the base Compose file.
+
+```sh
+COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml ./deploy.sh
+```
+
+The addon uses `digitalenvironments/hawki-rag-scraper:latest` by default and
+shares the artifact volume with the worker. Set `RAG_SCRAPER_IMAGE` to select
+a specific image tag or digest. The scraper publishes no host port. If a
+reverse proxy on the crawler network serves its UI, set `ORIGIN` in
+`.env.scraper` to the public URL. Enable `RAG_BACKEND_URL_INGESTION_ENABLED=true`
+in `.env` for an image that implements `permanent-job-v2`, then check readiness.
+
+### Separately deployed crawler
+
+1. Deploy a crawler that advertises and implements `permanent-job-v2`. Give it
+   access to the same shared artifact storage as the scraper and converter
+   workers. Make the crawler endpoint reachable from the scraper worker.
+2. For repository builds, copy `.env.scraper-worker.example` to
+   `.env.scraper-worker` and set `EXTERNAL_SCRAPER_URL` and, if required,
+   `EXTERNAL_SCRAPER_TOKEN`. For production, set those values in
+   `_docker_production/.env`. Its Compose configuration passes them to the
+   scraper worker.
+3. Set `RAG_BACKEND_URL_INGESTION_ENABLED=true` in the project `.env` and start
+   the stack with a matching backend and scraper worker release. Both services
+   must use the same scraper task queue.
+4. Check `/internal/url-ingestion/readiness` from the private network or run
+   `python -m hawki_backend.readiness --live` in the backend. A failed
+   `crawler_contract` check blocks URL admission.
+
+The saved profile and task catalog is optional. If the default profile route
+is absent and crawler readiness passes, the catalog returns an empty list.
+The external crawler owns browser configuration and lifecycle.
+
+Existing URL generations retain their original crawler identity. Keep the
+original endpoint available while those jobs drain. Retirement and cleanup
+require a verified receipt for the exact job and generation. Preserve archived
+crawler evidence and its identity and artifact reservations.

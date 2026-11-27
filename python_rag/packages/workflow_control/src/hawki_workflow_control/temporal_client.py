@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 import logging
 from typing import Any
+from uuid import uuid4
 
 from temporalio.client import (
     Client,
@@ -34,6 +35,7 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_workflow_control.settings import WorkflowControlSettings
 from hawki_rag_contracts.pipeline.temporal import (
+    CRAWLER_CONTROL_WORKFLOW,
     INGEST_TEXT_WORKFLOW,
     URL_DISPATCH_PROTOCOL_MEMO,
     URL_TERMINAL_ACK_SIGNAL,
@@ -90,6 +92,22 @@ class TemporalControlClient:
 
     def __init__(self, settings: WorkflowControlSettings) -> None:
         self.settings = settings
+
+    async def crawler_operation(self, action: str, scope: dict | None) -> dict:
+        """Send a bounded request to the Temporal scraper worker."""
+        try:
+            async with asyncio.timeout(12):
+                client = await self.connect_temporal()
+                return await client.execute_workflow(
+                    CRAWLER_CONTROL_WORKFLOW,
+                    args=[action, scope],
+                    id=f"crawler-control-{uuid4().hex}",
+                    task_queue=self.settings.scraper_task_queue,
+                    execution_timeout=timedelta(seconds=11),
+                    result_type=dict,
+                )
+        except (RPCError, TimeoutError, WorkflowFailureError):
+            raise TemporalUnavailable() from None
 
     async def health(self) -> None:
         """Describe the configured namespace without starting or changing work."""

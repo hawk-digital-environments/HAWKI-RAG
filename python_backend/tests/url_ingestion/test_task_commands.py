@@ -112,10 +112,10 @@ def test_cancel_remote_crash_reconciles_same_crawler_job_and_intent(env, window)
     crash = True
     calls = []
 
-    def respond(req):
+    def respond(action, scope):
         nonlocal cancelled, crash
-        calls.append((req.method, req.url.path))
-        if req.method == "POST":
+        calls.append((action, scope["job_id"]))
+        if action == "cancel":
             cancelled = True
             if window == "after_cancel" and crash:
                 crash = False
@@ -123,9 +123,7 @@ def test_cancel_remote_crash_reconciles_same_crawler_job_and_intent(env, window)
         if window == "before_confirmation" and cancelled and crash:
             crash = False
             raise ProcessStopped()
-        return httpx.Response(
-            200, json=receipt(old, "cancelled" if cancelled else "running", cancelled)
-        )
+        return receipt(old, "cancelled" if cancelled else "running", cancelled)
 
     env.service.quiescence = boundary(env, respond)
     with pytest.raises(ProcessStopped):
@@ -138,8 +136,8 @@ def test_cancel_remote_crash_reconciles_same_crawler_job_and_intent(env, window)
     after = env.repository.generation(old["url_ingestion_operation_id"])["external_job"]
     assert after["cancel_requested_at"] == before["cancel_requested_at"]
     assert after["terminal_evidence"]["quiescent"]
-    assert sum(method == "POST" for method, _ in calls) == 1
-    assert all(old["job_id"] in path for _, path in calls)
+    assert sum(action == "cancel" for action, _ in calls) == 1
+    assert {job_id for _, job_id in calls} == {old["job_id"]}
 
 
 def test_cancel_blocks_stale_writer_publication_until_writer_release(env):
@@ -423,10 +421,8 @@ def test_failed_generation_cancel_requires_remote_and_writer_drainage(
     )
     drained = False
 
-    def remote(req):
-        return httpx.Response(
-            200, json=receipt(old, "cancelled" if drained else "running", drained)
-        )
+    def remote(action, scope):
+        return receipt(old, "cancelled" if drained else "running", drained)
 
     env.service.quiescence = boundary(env, remote)
     with pytest.raises(UrlIngestionError) as caught:
@@ -456,9 +452,7 @@ def test_cancel_failed_already_quiescent_generation(env):
             "status": "FAILED",
         },
     )
-    env.service.quiescence = boundary(
-        env, lambda req: httpx.Response(200, json=receipt(old))
-    )
+    env.service.quiescence = boundary(env, lambda action, scope: receipt(old))
     assert command(env, task["task_id"])[0] == 200
     env.service.cleanup.delete.assert_not_called()
 

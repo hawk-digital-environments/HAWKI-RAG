@@ -52,7 +52,7 @@ OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
 FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
-# Sibling file-converter checkout; the crawler is pinned in the local overlay.
+# Sibling file-converter checkout.
 FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
 FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
 
@@ -103,7 +103,7 @@ COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) \
 .PHONY: pull-models logs-core
 .PHONY: down-core down-rag restart-core teardown
 .PHONY: neo4j-fresh
-.PHONY: up-crawler-tool down-crawler-tool up-file-converter-tool down-file-converter-tool
+.PHONY: up-file-converter-tool down-file-converter-tool
 .PHONY: up-tools down-tools
 
 ##@ General
@@ -207,7 +207,7 @@ up-core: _up-core ## Start the private stack using ENV_FILE.
 up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Python local development using $(ENV_FILE).
-up-core-local: _up-core ## Start the stack with a local service issuer and crawler.
+up-core-local: _up-core ## Start the stack with a local service issuer.
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
@@ -364,18 +364,10 @@ teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
 	echo "Teardown complete. Recreate everything with: make up-core"
 
 # ==============================================================================
-# External crawler and file-converter tools
+# External file-converter tool
 # ==============================================================================
 
 ##@ External tools
-
-up-crawler-tool: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-up-crawler-tool: network ## Start the pinned permanent-job-v2 local crawler.
-	@$(COMPOSE_CMD) up -d --build --no-deps rawki_local_crawler
-
-down-crawler-tool: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-down-crawler-tool: ## Stop the local crawler without removing its persisted evidence.
-	@$(COMPOSE_CMD) stop rawki_local_crawler
 
 up-file-converter-tool: network ## Start the sibling file-converter container (health on port 8004).
 	@set -e; \
@@ -403,8 +395,8 @@ down-file-converter-tool: ## Stop the sibling file-converter container.
 	@cd "$(FILE_CONVERTER_DIR)" && \
 		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
 
-up-tools: up-crawler-tool up-file-converter-tool ## Start the local crawler and converter.
-down-tools: down-crawler-tool down-file-converter-tool ## Stop the local crawler and converter.
+up-tools: up-file-converter-tool ## Start the local converter.
+down-tools: down-file-converter-tool ## Stop the local converter.
 
 # ==============================================================================
 # Destructive data maintenance

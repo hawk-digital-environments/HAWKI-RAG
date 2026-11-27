@@ -282,14 +282,13 @@ def _storage(env: Mapping[str, str]) -> None:
 
 
 def _crawler(env: Mapping[str, str]) -> None:
+    from hawki_workflow_control.settings import load_settings
+    from hawki_workflow_control.temporal_client import TemporalControlClient
+
     from .url_ingestion.crawler import ExternalCrawlerBoundary
 
-    from .url_ingestion.settings import load_url_ingestion_settings
-
-    settings = load_url_ingestion_settings(env)
-    ExternalCrawlerBoundary(
-        settings.scraper_url, settings.scraper_token
-    ).require_safe_fetch([])
+    crawler = ExternalCrawlerBoundary(TemporalControlClient(load_settings(env)))
+    asyncio.run(crawler.require_contract())
 
 
 def _jwks(env: Mapping[str, str]) -> None:

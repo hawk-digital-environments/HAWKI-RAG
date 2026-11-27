@@ -11,6 +11,7 @@ node_modules/
 .env
 .env.backup
 .env.production
+/.env.scraper-worker
 /_docker_production/.env.*
 !/_docker_production/.env.*.example
 /auth.json
@@ -87,6 +88,5 @@ refacor_code*.md
 opencode.json
 .opencode/
 
-# Reproducible local-only crawler source exported by prepare_local_crawler.py.
+# Local runtime caches from earlier deployments.
 /.local-runtime/
-!docker/crawler/browser-seccomp.json

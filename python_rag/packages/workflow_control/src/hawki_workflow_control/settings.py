@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from hawki_rag_contracts.pipeline.temporal import (
     INGEST_SOURCE_WORKFLOW,
+    SCRAPER_TASK_QUEUE,
     WORKFLOW_TASK_QUEUE,
 )
 
@@ -19,6 +20,7 @@ class WorkflowControlSettings:
     workflow_execution_timeout_seconds: int = 172800
     workflow_run_timeout_seconds: int = 86400
     workflow_task_timeout_seconds: int = 30
+    scraper_task_queue: str = SCRAPER_TASK_QUEUE
 
     @property
     def workflow_execution_timeout(self) -> timedelta:
@@ -49,6 +51,8 @@ def load_settings(env=None) -> WorkflowControlSettings:
         workflow_task_queue=source.get(
             "TEMPORAL_RAG_WORKFLOW_TASK_QUEUE", WORKFLOW_TASK_QUEUE
         ),
+        scraper_task_queue=source.get("TEMPORAL_RAG_SCRAPER_TASK_QUEUE", "").strip()
+        or SCRAPER_TASK_QUEUE,
         workflow_execution_timeout_seconds=int(
             source.get("TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT", "172800")
         ),

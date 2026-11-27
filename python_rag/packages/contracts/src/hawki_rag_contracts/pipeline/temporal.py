@@ -9,6 +9,8 @@ from enum import StrEnum
 INGEST_SOURCE_WORKFLOW = "IngestSourceWorkflow"
 INGEST_TEXT_WORKFLOW = "IngestTextWorkflow"
 SCRAPE_SOURCE_ACTIVITY = "scrape_source"
+CRAWLER_CONTROL_WORKFLOW = "CrawlerControlWorkflow"
+CRAWLER_CONTROL_ACTIVITY = "crawler_control"
 CONVERT_FILES_ACTIVITY = "inspect_and_convert_files"
 INDEX_MARKDOWN_ACTIVITY = "ingest_markdown_files"
 MARK_SOURCE_READY_ACTIVITY = "mark_source_ready"
@@ -80,6 +82,8 @@ __all__ = [
     "ActivityQueueRole",
     "CONVERTER_TASK_QUEUE",
     "CONVERT_FILES_ACTIVITY",
+    "CRAWLER_CONTROL_ACTIVITY",
+    "CRAWLER_CONTROL_WORKFLOW",
     "INDEXER_TASK_QUEUE",
     "INDEXER_QUEUE_PATCH_ID",
     "INDEXER_TERMINAL_CALLBACK_PATCH_ID",

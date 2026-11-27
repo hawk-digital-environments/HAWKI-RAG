@@ -13,5 +13,5 @@ make test-rag
 
 `make up-core` starts the headless stack using the configured issuer.
 `make up-core-local` uses the explicit local API overlay with a development
-issuer and a reviewed crawler. Apply schema migrations and provision runtime
+issuer. Apply schema migrations and provision runtime
 grants before startup.

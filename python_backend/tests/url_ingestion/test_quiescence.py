@@ -1,10 +1,12 @@
 import asyncio
 
-import httpx
+from unittest.mock import AsyncMock
 import pytest
 
+from hawki_backend.url_ingestion.crawler import ExternalCrawlerBoundary
 from hawki_backend.url_ingestion.errors import UrlIngestionError
 from hawki_backend.url_ingestion.quiescence import ExternalJobQuiescence
+from hawki_workflow_control.temporal_client import TemporalUnavailable
 
 from .conftest import create
 from .test_lifecycle import generation
@@ -42,12 +44,8 @@ def receipt(old, status="completed", sealed=True, **changes):
 
 
 def boundary(env, handler):
-    return ExternalJobQuiescence(
-        env.repository,
-        client_factory=lambda **kwargs: httpx.Client(
-            transport=httpx.MockTransport(handler), **kwargs
-        ),
-    )
+    env.port.crawler_operation = AsyncMock(side_effect=handler)
+    return ExternalJobQuiescence(env.repository, ExternalCrawlerBoundary(env.port))
 
 
 @pytest.mark.parametrize(
@@ -57,9 +55,9 @@ def test_workflow_closed_does_not_prove_remote_drainage(env, status):
     old = generation(env, create(env))
     calls = []
 
-    def respond(request):
-        calls.append(request.method)
-        return httpx.Response(200, json=receipt(old, status, False))
+    def respond(action, scope):
+        calls.append(action)
+        return receipt(old, status, False)
 
     env.service.quiescence = boundary(env, respond)
     for _ in range(2):
@@ -75,7 +73,7 @@ def test_workflow_closed_does_not_prove_remote_drainage(env, status):
             "external_job"
         ]
         assert state["cancel_requested_at"] is not None
-        assert calls == ["GET", "POST", "GET", "POST"]
+        assert calls == ["status", "cancel", "status", "cancel"]
 
 
 @pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
@@ -83,10 +81,7 @@ def test_verified_terminal_remote_receipt_allows_cleanup_and_is_durable(env, sta
     old = generation(env, create(env))
     env.service.quiescence = boundary(
         env,
-        lambda request: httpx.Response(
-            200,
-            json=receipt(old, status),
-        ),
+        lambda action, scope: receipt(old, status),
     )
     asyncio.run(env.service.delete(env.principal, old["source_id"], None))
     env.service.cleanup.delete.assert_called_once()
@@ -103,18 +98,15 @@ def test_unverified_remote_state_blocks_all_cleanup_and_successor_dispatch(
 ):
     old = generation(env, create(env))
 
-    def respond(request):
-        if failure == "unreachable":
-            raise httpx.ConnectError("offline")
-        return httpx.Response(
-            404 if failure == "not_found" else 200,
-            json={
-                "job_id": "other" if failure == "wrong_job" else old["job_id"],
-                "status": "running",
-                "quiescent": True,
-                "writer_admission_closed": True,
-            },
-        )
+    def respond(action, scope):
+        if failure in {"unreachable", "not_found"}:
+            raise TemporalUnavailable()
+        return {
+            "job_id": "other" if failure == "wrong_job" else old["job_id"],
+            "status": "running",
+            "quiescent": True,
+            "writer_admission_closed": True,
+        }
 
     env.service.quiescence = boundary(env, respond)
     with pytest.raises(UrlIngestionError):
@@ -143,10 +135,11 @@ def test_terminal_receipt_without_restart_fence_never_allows_cleanup(env):
     old = generation(env, create(env))
     env.service.quiescence = boundary(
         env,
-        lambda request: httpx.Response(
-            200,
-            json={"job_id": old["job_id"], "status": "completed", "quiescent": True},
-        ),
+        lambda action, scope: {
+            "job_id": old["job_id"],
+            "status": "completed",
+            "quiescent": True,
+        },
     )
     with pytest.raises(UrlIngestionError):
         asyncio.run(env.service.delete(env.principal, old["source_id"], None))
@@ -163,12 +156,9 @@ def test_retry_after_remote_drainage_reuses_fence_job_and_cancellation_intent(en
     terminal = False
     seen = []
 
-    def respond(request):
-        seen.append(str(request.url))
-        return httpx.Response(
-            200,
-            json=receipt(old, "cancelled" if terminal else "running", terminal),
-        )
+    def respond(action, scope):
+        seen.append(scope["job_id"])
+        return receipt(old, "cancelled" if terminal else "running", terminal)
 
     env.service.quiescence = boundary(env, respond)
     with pytest.raises(UrlIngestionError):
@@ -185,5 +175,5 @@ def test_retry_after_remote_drainage_reuses_fence_job_and_cancellation_intent(en
     assert before["cancel_requested_at"] == after["cancel_requested_at"]
     assert after["quiescent"] is True
     assert env.repository.source("default", old["source_id"])["generation"] == 2
-    assert all(old["job_id"] in url for url in seen)
+    assert set(seen) == {old["job_id"]}
     env.service.cleanup.delete.assert_called_once()

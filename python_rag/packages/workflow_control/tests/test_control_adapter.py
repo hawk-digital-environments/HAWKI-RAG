@@ -9,11 +9,29 @@ import pytest
 from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
-from hawki_workflow_control.settings import WorkflowControlSettings
+from hawki_workflow_control.settings import WorkflowControlSettings, load_settings
 from hawki_workflow_control.temporal_client import (
     TemporalControlClient,
     WorkflowOwnershipConflict,
 )
+
+
+def test_crawler_control_targets_the_configured_scraper_queue():
+    settings = load_settings({"TEMPORAL_RAG_SCRAPER_TASK_QUEUE": "scraper-test"})
+    adapter = TemporalControlClient(settings)
+    sdk = SimpleNamespace(
+        execute_workflow=AsyncMock(return_value={"endpoint_id": "id"})
+    )
+    adapter.connect_temporal = AsyncMock(return_value=sdk)
+
+    assert asyncio.run(adapter.crawler_operation("probe", None)) == {
+        "endpoint_id": "id"
+    }
+    assert sdk.execute_workflow.call_args.args == ("CrawlerControlWorkflow",)
+    options = sdk.execute_workflow.call_args.kwargs
+    assert options["args"] == ["probe", None]
+    assert options["task_queue"] == "scraper-test"
+    assert options["execution_timeout"] == timedelta(seconds=11)
 
 
 @pytest.mark.parametrize(

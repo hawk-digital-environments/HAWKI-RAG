@@ -1,61 +1,45 @@
 import asyncio
 
-import httpx
+from unittest.mock import AsyncMock
+
 import pytest
 
 from hawki_backend.url_ingestion.crawler import ExternalCrawlerBoundary
 from hawki_backend.url_ingestion.errors import UrlIngestionError
+from hawki_workflow_control.temporal_client import TemporalUnavailable
 
-from .crawler_fixtures import api_schema
 from .conftest import create
 from .test_lifecycle import generation, writer
 from .test_quiescence import receipt, boundary
 
 
-def configured(env, handler):
-    env.service.crawler = ExternalCrawlerBoundary(
-        "http://crawler.test",
-        client_factory=lambda **kw: httpx.Client(
-            transport=httpx.MockTransport(handler), **kw
-        ),
-    )
-
-
-@pytest.mark.parametrize("mode", ["unavailable", "legacy", "redirect"])
-def test_incompatible_crawler_never_claims_or_dispatches(env, mode):
-    def handler(request):
-        if mode == "unavailable":
-            raise httpx.ConnectError("offline")
-        return httpx.Response(302 if mode == "redirect" else 200, json={"paths": {}})
-
-    configured(env, handler)
+@pytest.mark.parametrize("result", [None, {}, {"endpoint_id": "bad"}])
+def test_unavailable_or_invalid_worker_probe_never_claims_or_dispatches(env, result):
+    env.port.crawler_operation = AsyncMock(return_value=result)
+    if result is None:
+        env.port.crawler_operation.side_effect = TemporalUnavailable()
+    env.service.crawler = ExternalCrawlerBoundary(env.port)
     with pytest.raises(UrlIngestionError) as caught:
         create(env)
     assert caught.value.status == 503
+    env.port.crawler_operation.assert_awaited_once_with("probe", None)
     env.port.start_ingest_workflow.assert_not_called()
 
 
-def test_compatible_crawler_admits_url_and_safe_sitemap_without_local_fetch(env):
-    seen = []
-
-    def handler(request):
-        seen.append(str(request.url))
-        return httpx.Response(
-            200,
-            json=api_schema()
-            if request.url.path == "/openapi.json"
-            else {"status": "healthy"},
-        )
-
-    configured(env, handler)
+def test_worker_admits_url_and_safe_sitemap_without_crawler_credentials(env):
+    endpoint_id = "b" * 64
+    env.port.crawler_operation = AsyncMock(return_value={"endpoint_id": endpoint_id})
+    env.service.crawler = ExternalCrawlerBoundary(env.port)
     payload = create(env, sitemap_url="https://example.org/sitemap.xml")
     row = generation(env, payload)
     wire = row["workflow_input"]
     assert (
         wire["metadata"]["request"]["sitemap_url"] == "https://example.org/sitemap.xml"
     )
+    assert wire["metadata"]["scraper_configuration"]["endpoint_id"] == endpoint_id
+    assert "external_services" not in wire
     assert row["external_job"]["external_job_id"] == row["job_id"]
-    assert all(url.startswith("http://crawler.test/") for url in seen)
+    env.port.crawler_operation.assert_awaited_once_with("probe", None)
     env.port.start_ingest_workflow.assert_awaited_once()
 
 
@@ -66,9 +50,7 @@ def test_each_retirement_condition_is_required(env, flag):
     old = generation(env, create(env))
     body = receipt(old)
     body[flag] = False
-    env.service.quiescence = boundary(
-        env, lambda request: httpx.Response(200, json=body)
-    )
+    env.service.quiescence = boundary(env, lambda action, scope: body)
     with pytest.raises(UrlIngestionError) as caught:
         asyncio.run(env.service.delete(env.principal, old["source_id"], None))
     assert caught.value.status == 202
@@ -78,9 +60,7 @@ def test_each_retirement_condition_is_required(env, flag):
 def test_sealed_crawler_does_not_release_active_hawki_writer(env):
     old = generation(env, create(env))
     writer(env, old, activity_id="inspect_and_convert_files")
-    env.service.quiescence = boundary(
-        env, lambda request: httpx.Response(200, json=receipt(old))
-    )
+    env.service.quiescence = boundary(env, lambda action, scope: receipt(old))
     with pytest.raises(UrlIngestionError) as caught:
         asyncio.run(env.service.delete(env.principal, old["source_id"], None))
     assert caught.value.status == 202
@@ -172,31 +152,3 @@ def test_every_receipt_identity_is_required_and_cannot_publish(env, identity):
     assert (
         env.repository.source("default", row["source_id"])["current_generation"] is None
     )
-
-
-@pytest.mark.parametrize(
-    "identity",
-    [
-        "dataset_id",
-        "task_id",
-        "source_id",
-        "source_url",
-        "generation",
-        "url_ingestion_operation_id",
-    ],
-)
-def test_crawler_readiness_requires_every_submit_identity(env, identity):
-    document = api_schema()
-    del document["components"]["schemas"]["CrawlConfig"]["properties"][identity]
-    configured(
-        env,
-        lambda request: httpx.Response(
-            200,
-            json=document
-            if request.url.path == "/openapi.json"
-            else {"status": "healthy"},
-        ),
-    )
-    with pytest.raises(UrlIngestionError):
-        create(env)
-    env.port.start_ingest_workflow.assert_not_called()

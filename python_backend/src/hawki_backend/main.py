@@ -262,7 +262,9 @@ def create_app(
 
     resolved_url_service = url_ingestion_service
     url_settings = load_url_ingestion_settings()
-    if resolved_url_service is None and url_settings.enabled:
+    if resolved_url_service is None and (
+        url_settings.enabled or resolved_managed_service is not None
+    ):
         if owned_engine is None:
             url_database = database_settings or load_database_settings()
             if url_database is not None:

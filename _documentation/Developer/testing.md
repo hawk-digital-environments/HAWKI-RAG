@@ -46,5 +46,5 @@ acceptance use the signed Python callback boundary.
 
 The backend suite checks that Compose keeps the API and data stores private.
 
-See the [crawler guide](../Operations/crawler_v2_local_upgrade.md) for
-consumer contracts and an isolated browser runtime test.
+URL ingestion tests verify the crawler contract, the scraper worker boundary,
+and receipt checks that gate cleanup. See the [external crawler guide](../Operations/crawler_v2_local_upgrade.md).

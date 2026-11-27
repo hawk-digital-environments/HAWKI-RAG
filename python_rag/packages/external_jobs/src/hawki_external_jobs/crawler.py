@@ -1,6 +1,7 @@
 """Idempotent CustomCrawler adapter; legacy external job clients stay unchanged."""
 
 import time
+from urllib.parse import quote
 
 from hawki_rag_contracts.pipeline.crawler import CrawlerReceipt, require_crawler_api
 
@@ -22,6 +23,23 @@ class CustomCrawlerClient(ExternalJobClient):
         if self._request("GET", "/health").get("status") != "healthy":
             raise RuntimeError("CustomCrawler is unavailable")
 
+    def read_receipt(self) -> CrawlerReceipt:
+        job_id = quote(self.workflow_input["job_id"], safe="")
+        return self._verified_receipt(self._request("GET", f"/status/{job_id}"))
+
+    def cancel(self) -> CrawlerReceipt:
+        receipt = self.read_receipt()
+        if receipt.drained:
+            return receipt
+        return self._verified_receipt(
+            self._request("POST", f"/jobs/{receipt.job_id}/cancel")
+        )
+
+    def _verified_receipt(self, body: dict) -> CrawlerReceipt:
+        receipt = CrawlerReceipt.model_validate(body)
+        receipt.verify_owner(self.workflow_input)
+        return receipt
+
     def start_and_wait(self, payload, *, resume_job_id=None, progress_callback=None):
         self.require_capability()
         job_id = payload["job_id"]
@@ -42,8 +60,7 @@ class CustomCrawlerClient(ExternalJobClient):
         deadline = time.monotonic() + self.poll_timeout_seconds
         while time.monotonic() < deadline:
             snapshot = self._request("GET", self.status_path.format(job_id=job_id))
-            receipt = CrawlerReceipt.model_validate(snapshot)
-            receipt.verify_owner(self.workflow_input)
+            receipt = self._verified_receipt(snapshot)
             if progress_callback:
                 progress_callback(job_id)
             if receipt.drained:

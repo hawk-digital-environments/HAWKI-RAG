@@ -9,7 +9,7 @@ The authoritative examples are `.env.example`, `python_backend/.env.example` and
 - Models: query provider/model configuration and `RAG_BACKEND_DATASET_EMBEDDING_PROVIDER` / `RAG_BACKEND_DATASET_EMBEDDING_MODEL` define current contracts. Existing datasets retain their embedding contract.
 - Workers: configure Temporal address/namespace, dedicated task queues, shared storage and the same signed callback secret/replay window at both ends. Worker callbacks stay on the private Docker network.
 - Stores: configure Qdrant, Neo4j and reranker endpoints and credentials server-side. Browser requests cannot select physical collections or namespaces.
-- URL ingestion: `EXTERNAL_SCRAPER_URL` selects the crawler. Keep full permanent-job-v2 validation. Optional saved task catalogs are distinct from crawler execution.
+- For URL ingestion, `EXTERNAL_SCRAPER_URL` configures the scraper worker's external permanent-job-v2 crawler. FastAPI sends crawler operations to the scraper worker over Temporal.
 
 Recreate consumers after environment changes. Startup does not implicitly migrate the database. Readiness checks dependencies without repairing state or relaxing authorization.
 

@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 import requests
@@ -170,6 +170,29 @@ def client(tmp_path):
         status_path="/status/{job_id}",
         poll_interval_seconds=0.5,
     ), value
+
+
+def test_cancel_requires_a_verified_status_before_sending_the_request(tmp_path):
+    adapter, value = client(tmp_path)
+    body = receipt(value, sealed=False)
+    body["metadata"]["generation"] = 2
+    adapter._request = Mock(return_value=body)
+
+    with pytest.raises(ValueError, match="owner differs"):
+        adapter.cancel()
+
+    adapter._request.assert_called_once_with("GET", "/status/permanent-one")
+
+
+def test_cancel_returns_verified_drained_receipt(tmp_path):
+    adapter, value = client(tmp_path)
+    adapter._request = Mock(side_effect=[receipt(value, sealed=False), receipt(value)])
+
+    assert adapter.cancel().drained
+    assert adapter._request.call_args_list == [
+        call("GET", "/status/permanent-one"),
+        call("POST", "/jobs/permanent-one/cancel"),
+    ]
 
 
 def test_terminal_without_seal_keeps_polling(tmp_path, monkeypatch):

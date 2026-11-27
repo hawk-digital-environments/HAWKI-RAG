@@ -29,13 +29,13 @@ from hawki_backend.workflow_control.service import (
 )
 
 from .errors import UrlIngestionError
+from .crawler import ExternalCrawlerBoundary
 from .identity import digest
 from .repository import UrlRepository
 from .settings import UrlIngestionSettings
 from .validation import (
     UrlStartInput,
     UrlSafetyValidator,
-    ExternalCrawlerBoundary,
     site_profile,
 )
 
@@ -63,12 +63,12 @@ class UrlIngestionService:
         self.cleanup = cleanup
         self.safety = safety or UrlSafetyValidator()
         self.crawler = crawler or ExternalCrawlerBoundary(
-            settings.scraper_url, settings.scraper_token
+            control.port if control else None
         )
         self.neo4j_database = neo4j_database
         from .quiescence import ExternalJobQuiescence
 
-        self.quiescence = quiescence or ExternalJobQuiescence(repository)
+        self.quiescence = quiescence or ExternalJobQuiescence(repository, self.crawler)
 
     def authorize(self, principal: AuthenticatedPrincipal, dataset: str) -> None:
         if self.policy is None:
@@ -93,11 +93,7 @@ class UrlIngestionService:
     ) -> tuple[int, dict]:
         self.authorize(principal, body.dataset_id)
         require_unreserved({"dataset_id": body.dataset_id, "task_id": body.task_id})
-        if (
-            not self.settings.enabled
-            or not self.settings.scraper_url
-            or self.control is None
-        ):
+        if not self.settings.enabled or self.control is None:
             raise UrlIngestionError(503, "URL ingestion is not configured.")
         if body.sitemap_url:
             self.safety.validate(body.sitemap_url)
@@ -124,7 +120,7 @@ class UrlIngestionService:
             raise UrlIngestionError(422, "Supply at least one source URL.")
         validated = [self.safety.validate(url) for url in urls]
         # A DNS policy check is evidence, not a capability to prevent rebinding.
-        self.crawler.require_safe_fetch(validated)
+        endpoint_id = await self.crawler.require_contract()
         canonical = body.model_dump(mode="json")
         if scheduled:
             canonical["_scheduled"] = True
@@ -142,7 +138,8 @@ class UrlIngestionService:
             profile_hash = hashlib.sha256(profile_bytes).hexdigest()
         configuration = {
             "mode": "profile" if profile else "crawl",
-            "identity": digest([self.settings.scraper_url, metadata, profile_hash]),
+            "identity": digest([endpoint_id, metadata, profile_hash]),
+            "endpoint_id": endpoint_id,
             "profile_sha256": profile_hash,
         }
         values = self._request(principal, canonical, key, "start", body.task_id)
@@ -292,10 +289,6 @@ class UrlIngestionService:
                 },
                 "scraper_configuration": configuration or {},
             },
-            external_services={
-                "scraper_url": self.settings.scraper_url,
-                "scraper_token": self.settings.scraper_token,
-            },
             ingestion=dict(
                 provider=scope.embedding_provider,
                 embedding_model=scope.embedding_model,
@@ -353,7 +346,7 @@ class UrlIngestionService:
                     # No sink cleanup, schedule mutation, or artifact unlink is
                     # permitted until every old remote job is proven quiescent.
                     for old in submitted:
-                        self.quiescence.ensure(old)
+                        await self.quiescence.ensure(old)
                     self.repository.snapshot(operation, drained=True)
                     operation = self.repository.advance(operation, "drained")
                     if operation["purpose"] == "cancel":

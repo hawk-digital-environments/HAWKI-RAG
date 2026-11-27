@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 
 import pytest
@@ -5,12 +6,12 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 
 from hawki_backend.persistence.schema import dataset_grants, datasets
+from hawki_backend.url_ingestion.crawler import ExternalCrawlerBoundary
 from hawki_backend.url_ingestion.errors import UrlIngestionError
 from hawki_backend.url_ingestion.identity import normalize_url, source_identity
 from hawki_backend.url_ingestion.schema import requests
 from hawki_backend.url_ingestion.settings import load_url_ingestion_settings
 from hawki_backend.url_ingestion.validation import (
-    ExternalCrawlerBoundary,
     UrlSafetyValidator,
     UrlStartInput,
     site_profile,
@@ -80,12 +81,9 @@ def test_every_dns_answer_must_be_public():
         )
 
 
-def test_external_boundary_never_claims_redirect_or_rebinding_protection():
-    public = UrlSafetyValidator(lambda host, port: ("93.184.215.14",)).validate(
-        "https://example.org"
-    )
+def test_crawler_boundary_requires_the_temporal_worker():
     with pytest.raises(UrlIngestionError, match="not configured"):
-        ExternalCrawlerBoundary().require_safe_fetch([public])
+        asyncio.run(ExternalCrawlerBoundary().require_contract())
 
 
 def test_production_crawler_gate_precedes_all_persistence_and_dispatch(env):
@@ -114,7 +112,7 @@ def test_exact_authorization_before_dns_or_claim(env, mode):
     with pytest.raises(UrlIngestionError) as caught:
         create(env)
     assert caught.value.status == 404
-    env.service.crawler.require_safe_fetch.assert_not_called()
+    env.service.crawler.require_contract.assert_not_called()
     with env.engine.connect() as connection:
         assert connection.scalar(sa.select(sa.func.count()).select_from(requests)) == 0
 
@@ -167,20 +165,11 @@ def test_profile_root_rejects_traversal_outside_and_symlinks(tmp_path):
             site_profile(value, str(allowed))
 
 
-def test_scraper_alias_composes_once_and_canonical_wins():
-    assert (
-        load_url_ingestion_settings({"CUSTOM_CRAWLER_URL": "http://legacy"}).scraper_url
-        == "http://legacy"
+def test_backend_settings_do_not_consume_crawler_endpoint_or_credentials():
+    settings = load_url_ingestion_settings(
+        {"EXTERNAL_SCRAPER_URL": "invalid-url", "EXTERNAL_SCRAPER_TOKEN": "secret"}
     )
-    assert (
-        load_url_ingestion_settings(
-            {
-                "CUSTOM_CRAWLER_URL": "http://legacy",
-                "EXTERNAL_SCRAPER_URL": "http://canonical",
-            }
-        ).scraper_url
-        == "http://canonical"
-    )
+    assert settings == load_url_ingestion_settings({})
 
 
 @pytest.mark.parametrize(
@@ -224,6 +213,7 @@ def test_schedule_stores_cadence_without_frozen_temporal_input(env):
 
 
 def test_readiness_distinguishes_configuration_and_safety(env):
+    env.service.crawler = ExternalCrawlerBoundary()
     response = request(
         env, "/internal/url-ingestion/readiness", method="GET", headers={}
     )
@@ -231,7 +221,7 @@ def test_readiness_distinguishes_configuration_and_safety(env):
         "enabled": True,
         "scraper_configured": True,
         "workflow_control_configured": True,
-        "scraper_healthy": None,
+        "scraper_healthy": False,
         "safe_fetch_supported": False,
         "required_crawler_contract": "permanent-job-v2",
         "schedule_generations_supported": True,

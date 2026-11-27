@@ -1,36 +1,39 @@
-"""Control-plane compatibility with the reviewed external execution runtime."""
+"""Send crawler operations through the Temporal scraper worker."""
 
-import httpx
+import re
 
-from hawki_rag_contracts.pipeline.crawler import require_crawler_api
+from hawki_workflow_control.temporal_client import (
+    TemporalControlClient,
+    TemporalUnavailable,
+)
 
 from .errors import UrlIngestionError
 
 
 class ExternalCrawlerBoundary:
-    def __init__(self, url: str = "", token: str = "", *, client_factory=httpx.Client):
-        self.url = url
-        self.token = token
-        self.client_factory = client_factory
+    def __init__(self, temporal: TemporalControlClient | None = None) -> None:
+        self.temporal = temporal
 
-    def require_safe_fetch(self, urls) -> None:
-        if not self.url:
-            raise UrlIngestionError(503, "CustomCrawler is not configured.")
+    async def run(self, action: str, scope: dict | None = None) -> dict:
+        if self.temporal is None:
+            raise UrlIngestionError(503, "Scraper worker is not configured.")
         try:
-            with self.client_factory(
-                timeout=5,
-                follow_redirects=False,
-                trust_env=False,
-                headers={"Authorization": "Bearer " + self.token} if self.token else {},
-            ) as client:
-                schema = client.get(self.url + "/openapi.json")
-                schema.raise_for_status()
-                require_crawler_api(schema.json())
-                health = client.get(self.url + "/health")
-                health.raise_for_status()
-                if health.json().get("status") != "healthy":
-                    raise ValueError("Crawler unavailable")
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            result = await self.temporal.crawler_operation(action, scope)
+            if not isinstance(result, dict):
+                raise TemporalUnavailable()
+            return result
+        except TemporalUnavailable:
             raise UrlIngestionError(
-                503, "CustomCrawler is unavailable or lacks the permanent-job contract."
+                503, "Scraper worker or its external crawler is unavailable."
             ) from None
+
+    async def require_contract(self) -> str:
+        result = await self.run("probe")
+        endpoint_id = result.get("endpoint_id")
+        if not isinstance(endpoint_id, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", endpoint_id
+        ):
+            raise UrlIngestionError(
+                503, "Scraper worker returned an invalid endpoint identity."
+            )
+        return endpoint_id
