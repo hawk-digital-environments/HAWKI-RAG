@@ -16,6 +16,7 @@ from hawki_rag_contracts.pipeline.temporal import (
 )
 from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact, RawArtifact
 from hawki_rag_contracts.pipeline.status import GraphFailure
+from hawki_rag_contracts.source_metadata import SourceMetadata
 
 
 class IngestionStatus(StrEnum):
@@ -140,6 +141,7 @@ class IngestSourceWorkflowInput(BaseModel):
     )
     generation: int | None = Field(default=None, ge=1)
     upload: dict[str, JsonValue] | None = None
+    upload_metadata: SourceMetadata | None = None
     converter_mode: str = Field(default="native", min_length=1, max_length=32)
     custom_converter_profile_path: str | None = Field(default=None, max_length=4096)
     refresh: dict[str, JsonValue] = Field(default_factory=dict)
@@ -155,6 +157,13 @@ class IngestSourceWorkflowInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_managed_upload(self) -> "IngestSourceWorkflowInput":
+        if self.upload_metadata is not None and (
+            self.managed_upload_protocol != 2
+            or self.converter_mode != "native"
+            or not self.upload
+            or self.upload.get("extension") != "md"
+        ):
+            raise ValueError("Inline text metadata requires a managed Markdown upload")
         if self.managed_upload_protocol is not None and (
             self.owner == "url"
             or self.url_ingestion_operation_id is not None

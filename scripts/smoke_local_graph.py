@@ -33,7 +33,6 @@ def main() -> None:
     summary = {"dataset_id": run, "checks": {}, "status": "RUNNING"}
     created = False
     documents = []
-    text_sources = []
 
     def save() -> None:
         REPORT.write_text(json.dumps(summary, indent=2) + "\n")
@@ -172,7 +171,7 @@ def main() -> None:
             check("download_sha256", hashlib.sha256(download.content).hexdigest())
             text = request(
                 "POST",
-                "/text-ingestions",
+                "/documents",
                 headers={"Idempotency-Key": run + "-text"},
                 json={
                     "dataset_id": run,
@@ -182,9 +181,9 @@ def main() -> None:
                 },
             )
             summary["text"] = text
-            text_sources.append(text["source_id"])
+            documents.append(text["document"]["document_id"])
             save()
-            summary["text_task"] = wait_task(text["task_id"])
+            summary["text_task"] = wait_task(text["pipeline"]["task_id"])
             check("text_ingestion_ready", True)
             summary["status"] = "PASS"
         except Exception as error:
@@ -194,15 +193,9 @@ def main() -> None:
         finally:
             # Preserve immutable receipts and deleted ownership rows, remove all content.
             cleanup_errors = []
-            for path, key in [
-                *(
-                    ("/text-ingestions/" + source, run + "-delete-text")
-                    for source in text_sources
-                ),
-                *(("/documents/" + doc, run + "-delete-document") for doc in documents),
-            ]:
+            for doc in documents:
                 try:
-                    retire(path, key)
+                    retire("/documents/" + doc, run + "-delete-document")
                 except Exception as error:
                     cleanup_errors.append(str(error))
             if created:

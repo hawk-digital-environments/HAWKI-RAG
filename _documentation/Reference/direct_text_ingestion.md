@@ -1,10 +1,10 @@
-# Normalized text ingestion
+# Inline text and file ingestion
 
-HAWKI-RAG accepts normalized text and source metadata, indexes the text, retrieves and reranks chunks, and manages the indexed source through deletion. An upstream integration can acquire a file, page or database record and extract its text before submission. Managed file and URL ingestion remain available as compatibility adapters.
+HAWKI-RAG accepts inline text and file uploads at `POST /v1/documents`. Both use the managed document workflow. The API stages an upload, the converter worker produces a Markdown artifact, and the indexer writes the resulting chunks.
 
 ## Submit a source
 
-Use `POST /v1/text-ingestions` with a registered service JWT, the `rag:ingest` scope, an exact ingest grant on the active dataset, and a stable `Idempotency-Key` header.
+Use a registered service JWT with the `rag:ingest` scope and an exact ingest grant on the active dataset. Send a stable `Idempotency-Key` header when the client may retry. Send files as `multipart/form-data` with `dataset_id` and `file`. Send inline text as `application/json` or as form fields with `text` in place of `file`.
 
 ```json
 {
@@ -21,9 +21,53 @@ Use `POST /v1/text-ingestions` with a registered service JWT, the `rag:ingest` s
 }
 ```
 
-The first four fields are required. `content_format` accepts `plain_text` or `markdown`. The optional `display_name` and `source_url` fields describe the source. Omitting `metadata` supplies an empty object. Text must be nonblank and at most 1,048,576 characters. The entire request is limited to 4,300,000 bytes.
+`dataset_id` and `text` are required for inline text. `content_format` defaults to `plain_text` and also accepts `markdown`. The optional `external_document_id` supplies the Markdown filename stem. `display_name` and `source_url` describe the source. Omitting `metadata` supplies an empty object. In a form, send `metadata` as a JSON string. Text must be nonblank and at most 1,048,576 characters. The JSON request body is limited to 4,300,000 bytes.
 
-### Public metadata
+## Submit through local MCP
+
+FastAPI starts MCP at `/mcp` on the same private Docker listener as the REST API.
+Both `make up-core` and `make up-core-local` start that listener. The
+[local stack](../Operations/python_runtime.md#local-development) supplies a
+development token issuer.
+
+```sh
+make up-core-local
+```
+
+Connect your MCP client from the backend's Docker network using **Streamable HTTP**
+at `http://rag_backend/mcp`. Set its HTTP `Authorization` header to
+`Bearer <service JWT>`. Use a JWT with `rag:ingest` and an exact ingest grant
+for the dataset. Set credentials on the client connection so the tool arguments
+can contain the document itself.
+
+Call `submit_document` with the arguments below. Replace `design` with an active
+dataset that grants ingest access to the service in your token.
+
+```json
+{
+  "dataset_id": "design",
+  "text": "# Local test\n\nThis Markdown arrived through MCP.",
+  "content_format": "markdown",
+  "idempotency_key": "local-mcp-text-1"
+}
+```
+
+For a file, supply `markdown_file` with its plain `.md` filename and its
+base64-encoded UTF-8 bytes in `content_base64`. Files up to 4 MiB are supported
+over MCP.
+
+```json
+{
+  "dataset_id": "design",
+  "markdown_file": {"filename": "notes.md", "content_base64": "IyBUZXN0Cg=="},
+  "idempotency_key": "local-mcp-file-1"
+}
+```
+
+The tool calls the same Python document service as `POST /v1/documents` and
+returns the same receipt, including `pipeline.task_id` when accepted.
+
+## Public metadata
 
 | Property | Contract |
 | --- | --- |
@@ -39,16 +83,14 @@ Tenant, dataset, physical storage, graph scope, ownership, workflow, writer, aut
 
 ## Indexing, identity and deletion
 
-PostgreSQL retains source metadata with the ingest operation. The immutable revision contains UTF-8 Markdown and its metadata sidecar. The frozen Temporal input identifies the revision and carries a SHA-256 digest of its canonical user metadata. The indexer verifies the sidecar and supplies normalized text to the existing `IngestDocument` and chunk pipeline. Every Qdrant point stores a typed `payload.metadata` object alongside its own chunk content, index, and internal provenance. A metadata-only revision can refresh chunk payloads without re-embedding unchanged text.
+The API stages inline text as an immutable UTF-8 Markdown upload. The converter worker publishes that Markdown through the same activity and artifact contract used for files. The indexer reads it and writes validated source metadata to Qdrant alongside the chunks. The managed workflow supports optional graph enrichment through `graph` when the dataset has a graph scope.
 
-A new submission returns HTTP 202 and the source, task, job and workflow IDs. Object key order is immaterial. Text, format, dataset, external identity, display fields and metadata participate in the request fingerprint. An identical retry returns HTTP 200. Changing metadata under the same tenant and idempotency key returns HTTP 409. Use a new key for a new revision and retain the dataset and external document ID to keep the same source.
+A successful submission returns HTTP 202 with `document.document_id` and `pipeline.task_id`, `pipeline.job_id`, and `pipeline.source_id`. Reuse the same idempotency key and content to retrieve the same admission receipt. Changing the content or metadata under the same key returns HTTP 409. Replace a document with `PUT /v1/documents/{document_id}` and a new key. Supply `source_updated_at` or set `force` to `true` to replace it explicitly. Replacement keeps the managed document ID and creates a new source revision.
 
-Poll `GET /v1/pipeline/tasks/{task_id}` for completion. Delete through `DELETE /v1/text-ingestions/{source_id}` with an idempotency key and the dataset ingest grant. The service fences and drains writers, verifies removal of the source's Qdrant contributions, and removes its artifacts. It retains durable deletion evidence.
-
-Direct text writes vectors even on graph-capable datasets. Its writer grant covers the source's vector document and its deletion snapshot owns the vector collection and artifact revision. Managed file and URL adapters support optional graph enrichment with their own Neo4j provenance and cleanup.
+Poll `GET /v1/pipeline/tasks/{task_id}` for completion. Delete new text and file documents through `DELETE /v1/documents/{document_id}`. The older `DELETE /v1/text-ingestions/{source_id}` route remains available for sources created before the unified endpoint.
 
 ## Query results
 
-A service with `rag:query` and the dataset query grant can call `POST /v1/query`. Each hit includes its existing ID, score and projected evidence payload, plus a separate `metadata` object. For the example above, `hits[0].payload.content` contains the retrieved chunk and `hits[0].metadata.year` is the integer `2025`. Hit metadata comes only from validated direct-text source metadata. A hit without public source metadata, including a historical point whose metadata fails validation, returns `{}`. Source metadata remains recoverable from the authoritative operation.
+A service with `rag:query` and the dataset query grant can call `POST /v1/query`. Each hit includes its existing ID, score and projected evidence payload, plus a separate `metadata` object. For the example above, `hits[0].payload.content` contains the retrieved chunk and `hits[0].metadata.year` is the integer `2025`. Hits without validated public source metadata return `{}`.
 
 Use the optional `metadata_filters` expression to narrow retrieval before reranking. The REST reference defines its operators, types, limits and shared Python contract. [Metadata-aware queries](rest_apis.md#query-request)

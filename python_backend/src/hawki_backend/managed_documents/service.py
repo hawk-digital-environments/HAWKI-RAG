@@ -27,6 +27,7 @@ from hawki_backend.workflow_control.service import (
     DispatchUnavailable,
 )
 from hawki_backend.workflow_control.repository import OperationConflict
+from hawki_rag_contracts.source_metadata import SourceMetadata
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .artifacts import UploadStorage, hash_upload
@@ -237,6 +238,7 @@ class ManagedService:
         *,
         expected_generation: int | None = None,
         expected_revision_id: str | None = None,
+        source_metadata: SourceMetadata | None = None,
     ) -> tuple[int, dict]:
         if purpose == "create":
             if not body.dataset_id:
@@ -295,6 +297,8 @@ class ManagedService:
         canonical = body.canonical()
         fingerprint_input = body.model_dump(mode="json")
         fingerprint_input["metadata_json"] = body.metadata_json or []
+        if source_metadata is not None:
+            fingerprint_input["inline_text"] = True
         if purpose == "create":
             fingerprint_input["display_name"] = body.display_name or filename
             fingerprint_input["source_checksum_sha256"] = (
@@ -330,10 +334,16 @@ class ManagedService:
         def candidate(current: dict) -> tuple[dict, dict, dict]:
             if current.get("skip_reason"):
                 return {}, body.attributes(filename, checksum), {}
-            suffix = extension(
-                extension_filename or filename,
-                self.extensions,
-                body.converter_mode == "custom",
+            # Inline text is a server-created Markdown upload. The configured
+            # extension allowlist applies to uploaded files from clients.
+            suffix = (
+                "md"
+                if source_metadata is not None
+                else extension(
+                    extension_filename or filename,
+                    self.extensions,
+                    body.converter_mode == "custom",
+                )
             )
             source_id = "source_" + uuid.uuid4().hex
             task_id = "task_managed_" + uuid.uuid4().hex
@@ -367,6 +377,7 @@ class ManagedService:
                 path,
                 body,
                 graph,
+                source_metadata,
             )
             row = dict(
                 revision_id=revision_id,
@@ -510,6 +521,7 @@ class ManagedService:
         path: str,
         body: ManagedInput,
         graph: bool,
+        source_metadata: SourceMetadata | None,
     ) -> tuple[dict, dict | None]:
         scope = (
             self.query_settings.resolve_scope(dataset, tenant_id)
@@ -562,6 +574,10 @@ class ManagedService:
                 "batch_size": int(os.environ.get("INGEST_BATCH_SIZE", "64")),
             },
         }
+        if source_metadata is not None:
+            wire["upload_metadata"] = source_metadata
+            if body.source_url:
+                wire["source_url"] = body.source_url
         profile = None
         if body.converter_mode == "custom":
             if not body.converter_url:

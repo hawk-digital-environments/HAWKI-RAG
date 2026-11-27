@@ -68,6 +68,7 @@ from hawki_backend.managed_documents.service import ManagedService
 from hawki_backend.managed_documents.repository import ManagedRepository
 from hawki_backend.managed_documents.artifacts import UploadStorage
 from hawki_backend.managed_documents.cleanup import ManagedCleanup
+from hawki_backend.mcp import mount_mcp
 from hawki_backend.url_ingestion.api import (
     router as url_router,
     internal_router as url_internal_router,
@@ -333,7 +334,8 @@ def create_app(
                 _reconcile_urls_periodically(resolved_url_service)
             )
         try:
-            yield
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
         finally:
             for task in (cleanup_task, url_task):
                 if task is None:
@@ -397,6 +399,7 @@ def create_app(
     application.state.managed_document_secret = control_secret
     application.state.url_ingestion_service = resolved_url_service
     application.state.url_ingestion_secret = control_secret
+    mcp_app = mount_mcp(application)
     return application
 
 

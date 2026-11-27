@@ -9,7 +9,13 @@ def test_multipart_upload_fields_match_the_existing_manual_parser():
         ("/v1/documents/{document_id}", "put", "file"),
     ]:
         operation = paths[path][method]
-        schema = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+        content = operation["requestBody"]["content"]
+        schema = content["multipart/form-data"]["schema"]
+        if field == "file":
+            schema, text_form = schema["oneOf"]
+            text_json = content["application/json"]["schema"]
+            assert "text" in text_form["required"] == text_json["required"]
+            assert ("dataset_id" in text_json["required"]) == (method == "post")
         assert field in schema["required"]
         assert ("dataset_id" in schema["required"]) == (method == "post")
         file_schema = schema["properties"][field]

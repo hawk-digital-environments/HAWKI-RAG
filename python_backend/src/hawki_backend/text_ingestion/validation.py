@@ -36,15 +36,15 @@ _ENVELOPE_FIELDS = frozenset(
 )
 
 
-class TextIngestionRequest(BaseModel):
-    """Validated public direct-text input."""
+class TextContent(BaseModel):
+    """Validation shared by managed inline text and historical text requests."""
 
     model_config = ConfigDict(extra="forbid")
 
-    external_document_id: str = Field(min_length=1, max_length=191)
-    dataset_id: str = Field(min_length=1, max_length=160)
+    external_document_id: str | None = Field(default=None, min_length=1, max_length=191)
+    dataset_id: str | None = Field(default=None, min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARACTERS)
-    content_format: Literal["plain_text", "markdown"]
+    content_format: Literal["plain_text", "markdown"] = "plain_text"
     display_name: str | None = Field(default=None, max_length=255)
     source_url: str | None = Field(default=None, max_length=2048)
     metadata: SourceMetadata = Field(default_factory=dict)
@@ -58,8 +58,8 @@ class TextIngestionRequest(BaseModel):
 
     @field_validator("external_document_id")
     @classmethod
-    def validate_external_document_id(cls, value: str) -> str:
-        if _IDENTIFIER.fullmatch(value) is None:
+    def validate_external_document_id(cls, value: str | None) -> str | None:
+        if value is not None and _IDENTIFIER.fullmatch(value) is None:
             raise ValueError(
                 "external_document_id must match [A-Za-z0-9][A-Za-z0-9._:-]*"
             )
@@ -67,8 +67,8 @@ class TextIngestionRequest(BaseModel):
 
     @field_validator("dataset_id")
     @classmethod
-    def validate_dataset_id(cls, value: str) -> str:
-        if _IDENTIFIER.fullmatch(value) is None:
+    def validate_dataset_id(cls, value: str | None) -> str | None:
+        if value is not None and _IDENTIFIER.fullmatch(value) is None:
             raise ValueError("dataset_id must match [A-Za-z0-9][A-Za-z0-9._:-]*")
         return value
 
@@ -89,6 +89,14 @@ class TextIngestionRequest(BaseModel):
         if parts.scheme not in {"http", "https"} or not parts.netloc:
             raise ValueError("source_url must be an http or https URL")
         return value
+
+
+class TextIngestionRequest(TextContent):
+    """Request contract used by the historical text workflow."""
+
+    external_document_id: str = Field(min_length=1, max_length=191)
+    dataset_id: str = Field(min_length=1, max_length=160)
+    content_format: Literal["plain_text", "markdown"]
 
     def fingerprint_values(self) -> dict[str, Any]:
         """Return the fields the legacy version-2 fingerprint covers."""
@@ -153,6 +161,7 @@ ENVELOPE_FIELDS = _ENVELOPE_FIELDS
 
 __all__ = [
     "ENVELOPE_FIELDS",
+    "TextContent",
     "TextIngestionRequest",
     "validate_idempotency_key",
 ]

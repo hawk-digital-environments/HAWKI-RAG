@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from hawki_rag_contracts.retrieval.query import PublicQueryResponse, QueryResponse
-from hawki_rag_contracts.source_metadata import MetadataValue, validate_source_metadata
+from hawki_rag_contracts.source_metadata import (
+    MetadataValue,
+    PUBLIC_METADATA_MODES,
+    validate_source_metadata,
+)
 
 _PUBLIC_STRINGS = frozenset(
     {
@@ -84,7 +88,7 @@ def sanitize_query_response(response: QueryResponse) -> PublicQueryResponse:
 
 
 def _user_metadata(payload: dict) -> dict[str, MetadataValue]:
-    if payload.get("ingestion_mode") != "direct_text":
+    if payload.get("ingestion_mode") not in PUBLIC_METADATA_MODES:
         return {}
     try:
         return validate_source_metadata(payload.get("metadata"))

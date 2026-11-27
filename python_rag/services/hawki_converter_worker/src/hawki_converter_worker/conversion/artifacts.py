@@ -17,14 +17,16 @@ def collect_markdown_artifacts(
     source_id: str,
     source_artifact_uri: str | None,
     artifact_store: ConverterArtifactStorePort,
+    preserve_text: bool = False,
 ) -> list[MarkdownArtifact]:
     """Describe converted local Markdown files without embedding their content."""
 
     artifacts: list[MarkdownArtifact] = []
     for location in artifact_store.list_markdown(markdown_dir):
         content = artifact_store.read_bytes(location)
-        normalized_text = strip_leading_converter_markdown_noise(
-            content.decode("utf-8")
+        text = content.decode("utf-8")
+        normalized_text = (
+            text if preserve_text else strip_leading_converter_markdown_noise(text)
         )
         relative_path = artifact_store.relative_path(location, markdown_dir)
         artifacts.append(

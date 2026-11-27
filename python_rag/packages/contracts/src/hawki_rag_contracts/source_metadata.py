@@ -9,6 +9,8 @@ from typing import Annotated
 from pydantic import BeforeValidator, Field
 
 MetadataValue = str | int | float | bool | list[str]
+MANAGED_TEXT_MODE = "managed_text"
+PUBLIC_METADATA_MODES = ("direct_text", MANAGED_TEXT_MODE)
 
 MAX_KEYS = 32
 MAX_STRING = 4096

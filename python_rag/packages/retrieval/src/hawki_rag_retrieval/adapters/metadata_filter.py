@@ -12,8 +12,12 @@ from hawki_rag_contracts.retrieval.metadata_filter import (
     Negation,
     NumericRange,
 )
+from hawki_rag_contracts.source_metadata import PUBLIC_METADATA_MODES
 
-_DIRECT_TEXT = {"key": "ingestion_mode", "match": {"value": "direct_text"}}
+_PUBLIC_METADATA = {
+    "key": "ingestion_mode",
+    "match": {"any": list(PUBLIC_METADATA_MODES)},
+}
 _COMPARE = {
     "gt": operator.gt,
     "gte": operator.ge,
@@ -69,11 +73,11 @@ def compile_metadata_filter(expr: Expression) -> dict[str, Any]:
         return {"must_not": [compile_metadata_filter(expr.child)]}
 
     key = f"metadata.{expr.field}"
-    # Only direct text owns public metadata. Other adapters can store private
+    # Only inline text owns public metadata. Other adapters can store private
     # processing data at the same path and have an empty public metadata view.
     present = {"key": key, "values_count": {"gte": 0}}
     if isinstance(expr, Existence):
-        exists = {"must": [_DIRECT_TEXT, present]}
+        exists = {"must": [_PUBLIC_METADATA, present]}
         return exists if expr.value else {"must_not": [exists]}
     if isinstance(expr, NumericRange):
         condition = _numeric(key, expr.op, expr.value)
@@ -82,5 +86,5 @@ def compile_metadata_filter(expr: Expression) -> dict[str, Any]:
     else:
         condition = _equals(key, expr.value)
     if expr.op in ("neq", "not_in"):
-        return {"must": [_DIRECT_TEXT, present], "must_not": [condition]}
-    return {"must": [_DIRECT_TEXT, condition]}
+        return {"must": [_PUBLIC_METADATA, present], "must_not": [condition]}
+    return {"must": [_PUBLIC_METADATA, condition]}

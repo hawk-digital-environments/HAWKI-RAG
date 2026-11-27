@@ -6,6 +6,7 @@ import logging
 from pathlib import PurePosixPath
 from typing import Any, Optional
 
+from hawki_rag_contracts.source_metadata import PUBLIC_METADATA_MODES
 from hawki_indexer_worker.indexing.artifact_identity import (
     is_artifact_payload,
     validate_artifact_identity,
@@ -129,8 +130,10 @@ def prepare_documents(
             )
 
         document_text = d.text
-        is_direct_text = normalized_payload.get("ingestion_mode") == "direct_text"
-        if not is_direct_text and should_strip_converter_markdown_noise(
+        is_inline_text = (
+            normalized_payload.get("ingestion_mode") in PUBLIC_METADATA_MODES
+        )
+        if not is_inline_text and should_strip_converter_markdown_noise(
             normalized_payload
         ):
             document_text = strip_leading_converter_markdown_noise(document_text)

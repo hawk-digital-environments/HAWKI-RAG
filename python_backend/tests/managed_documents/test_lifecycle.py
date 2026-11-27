@@ -116,6 +116,59 @@ def ready(env, row, event_id="ready", **changes):
     )
 
 
+@pytest.mark.parametrize("form", [False, True])
+def test_inline_text_uses_the_same_managed_workflow_as_file_upload(env, form):
+    body = {
+        "dataset_id": "files",
+        "text": "First paragraph.\r\n\r\nCafé 🌍",
+        "metadata": {"year": 2026, "topics": ["design"]},
+        "source_url": "https://example.test/source",
+    }
+    fields = {**body, "metadata": json.dumps(body["metadata"])}
+    submission = (
+        {"files": [(name, (None, value)) for name, value in fields.items()]}
+        if form
+        else {"json": body}
+    )
+    text = create(env, key="inline", **submission)
+    assert create(env, key="inline", **submission) == text
+    assert (
+        send(env, key="inline", json={**body, "text": "Different"}).status_code == 409
+    )
+    assert env.port.start_ingest_workflow.await_count == 1
+
+    file = create(env, key="file")
+    text_revision = revision(env, text)
+    file_revision = revision(env, file)
+    for row in (text_revision, file_revision):
+        assert row["workflow_id"].startswith("ingest-source-")
+        assert row["workflow_input"]["managed_upload_protocol"] == 2
+    wire = text_revision["workflow_input"]
+    assert wire["upload"]["extension"] == "md"
+    assert wire["upload_metadata"] == body["metadata"]
+    assert wire["source_url"] == body["source_url"]
+    assert (
+        Path(wire["upload"]["local_path"]).read_bytes()
+        == "First paragraph.\n\nCafé 🌍\n".encode()
+    )
+
+
+def test_inline_text_refuses_mixed_inputs_and_unauthorized_datasets(env):
+    assert send(env, data={"dataset_id": "files", "text": "mixed"}).status_code == 422
+    assert send(env, json={"dataset_id": "files", "text": "  "}).status_code == 422
+    assert send(env, json={"dataset_id": "other", "text": "Denied"}).status_code == 404
+    assert count(env, documents) == 0
+    assert env.port.start_ingest_workflow.await_count == 0
+
+
+def test_inline_markdown_without_metadata_keeps_the_original_bytes(env):
+    markdown = "# Design\n\n**Interaction**"
+    body = {"dataset_id": "files", "content_format": "markdown", "text": markdown}
+    wire = revision(env, create(env, json=body))["workflow_input"]
+    assert wire["upload_metadata"] == {}
+    assert Path(wire["upload"]["local_path"]).read_bytes() == markdown.encode()
+
+
 def test_create_and_same_key_replay_keep_one_epoch8_operation(env):
     first = create(env)
     assert create(env)["document"]["id"] == first["document"]["id"]

@@ -1,6 +1,6 @@
-"""Authenticated direct-text endpoints and the signed worker-event sink.
+"""Legacy text deletion and signed worker events for existing text jobs.
 
-The public routes authenticate a bearer principal and require the coarse
+The public deletion route authenticates a bearer principal and requires the coarse
 ``rag:ingest`` scope. The service then performs the final dataset decision.
 The internal route accepts the existing worker event body and HMAC headers,
 so the indexer needs no new protocol.
@@ -46,8 +46,7 @@ from .service import (
     WorkflowUnavailable,
     WorkflowUncertain,
 )
-from .settings import MAX_REQUEST_BYTES
-from .validation import TextIngestionRequest, validate_idempotency_key
+from .validation import validate_idempotency_key
 from .writers import WriterConflict, WriterEvent
 
 router = APIRouter(tags=["text-ingestion"])
@@ -60,39 +59,11 @@ _SOURCE_ID = re.compile(r"\Asource_[0-9a-f]{32}\Z")
 _INGEST_PRINCIPAL = require_scopes(AuthorizationAction.INGEST.required_scope)
 
 
-async def _raw_body(request: Request) -> bytes:
-    """Read the exact request bytes and enforce the inclusive public limit."""
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > MAX_REQUEST_BYTES:
-            raise errors.request_too_large()
-    return bytes(body)
-
-
 def _service(request: Request) -> TextIngestionService:
     service = getattr(request.app.state, "text_ingestion_service", None)
     if service is None:
         raise errors.unavailable()
     return service
-
-
-def _parse_body(raw: bytes) -> TextIngestionRequest:
-    try:
-        payload = json.loads(raw)
-    except (ValueError, RecursionError):
-        raise errors.invalid_request() from None
-    if not isinstance(payload, dict):
-        raise errors.invalid_request()
-    try:
-        return TextIngestionRequest.model_validate(payload)
-    except ValidationError as error:
-        for issue in error.errors(include_input=False, include_url=False):
-            if issue["loc"] == ("metadata",) and issue["type"] == "value_error":
-                raise errors.invalid_request(str(issue["ctx"]["error"])) from None
-        raise errors.invalid_request() from None
-    except RecursionError:
-        raise errors.invalid_request() from None
 
 
 def _idempotency_key(request: Request) -> str:
@@ -120,47 +91,6 @@ def _map_ingest_error(error: Exception) -> None:
     if isinstance(error, TextArtifactError):
         raise errors.storage_failed() from None
     raise error
-
-
-@router.post(
-    "/text-ingestions",
-    status_code=202,
-    responses={200: {"description": "Idempotent replay"}},
-    openapi_extra={
-        "requestBody": {
-            "required": True,
-            "content": {
-                "application/json": {"schema": TextIngestionRequest.model_json_schema()}
-            },
-        },
-        "parameters": [
-            {
-                "in": "header",
-                "name": "Idempotency-Key",
-                "required": True,
-                "schema": {"type": "string", "maxLength": 191},
-            }
-        ],
-    },
-)
-async def ingest_text(
-    raw: Annotated[bytes, Depends(_raw_body)],
-    principal: Annotated[AuthenticatedPrincipal, Depends(_INGEST_PRINCIPAL)],
-    request: Request,
-) -> JSONResponse:
-    """Validate, authorize and dispatch one direct-text operation."""
-    service = _service(request)
-    body = _parse_body(raw)
-    key = _idempotency_key(request)
-    try:
-        outcome = await service.ingest(principal, body, key)
-    except Exception as error:  # noqa: BLE001 - mapped to the stable contract
-        _map_ingest_error(error)
-        raise
-    return JSONResponse(
-        status_code=200 if outcome.replayed else 202,
-        content=outcome.to_payload(),
-    )
 
 
 @router.delete("/text-ingestions/{source_id}")

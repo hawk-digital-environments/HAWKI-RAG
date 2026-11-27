@@ -10,14 +10,13 @@ Service-authenticated operational routes use their documented scopes.
 | --- | --- |
 | Retrieval | `/v1/query`, `/v1/query/datasets`; query scope and exact dataset query grant |
 | Datasets | `/v1/datasets`, creation/deletion and self-grants; management/query/ingest scopes according to action |
-| Managed documents | `/v1/documents`, batch/create/read/update/delete and upload download; exact ingest/query grants |
-| Direct text | `/v1/text-ingestions`; ingest scope and dataset grant |
+| Managed documents | `/v1/documents` accepts files and inline text. Batch upload, read, update, delete and upload download use exact ingest or query grants. |
 | Pipeline | `/v1/pipeline/tasks`, start/read/cancel/retire, recovery and stage logs; ingest scope and ownership |
 | Graph/ops | `/v1/ops/*`; query or management scopes, dataset scope where applicable |
 
 Mutations use stable idempotency keys and existing generation/writer barriers. Metadata cannot override tenant or physical storage targets. Read readiness and error bodies without logging credentials. The registered routers under `python_backend/src/hawki_backend` are authoritative for request schemas and optional compatibility routes.
 
-See [deployment](../Operations/python_runtime.md), [direct text](direct_text_ingestion.md) and [authorization](../Core%20Concepts/authorization_dataset_scope.md).
+See [deployment](../Operations/python_runtime.md), [text and file ingestion](direct_text_ingestion.md) and [authorization](../Core%20Concepts/authorization_dataset_scope.md).
 
 ## Query request
 
@@ -93,6 +92,28 @@ Field names use the ingestion key policy. They are case-sensitive and must match
 
 The service authenticates the JWT and checks `rag:query` and the exact grant for the active dataset in the JWT tenant. A denied or unknown dataset returns the same HTTP 404. The server resolves the physical collection and combines its mandatory dataset predicate with caller filters. Semantic search, lexical search, scroll and high-recall retries all use that intersection in Qdrant. Only matching candidates reach ranking and answer generation. An allowed query with no matches returns HTTP 200 with `count: 0`, empty `hits` and `kg`, and an empty answer.
 
-A metadata-filtered query skips both structural graph candidates and related graph facts, including in deep mode. Current Neo4j reads cannot verify each fact against the public source metadata. Qdrant searches select chunk evidence, including older chunks with an unset component type. Direct text supplies the typed metadata on indexed chunks. Managed upload `metadata_json` belongs to the document record and URL task `metadata` belongs to the crawler request. Those adapters have an empty public metadata view for retrieval, so they can match an absence predicate.
+A metadata-filtered query skips both structural graph candidates and related graph facts, including in deep mode. Current Neo4j reads cannot verify each fact against the public source metadata. Qdrant searches select chunk evidence, including older chunks with an unset component type. Inline text supplies typed metadata on indexed chunks. File upload `metadata_json` belongs to the document record and URL task `metadata` belongs to the crawler request. File and URL chunks have an empty public metadata view for retrieval and can match an absence predicate.
 
-The shared contract is `hawki_rag_contracts.retrieval.metadata_filter.MetadataFilter`, accepted by `hawki_rag_contracts.retrieval.query.QueryRequest`. A Python MCP tool can forward the same logical body and service JWT to this endpoint. An in-process adapter must perform the same scope and exact-grant checks, resolve trusted storage and models, then pass the validated request to `hawki_rag_retrieval.execute_authorized_query` and project its result with `sanitize_query_response`. The REST endpoint is the deployed Python query interface.
+## Query over MCP
+
+Connect from the private Docker network to `http://rag_backend/mcp` using
+Streamable HTTP and an `Authorization: Bearer <service JWT>` header. The
+`query_search` tool requires `rag:query` and the same exact dataset grant as
+`POST /v1/query`. Pass the REST request object under `request` in the tool
+arguments.
+
+```json
+{
+  "request": {
+    "dataset_id": "design",
+    "query": "What is interaction design?",
+    "generate": false,
+    "top_k": 5
+  }
+}
+```
+
+The tool returns the same structured hits, graph facts, optional answer, and
+retrieval diagnostics as REST. The same connection also offers
+[`submit_document`](direct_text_ingestion.md#submit-through-local-mcp) for
+services with `rag:ingest`.

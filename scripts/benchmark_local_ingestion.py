@@ -281,13 +281,10 @@ def main():
                             "file": ("synthetic-report.pdf", pdf, "application/pdf")
                         },
                     )
-                    doc = admission["document"]["document_id"]
-                    cleanup_path = "/documents/" + doc
-                    task_id = admission["pipeline"]["task_id"]
                 else:
                     admission = request(
                         "POST",
-                        "/text-ingestions",
+                        "/documents",
                         headers={"Idempotency-Key": dataset},
                         json={
                             "dataset_id": dataset,
@@ -296,8 +293,9 @@ def main():
                             "content_format": "plain_text",
                         },
                     )
-                    cleanup_path = "/text-ingestions/" + admission["source_id"]
-                    task_id = admission["task_id"]
+                doc = admission["document"]["document_id"]
+                cleanup_path = "/documents/" + doc
+                task_id = admission["pipeline"]["task_id"]
                 row["admission_seconds"] = round(time.monotonic() - start, 3)
                 row["task_id"] = task_id
                 save()

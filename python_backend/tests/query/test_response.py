@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from hawki_backend.query.response import sanitize_query_response
 from hawki_rag_contracts.retrieval.query import QueryResponse
 
@@ -66,7 +68,8 @@ def test_sanitize_preserves_the_logical_response_shape() -> None:
     assert sanitized.retrieval == {"graph_enabled": False}
 
 
-def test_user_metadata_has_separate_public_projection():
+@pytest.mark.parametrize("ingestion_mode", ["direct_text", "managed_text"])
+def test_user_metadata_has_separate_public_projection(ingestion_mode):
     metadata = {
         "course": "design",
         "language": ["en"],
@@ -75,7 +78,7 @@ def test_user_metadata_has_separate_public_projection():
         "rating": 1.25,
     }
     base = {
-        "ingestion_mode": "direct_text",
+        "ingestion_mode": ingestion_mode,
         "content": "evidence",
         "job_id": "private-job",
         "writer": {"password": "private-db"},

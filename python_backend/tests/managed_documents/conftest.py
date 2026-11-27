@@ -135,6 +135,7 @@ def send(
     data=None,
     files=None,
     auth=True,
+    json=None,
 ):
     async def call():
         headers = {"Authorization": "Bearer test"} if auth else {}
@@ -143,6 +144,8 @@ def send(
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=env.app), base_url="http://test"
         ) as client:
+            if json is not None:
+                return await client.request(method, path, headers=headers, json=json)
             return await client.request(
                 method,
                 path,

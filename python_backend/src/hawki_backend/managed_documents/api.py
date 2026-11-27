@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+from io import BytesIO
 import json
 from pathlib import PurePosixPath
 from urllib.parse import unquote
@@ -18,12 +19,13 @@ from hawki_backend.auth.dependencies import require_scopes
 from hawki_backend.auth.models import AuthenticatedPrincipal
 from hawki_backend.authorization import AuthorizationUnavailableError
 from hawki_backend.text_ingestion.api import _verify_signature
+from hawki_backend.text_ingestion.settings import MAX_REQUEST_BYTES
 from hawki_backend.text_ingestion.writers import WriterEvent
 from hawki_backend.workflow_control.schema import operations
 from hawki_rag_contracts.pipeline.status import PipelineWorkerEvent, PipelineStageStatus
 from hawki_rag_contracts.pipeline.temporal import MARK_SOURCE_READY_ACTIVITY
 
-from .input import ManagedError, ManagedInput
+from .input import ManagedError, ManagedInput, ManagedTextInput
 from .service import ManagedService
 
 router = APIRouter(tags=["managed-documents"])
@@ -132,16 +134,66 @@ def error_response(error: ManagedError) -> JSONResponse:
     )
 
 
-async def execute_mutation(instance: ManagedService, *args: Any) -> tuple[int, dict]:
+async def execute_mutation(
+    instance: ManagedService, *args: Any, **kwargs: Any
+) -> tuple[int, dict]:
     # SQLAlchemy, shared-file hashing and sink clients are synchronous. Keep them
     # off the ASGI event loop while reusing the durable async dispatcher.
-    return await run_in_threadpool(lambda: asyncio.run(instance.mutate(*args)))
+    return await run_in_threadpool(
+        lambda: asyncio.run(instance.mutate(*args, **kwargs))
+    )
 
 
 def original_filename(file: UploadFile) -> str:
     original = file.headers.get("X-Hawki-Original-Filename")
     name = unquote(original) if original is not None else (file.filename or "")
     return PurePosixPath(name.replace("\\", "/")).name
+
+
+async def read_text_json(request: Request) -> ManagedTextInput:
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_REQUEST_BYTES:
+            raise ManagedError(413, "The text submission is too large.")
+        body.extend(chunk)
+    return ManagedTextInput.model_validate_json(body)
+
+
+async def submit_text(
+    instance: ManagedService,
+    principal: AuthenticatedPrincipal,
+    purpose: str,
+    text: ManagedTextInput,
+    key: str | None,
+    document_id: str | None,
+) -> JSONResponse:
+    status, payload = await execute_text_mutation(
+        instance, principal, purpose, text, key, document_id
+    )
+    return JSONResponse(status_code=status, content=payload)
+
+
+async def execute_text_mutation(
+    instance: ManagedService,
+    principal: AuthenticatedPrincipal,
+    purpose: str,
+    text: ManagedTextInput,
+    key: str | None,
+    document_id: str | None = None,
+) -> tuple[int, dict]:
+    filename = (text.external_document_id or "document") + ".md"
+    with BytesIO(text.markdown_bytes()) as stream:
+        return await execute_mutation(
+            instance,
+            principal,
+            purpose,
+            text.upload_input(),
+            filename,
+            stream,
+            key,
+            document_id,
+            source_metadata=text.metadata,
+        )
 
 
 def mutation_failure(
@@ -186,6 +238,19 @@ async def mutation(
                 document_id,
             )
             return JSONResponse(status_code=status, content=payload)
+        key = request.headers.get("Idempotency-Key")
+        media_type = (
+            request.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        )
+        if not batch and media_type == "application/json":
+            return await submit_text(
+                instance,
+                principal,
+                purpose,
+                await read_text_json(request),
+                key,
+                document_id,
+            )
         form = await request.form(
             max_files=1000, max_fields=100, max_part_size=100 * 1024 * 1024
         )
@@ -194,6 +259,19 @@ async def mutation(
             for key, value in form.items()
             if not isinstance(value, UploadFile)
         }
+        if not batch and "text" in raw:
+            if any(isinstance(value, UploadFile) for _, value in form.multi_items()):
+                raise ManagedError(422, "Submit either text or a file.")
+            if "metadata" in raw:
+                raw["metadata"] = json.loads(raw["metadata"])
+            return await submit_text(
+                instance,
+                principal,
+                purpose,
+                ManagedTextInput.model_validate(raw),
+                key,
+                document_id,
+            )
         if raw.get("converter_mode") == "custom" and not raw.get("converter_url"):
             import os
 
@@ -204,7 +282,6 @@ async def mutation(
             )
         # The public request uses the canonical normalized upload form.
         body = ManagedInput.model_validate(raw)
-        key = request.headers.get("Idempotency-Key")
         if not batch:
             file = form.get("file")
             if not isinstance(file, UploadFile):
@@ -290,7 +367,7 @@ async def mutation(
                     ManagedError(503, "Managed document authorization is unavailable.")
                 )
         return error_response(error)
-    except (ValidationError, ValueError):
+    except (ValidationError, ValueError, RecursionError):
         return error_response(ManagedError(422, "The given data was invalid."))
     except AuthorizationUnavailableError:
         return error_response(
@@ -302,7 +379,7 @@ async def mutation(
 
 
 def multipart_document_schema(*, batch: bool = False, update: bool = False) -> dict:
-    """Describe the existing manual form parser without changing admission."""
+    """Describe both representations accepted by the shared document API."""
     schema = ManagedInput.model_json_schema()
     schema["properties"]["metadata_json"] = {
         "type": "string",
@@ -315,17 +392,32 @@ def multipart_document_schema(*, batch: bool = False, update: bool = False) -> d
         {"type": "array", "items": file_schema, "minItems": 1} if batch else file_schema
     )
     schema["required"] = [field] if update else ["dataset_id", field]
+    content = {"multipart/form-data": {"schema": schema}}
+    if not batch:
+        text_schema = ManagedTextInput.model_json_schema()
+        if not update:
+            text_schema["required"].append("dataset_id")
+        content["application/json"] = {"schema": text_schema}
+        text_form = ManagedTextInput.model_json_schema()
+        text_form["required"] = text_schema["required"]
+        text_form["properties"]["metadata"] = {
+            "type": "string",
+            "description": "JSON-encoded typed source metadata object.",
+        }
+        # The form parser accepts either a binary file or inline text.
+        schema["not"] = {"required": ["text"]}
+        content["multipart/form-data"] = {"schema": {"oneOf": [schema, text_form]}}
     return {
         "requestBody": {
             "required": True,
-            "content": {"multipart/form-data": {"schema": schema}},
+            "content": content,
         },
         "parameters": [
             {
                 "name": "Idempotency-Key",
                 "in": "header",
                 "required": False,
-                "description": "Reuse the same key and input when retrying an upload.",
+                "description": "Reuse the same key and input when retrying a submission.",
                 "schema": {"type": "string", "maxLength": 255},
             }
         ],
@@ -334,8 +426,9 @@ def multipart_document_schema(*, batch: bool = False, update: bool = False) -> d
 
 @router.post(
     "/documents",
-    summary="Upload a file for ingestion",
-    description="Upload to an active dataset with an exact ingest grant. The browser gateway supplies service authentication.",
+    status_code=202,
+    summary="Submit a file or inline text for ingestion",
+    description="Submit to an active dataset with an exact ingest grant. Both inputs run through managed conversion and indexing.",
     openapi_extra=multipart_document_schema(),
 )
 async def create(request: Request, principal: IngestPrincipal) -> JSONResponse:
@@ -353,7 +446,7 @@ async def batch(request: Request, principal: IngestPrincipal) -> JSONResponse:
 
 @router.put(
     "/documents/{document_id}",
-    summary="Replace a document with an uploaded file",
+    summary="Replace a document with a file or inline text",
     openapi_extra=multipart_document_schema(update=True),
 )
 async def update(

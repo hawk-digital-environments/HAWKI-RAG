@@ -10,6 +10,7 @@ from hawki_artifact_store.local import LocalArtifactStore
 from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
 from hawki_rag_contracts.pipeline.identity import document_id, sha256_text
 from hawki_rag_contracts.source_metadata import (
+    MANAGED_TEXT_MODE,
     validate_source_metadata,
     metadata_digest,
 )
@@ -65,7 +66,11 @@ def prepare_artifact_batch(
         content = context.artifact_store.read_bytes(markdown_file)
         decoded_text = content.decode("utf-8")
         artifact = context.artifacts_by_path.get(markdown_file)
-        text = _artifact_text(decoded_text, artifact)
+        text = (
+            decoded_text
+            if context.workflow_input.get("upload_metadata") is not None
+            else _artifact_text(decoded_text, artifact)
+        )
         if not text.strip():
             skipped_documents += 1
             continue
@@ -138,6 +143,10 @@ def _document_from_artifact(
         allowed_directories=allowed_metadata_directories,
     )
     payload = dict(passthrough)
+    upload_metadata = workflow_input.get("upload_metadata")
+    if upload_metadata is not None:
+        payload["metadata"] = validate_source_metadata(upload_metadata)
+        payload["ingestion_mode"] = MANAGED_TEXT_MODE
     expected_metadata = workflow_input.get("metadata_sha256")
     if expected_metadata is not None:
         if payload.get("ingestion_mode") != "direct_text" or "metadata" not in payload:

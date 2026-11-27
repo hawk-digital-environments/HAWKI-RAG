@@ -1,4 +1,4 @@
-"""Public multipart normalization for managed document ingestion."""
+"""Public request normalization for managed document ingestion."""
 
 import hashlib
 import json
@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from hawki_backend.text_ingestion.validation import TextContent
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 DEFAULT_EXTENSIONS = (
@@ -124,6 +126,35 @@ class ManagedInput(BaseModel):
             "graph_enabled": self.graph,
             "metadata_json": self.metadata_json if self.metadata_json else [],
         }
+
+
+class ManagedTextInput(TextContent):
+    """Inline text and the managed document fields needed for its upload."""
+
+    source_updated_at: datetime | None = None
+    force: bool = False
+    graph: bool = False
+
+    def upload_input(self) -> ManagedInput:
+        fields = self.model_dump(
+            include={
+                "dataset_id",
+                "display_name",
+                "source_url",
+                "source_updated_at",
+                "force",
+                "graph",
+            },
+            exclude_unset=True,
+        )
+        fields["metadata_json"] = self.metadata
+        return ManagedInput.model_validate(fields)
+
+    def markdown_bytes(self) -> bytes:
+        if self.content_format == "markdown":
+            return self.text.encode("utf-8")
+        text = self.text.replace("\r\n", "\n").replace("\r", "\n")
+        return (text if text.endswith("\n") else text + "\n").encode("utf-8")
 
 
 def extension(filename: str, extensions: tuple[str, ...], custom: bool) -> str:

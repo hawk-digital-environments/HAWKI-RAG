@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import shutil
 from typing import Any
 
 from hawki_rag_contracts.pipeline.ingestion import (
@@ -52,6 +54,7 @@ def execute_source_conversion(
     artifact_store = dependencies.artifact_store_factory(
         shared_storage_root(workflow_input)
     )
+    staged = None
     if workflow_input.get("managed_upload_protocol") == 2:
         if workflow_input.get("owner") == "url" or not workflow_input.get(
             "managed_document_id"
@@ -64,23 +67,40 @@ def execute_source_conversion(
         )
         if staged is None:
             raise RuntimeError("Direct upload conversion requires a local upload")
-    config = build_converter_endpoint_config(
-        workflow_input,
-        settings,
-        artifact_store=artifact_store,
+    staged_markdown = (
+        staged["uploaded_file"]
+        if staged is not None and workflow_input.get("upload_metadata") is not None
+        else None
     )
-    if workflow_input.get("owner") == "url" and not config.uses_direct_extract:
-        raise RuntimeError(
-            "URL conversion requires synchronous extraction; asynchronous converter job drainage is not supported"
+    if staged_markdown is not None:
+        # Inline text is already UTF-8 Markdown. Publish the same canonical
+        # converter artifact that the indexer expects from extracted files.
+        output = artifact_store.resolve(Path(markdown_dir) / "content_markdown.md")
+        shutil.copyfile(staged_markdown, output)
+        run_result = ConversionRunResult(
+            source_id=source_id,
+            markdown_dir=markdown_dir,
+            markdown_files_created=1,
+            status=IngestionStatus.SUCCESS,
         )
-    run_result = _run_converter(
-        config,
-        source_id=source_id,
-        raw_dir=raw_dir,
-        markdown_dir=markdown_dir,
-        artifact_store=artifact_store,
-        dependencies=dependencies,
-    )
+    else:
+        config = build_converter_endpoint_config(
+            workflow_input,
+            settings,
+            artifact_store=artifact_store,
+        )
+        if workflow_input.get("owner") == "url" and not config.uses_direct_extract:
+            raise RuntimeError(
+                "URL conversion requires synchronous extraction; asynchronous converter job drainage is not supported"
+            )
+        run_result = _run_converter(
+            config,
+            source_id=source_id,
+            raw_dir=raw_dir,
+            markdown_dir=markdown_dir,
+            artifact_store=artifact_store,
+            dependencies=dependencies,
+        )
 
     artifacts = (
         collect_markdown_artifacts(
@@ -90,6 +110,7 @@ def execute_source_conversion(
                 scrape_result.artifacts[0].uri if scrape_result.artifacts else raw_dir
             ),
             artifact_store=artifact_store,
+            preserve_text=staged_markdown is not None,
         )
         if run_result.status is IngestionStatus.SUCCESS
         else []

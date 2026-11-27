@@ -85,7 +85,6 @@ def test_openapi_exposes_application_routes_without_ui_operations() -> None:
     assert paths == {
         "/v1/health",
         "/v1/query",
-        "/v1/text-ingestions",
         "/v1/text-ingestions/{source_id}",
         "/v1/documents",
         "/v1/documents/batch",
@@ -99,16 +98,16 @@ def test_openapi_exposes_application_routes_without_ui_operations() -> None:
     }, f"Unexpected paths: {paths}"
     assert set(openapi["paths"]["/v1/health"]) == {"get"}
     assert set(openapi["paths"]["/v1/query"]) == {"post"}
-    assert set(openapi["paths"]["/v1/text-ingestions"]) == {"post"}
     assert set(openapi["paths"]["/v1/text-ingestions/{source_id}"]) == {"delete"}
 
 
-def test_retired_bff_routes_are_not_served() -> None:
+def test_retired_routes_are_not_served() -> None:
     from fastapi.testclient import TestClient
     from hawki_backend.main import app
 
     client = TestClient(app)
     for method, path in (
+        ("POST", "/v1/text-ingestions"),
         ("POST", "/v1/documents/read-access"),
         ("POST", "/v1/pipeline/legacy-access"),
         ("GET", "/v1/pipeline/start-request?key=fixture"),

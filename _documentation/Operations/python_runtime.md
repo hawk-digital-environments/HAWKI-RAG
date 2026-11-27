@@ -65,6 +65,11 @@ make up-core-local
 python_backend/.venv/bin/python -m pytest python_backend/tests/test_deployment_configuration.py
 ```
 
+Both `make up-core` and `make up-core-local` serve REST and
+[MCP](../Reference/direct_text_ingestion.md#submit-through-local-mcp) on the
+private Docker network. Clients on that network use `http://rag_backend/v1` for
+REST and `http://rag_backend/mcp` for MCP.
+
 The graph and URL smoke tools and ingestion benchmarks accept an explicit
 `RAWKI_API_BASE_URL` ending in `/v1` and a short-lived service JWT via
 `RAWKI_API_TOKEN_FILE`. Run them from a trusted client that can reach the
@@ -129,7 +134,8 @@ with conversion, followed by indexing and ready projection. The converter
 prepares the local raw artifact through the shared root-confined upload stager;
 no scraper activity or external crawler is invoked. The pipeline API projects
 scraping as skipped and has no scraper events for these uploads. URL ingestion
-keeps its crawler stage, while direct text starts at indexing. Upload histories
+keeps its crawler stage. Inline text is staged as Markdown and runs through the
+same conversion and indexing workflow as file uploads. Upload histories
 without the version field retain their recorded scraper staging sequence for
 Temporal replay. Deploy converter/workflow workers before enabling new backend
 uploads; existing history and upload metadata are not rewritten.

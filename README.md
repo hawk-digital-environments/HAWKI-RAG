@@ -5,8 +5,9 @@ and HISinOne call the FastAPI service with their own registered service JWTs.
 Dataset grants and tenant isolation apply to queries and mutations.
 
 FastAPI serves `/v1/*` on the private Docker network. Temporal workers use
-signed internal callbacks. HAWKI-RAG supports typed metadata filters, managed file and URL ingestion,
-direct text ingestion, vector and graph retrieval, and reranking.
+signed internal callbacks. HAWKI-RAG supports typed metadata filters, a shared
+document API for file and inline text ingestion, URL ingestion, vector and graph
+retrieval, and reranking.
 
 - [Install and configure HAWKI-RAG](_documentation/Getting%20Started/4_installation_zero_to_up.md)
 - [Run and operate the Python stack](_documentation/Operations/python_runtime.md)

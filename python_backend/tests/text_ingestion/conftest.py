@@ -1,6 +1,8 @@
 """Real local persistence and workflow control; only network boundaries are fake."""
 
 import asyncio
+import json
+from typing import Annotated
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -8,6 +10,9 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 import sqlalchemy as sa
+from fastapi import Depends, Request
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.pool import StaticPool
 
 from hawki_backend.auth.models import AuthenticatedPrincipal, PrincipalKind
@@ -16,6 +21,14 @@ from hawki_backend.main import create_app
 from hawki_backend.persistence.grants import DatabaseGrantReader
 from hawki_backend.persistence.schema import datasets, dataset_grants
 from hawki_backend.query.settings import DatasetScope, ProviderModels, QuerySettings
+from hawki_backend.text_ingestion import errors
+from hawki_backend.text_ingestion.api import (
+    _INGEST_PRINCIPAL,
+    _idempotency_key,
+    _map_ingest_error,
+    _service,
+)
+from hawki_backend.text_ingestion.validation import TextIngestionRequest
 from hawki_backend.text_ingestion.artifacts import TextArtifactStorage
 from hawki_backend.text_ingestion.repository import TextOperationRepository
 from hawki_backend.text_ingestion.schema import (
@@ -23,12 +36,64 @@ from hawki_backend.text_ingestion.schema import (
     ingest_text_events,
 )
 from hawki_backend.text_ingestion.service import TextIngestionService
-from hawki_backend.text_ingestion.settings import TextIngestionSettings
+from hawki_backend.text_ingestion.settings import (
+    MAX_REQUEST_BYTES,
+    TextIngestionSettings,
+)
 from hawki_backend.text_ingestion.writers import WriterEvent
 from hawki_backend.workflow_control.repository import OperationRepository
 from hawki_backend.workflow_control.schema import operations
 from hawki_backend.workflow_control.service import WorkflowControl
 from hawki_workflow_control.temporal_client import TemporalExecution
+
+
+# Simulate submissions from the previous release to test historical rows and callbacks.
+async def _raw_body(request: Request) -> bytes:
+    """Read the exact request bytes and enforce the inclusive public limit."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_REQUEST_BYTES:
+            raise errors.request_too_large()
+    return bytes(body)
+
+
+def _parse_body(raw: bytes) -> TextIngestionRequest:
+    try:
+        payload = json.loads(raw)
+    except (ValueError, RecursionError):
+        raise errors.invalid_request() from None
+    if not isinstance(payload, dict):
+        raise errors.invalid_request()
+    try:
+        return TextIngestionRequest.model_validate(payload)
+    except ValidationError as error:
+        for issue in error.errors(include_input=False, include_url=False):
+            if issue["loc"] == ("metadata",) and issue["type"] == "value_error":
+                raise errors.invalid_request(str(issue["ctx"]["error"])) from None
+        raise errors.invalid_request() from None
+    except RecursionError:
+        raise errors.invalid_request() from None
+
+
+async def ingest_text(
+    raw: Annotated[bytes, Depends(_raw_body)],
+    principal: Annotated[AuthenticatedPrincipal, Depends(_INGEST_PRINCIPAL)],
+    request: Request,
+) -> JSONResponse:
+    """Validate, authorize and dispatch one direct-text operation."""
+    service = _service(request)
+    body = _parse_body(raw)
+    key = _idempotency_key(request)
+    try:
+        outcome = await service.ingest(principal, body, key)
+    except Exception as error:  # noqa: BLE001 - mapped to the stable contract
+        _map_ingest_error(error)
+        raise
+    return JSONResponse(
+        status_code=200 if outcome.replayed else 202,
+        content=outcome.to_payload(),
+    )
 
 
 def payload(**changes):
@@ -174,6 +239,9 @@ def env(tmp_path, monkeypatch):
         text_ingestion_settings=settings,
         text_ingestion_service=service,
         text_ingestion_secret="event-test-secret",
+    )
+    app.add_api_route(
+        "/v1/text-ingestions", ingest_text, methods=["POST"], include_in_schema=False
     )
     yield SimpleNamespace(
         app=app,

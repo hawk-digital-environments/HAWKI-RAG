@@ -125,38 +125,43 @@ def test_direct_text_reaches_qdrant_and_ready_state(
         },
     }
     admitted = None
+    sources = set()
     try:
         admission_headers = headers | {"Idempotency-Key": "text-it-" + marker}
         status, admitted = _json_request(
             "POST",
-            root + "/v1/text-ingestions",
+            root + "/v1/documents",
             payload=payload,
             headers=admission_headers,
         )
         assert status == 202, "Text admission failed"
+        document_id = admitted["document"]["document_id"]
+        pipeline = admitted["pipeline"]
+        source_id = pipeline["source_id"]
+        sources.add(source_id)
         status, replay = _json_request(
             "POST",
-            root + "/v1/text-ingestions",
+            root + "/v1/documents",
             payload=payload,
             headers=admission_headers,
         )
         assert status in {200, 202}
-        for field in ("task_id", "source_id", "job_id", "workflow_id"):
-            assert replay[field] == admitted[field]
-        task = _wait_ready(root, headers, admitted["task_id"])
+        assert replay["document"]["document_id"] == document_id
+        assert replay["pipeline"] == pipeline
+        task = _wait_ready(root, headers, pipeline["task_id"])
         assert task["dataset_id"] == dataset
-        job = next(job for job in task["jobs"] if job["job_id"] == admitted["job_id"])
+        job = next(job for job in task["jobs"] if job["job_id"] == pipeline["job_id"])
         assert job["index_status"] == "ready"
-        assert job["source_id"] == admitted["source_id"]
-        assert job["temporal_workflow_id"] == admitted["workflow_id"]
-        points = _source_points(collection, admitted["source_id"])
+        assert job["source_id"] == source_id
+        assert job["temporal_workflow_id"] == "ingest-source-" + source_id
+        points = _source_points(collection, source_id)
         assert len(points) == 1
         assert points[0]["payload"]["content"] == text.rstrip()
-        assert points[0]["payload"]["ingestion_mode"] == "direct_text"
+        assert points[0]["payload"]["managed_document_id"] == document_id
         assert points[0]["payload"]["metadata"] == payload["metadata"]
         matches = _source_points(
             collection,
-            admitted["source_id"],
+            source_id,
             conditions=(
                 {"key": "metadata.integration_marker", "match": {"value": marker}},
                 {"key": "metadata.year", "match": {"value": 2025}},
@@ -168,29 +173,33 @@ def test_direct_text_reaches_qdrant_and_ready_state(
         assert [point["id"] for point in matches] == [points[0]["id"]]
         assert not _source_points(
             collection,
-            admitted["source_id"],
+            source_id,
             conditions=({"key": "metadata.year", "match": {"value": "2025"}},),
         )
-        # A metadata-only revision replaces removed keys on the existing chunks.
+        # Replacing a document uses the same ownership and cleanup as a file replacement.
         updated = {"year": "2026", "open": False, "topics": ["research"]}
         status, revision = _json_request(
-            "POST",
-            root + "/v1/text-ingestions",
-            payload={**payload, "metadata": updated},
+            "PUT",
+            root + "/v1/documents/" + document_id,
+            payload={**payload, "metadata": updated, "force": True},
             headers=headers | {"Idempotency-Key": "update-" + marker},
         )
-        assert status == 202 and revision["source_id"] == admitted["source_id"]
-        _wait_ready(root, headers, revision["task_id"])
-        refreshed = _source_points(collection, admitted["source_id"])
-        assert [point["id"] for point in refreshed] == [points[0]["id"]]
+        assert status == 202 and revision["document"]["document_id"] == document_id
+        replacement = revision["pipeline"]
+        sources.add(replacement["source_id"])
+        assert replacement["source_id"] != source_id
+        _wait_ready(root, headers, replacement["task_id"])
+        assert _source_points(collection, source_id) == []
+        refreshed = _source_points(collection, replacement["source_id"])
+        assert len(refreshed) == 1
         assert refreshed[0]["payload"]["metadata"] == updated
     finally:
-        if admitted and admitted.get("source_id"):
+        if admitted and admitted.get("document"):
             deadline = time.monotonic() + 180
             while True:
                 status, _ = _json_request(
                     "DELETE",
-                    root + "/v1/text-ingestions/" + admitted["source_id"],
+                    root + "/v1/documents/" + admitted["document"]["document_id"],
                     headers=headers | {"Idempotency-Key": "text-delete-" + marker},
                 )
                 if status == 200:
@@ -199,4 +208,4 @@ def test_direct_text_reaches_qdrant_and_ready_state(
                 if time.monotonic() >= deadline:
                     pytest.fail("Disposable source cleanup remains pending")
                 time.sleep(1)
-            assert _source_points(collection, admitted["source_id"]) == []
+            assert all(_source_points(collection, source) == [] for source in sources)

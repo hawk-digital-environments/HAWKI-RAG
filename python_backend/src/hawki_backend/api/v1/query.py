@@ -21,6 +21,7 @@ from pydantic import (
     ValidatorFunctionWrapHandler,
     field_validator,
 )
+from starlette.datastructures import State
 
 from hawki_backend.auth.dependencies import require_scopes
 from hawki_backend.auth.models import AuthenticatedPrincipal
@@ -249,22 +250,16 @@ def query(
     The route is synchronous on purpose: the grant lookup and the retrieval
     pipeline are blocking. FastAPI runs it in the worker threadpool.
     """
+    return execute_query(body, principal, request.app.state)
 
-    policy: AuthorizationPort | None = getattr(
-        request.app.state,
-        "grant_policy",
-        None,
-    )
-    settings: QuerySettings | None = getattr(
-        request.app.state,
-        "query_settings",
-        None,
-    )
-    dependencies: QueryDependencies | None = getattr(
-        request.app.state,
-        "query_dependencies",
-        None,
-    )
+
+def execute_query(
+    body: QueryRequestBody, principal: AuthenticatedPrincipal, state: State
+) -> PublicQueryResponse:
+    """Check the exact dataset grant and execute a validated public query."""
+    policy: AuthorizationPort | None = getattr(state, "grant_policy", None)
+    settings: QuerySettings | None = getattr(state, "query_settings", None)
+    dependencies: QueryDependencies | None = getattr(state, "query_dependencies", None)
 
     if policy is None:
         raise authorization_unavailable()
@@ -315,4 +310,4 @@ def query(
     return sanitize_query_response(response)
 
 
-__all__ = ["QueryRequestBody", "router"]
+__all__ = ["QueryRequestBody", "execute_query", "router"]

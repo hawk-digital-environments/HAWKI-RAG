@@ -18,7 +18,7 @@ Times are seconds. Admission-to-ready includes upload, queueing, conversion/inde
 | pdf_graph | PASS | 0.057 | 142.651 | 1.024 | 141.099 | 0.809 | 0.101 |
 | direct_text_vectors | PASS | 0.019 | 2.116 | — | — | 0.685 | 0.031 |
 
-Direct text skips the converter and does not perform graph enrichment. Each case creates its own dataset, redeems its exact ingest grant, waits for ready indexing, redeems query access, and verifies retrieval. PDF cases also verify indexed document status and byte-identical download. Graph on requires nodes and relationships; graph off/text require an empty graph. Cleanup deletes only this run's source/document and dataset storage.
+This run used the former text workflow, which skipped conversion and graph enrichment. The current benchmark submits inline text and files to the same managed workflow. Each case creates its own dataset, redeems its exact ingest grant, waits for ready indexing, redeems query access, and verifies retrieval. PDF cases also verify indexed document status and byte-identical download. Graph on requires nodes and relationships. Graph off and text require an empty graph. Cleanup removes the run's documents and dataset storage.
 
 Direct-text worker stage spans were not exposed by this run's event projection; its total admission-to-ready time was measured with the same monotonic clock as the PDF cases.
 
