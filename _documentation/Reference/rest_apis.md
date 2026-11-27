@@ -20,9 +20,14 @@ See [deployment](../Operations/python_runtime.md), [text and file ingestion](dir
 
 ## Query request
 
-Submit the authorized `dataset_id` and `query` to `/v1/query`, or use the browser gateway prefix. Query options such as `top_k`, `generate` and `fast_mode` follow the typed FastAPI schema. Storage scope is resolved server-side.
+Send `dataset_id` and `query` to `POST /v1/query`. The API schema defines
+options such as `top_k`, `generate`, and `fast_mode`. The backend selects the
+storage scope from the authorized dataset.
 
-The optional `metadata_filters` field selects chunks by public source metadata. The existing `filters` field remains a flat equality map for top-level payload attributes such as `source_format`. You can supply both. Each adds a required condition. Protected names and storage paths are rejected.
+Use `metadata_filters` to select chunks by public source metadata. Use
+`filters` for flat equality matches on top-level payload attributes such as
+`source_format`. When both fields are supplied, a chunk must match both.
+The API rejects protected names and storage paths.
 
 ```json
 {
@@ -39,7 +44,8 @@ The optional `metadata_filters` field selects chunks by public source metadata. 
 }
 ```
 
-A matching response includes ranked evidence and its validated source metadata. This excerpt shows one hit and selected diagnostics.
+The response contains ranked hits and their validated source metadata. This
+excerpt shows one hit and the retrieval diagnostics for the filtered query.
 
 ```json
 {

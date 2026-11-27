@@ -1,14 +1,14 @@
 # HAWKI RAG indexer worker
 
-This Temporal activity worker owns Markdown chunking, incremental planning,
-embedding, Qdrant writes, Neo4j writes, and RAG-Anything graph extraction. It
-uses deployment-selected queues. The current local deployment polls only
+The indexer turns Markdown into Qdrant chunk points. It detects unchanged
+content, computes embeddings, and can extract graph facts for Neo4j through
+RAG-Anything. It uses deployment-selected queues. The current local deployment polls only
 `rawki-local-indexer`; historical queue defaults remain wire compatibility.
 
-The worker calls its indexing application logic directly. It has no FastAPI
-application, bridge client, or application PostgreSQL client. Compose does inject
-shared dotenv variables, including database credentials, into this container.
-Python-owned pipeline metadata is updated only through signed worker events.
+The worker runs the indexing code in a Temporal activity and sends signed
+events to FastAPI to record progress. The worker has no application PostgreSQL
+client. Under the root Compose model, the container loads the shared project
+environment file, including any database credentials present in that file.
 
 Build the CPU or CUDA 13.0 variants with `TORCH_VARIANT=cpu` or
 `TORCH_VARIANT=gpu`; both are tags of the same logical indexer role. The GPU

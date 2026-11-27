@@ -1,7 +1,7 @@
 # HAWKI model providers
 
-This package owns concrete Ollama and LiteLLM clients plus their explicit
-construction and model-selection helpers. Consuming applications own the model
+This package provides Ollama and LiteLLM clients, a provider factory, and
+model-selection helpers. Consuming applications own the model
 capability ports they require. Provider configuration accepts model aliases only; request,
 authorization, dataset, and workflow interpretation remain service-owned.
 

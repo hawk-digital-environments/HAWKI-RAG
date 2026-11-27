@@ -1,17 +1,17 @@
 # Query & Retrieval
 
-Retrieval finds evidence inside the dataset authorized by FastAPI. The query service
-combines searches for similar meaning, matching words, and optional graph
-relationships, then selects evidence for an optional model-generated answer.
+Retrieval selects evidence from the dataset authorized by FastAPI. Semantic
+search finds passages by meaning. Lexical search matches terms. The retrieval
+package can also read graph relationships and pass selected evidence to a model.
 
-The searches interact in this order:
+Retrieval proceeds in this order.
 
 1. **Semantic search** compares the query's embedding with chunk embeddings in
    Qdrant to find passages with similar meaning.
 2. **Lexical search** finds query terms in chunk text and metadata, such as titles
-   and tags. The retrieval service merges these results with the semantic results. A chunk
-   found by both searches becomes one candidate with a combined score; distinct
-   chunks from the same document remain separate candidates.
+   and tags. The retrieval package merges these results with the semantic results.
+   A chunk found by both searches becomes one candidate with a combined score.
+   Distinct chunks from the same document remain separate candidates.
 3. **Optional graph search** uses query terms to find entities and relationships
    in Neo4j. The service combines these graph results with the already merged
    semantic and lexical candidates. Graph matches add a weighted relevance score
@@ -22,10 +22,9 @@ The searches interact in this order:
    from the query and selected results to gather related facts for answer context.
    When generation is enabled, the model receives the selected passages and facts.
 
-Graph search therefore runs **after the semantic and lexical results are merged,
-and before reranking**. It augments that combined candidate set. The later
-related-fact read supplies additional answer context while preserving the
-selected candidate ranking. Both Neo4j reads require authorized graph access,
+Structural graph search adds candidates **after semantic and lexical fusion
+and before reranking**.
+The later fact read supplies answer context without changing the ranking. Both Neo4j reads require authorized graph access,
 deep mode, and a query without a typed source-metadata filter.
 
 ## Runtime request options
@@ -66,7 +65,7 @@ The implementation entrypoint is
 ## 1. Bind trusted scope and prepare the query
 
 FastAPI selects one concrete Qdrant collection and embedding provider/model.
-The retrieval service locks the reader to that collection and adds a mandatory
+The retrieval package locks the reader to that collection and adds a mandatory
 `dataset_id` predicate to every vector and lexical path. For a typed metadata
 filter, the Qdrant adapter adds the compiled predicate to candidate searches,
 including scrolls and iterative retries.
@@ -91,7 +90,9 @@ embedding failure stops the request.
 
 ## 2. Retrieve semantic candidates
 
-The retrieval service retrieves a wider candidate set before final evidence selection.
+Semantic search normally requests three times `top_k`, subject to the
+configured cap. The cap can be lower than `top_k`. Filters or a small
+collection can leave fewer matching candidates than the search requests.
 
 | Condition, in precedence order | Semantic strategy |
 |---|---|
@@ -99,13 +100,14 @@ The retrieval service retrieves a wider candidate set before final evidence sele
 | `is_optimized=true` and not fast | Higher-recall HNSW search with a score threshold and optional preferred tags; empty results remove the threshold |
 | Otherwise, including fast mode | Basic dense vector search |
 
-These are bridge-owned policies over the Qdrant adapter. Preferred tags are not
-an unconditional filter applied to every retrieval strategy.
+The retrieval package applies these policies through the Qdrant adapter.
+Preferred tags apply only to strategies that use them.
 
 <details>
 <summary>Semantic candidate limits and optimized threshold</summary>
 
-Candidate count is normally three times requested `top_k`, capped at 50.
+The default multiplier is 3 and the default cap is 50. Configure them with
+`RAG_SEARCH_TOP_K_MULT` and `RAG_SEARCH_TOP_K_CAP`.
 The optimized strategy starts with score threshold 0.28.
 
 </details>
@@ -150,9 +152,8 @@ Identity prefers point ID, then document/chunk identity, relative path with
 chunk index, document with chunk index, and finally document ID.
 Distinct chunks from the same document survive deduplication.
 
-This is score fusion, not reciprocal-rank fusion. A normalization/merge occurs
-where multiple sets meet; the pipeline does not globally normalize every
-possible signal in one step.
+The service normalizes scores when it merges retrieval sets. Later stages
+can add signals to those scores.
 
 </details>
 
@@ -228,7 +229,7 @@ errors, wrong dimensions, non-numeric values, or non-finite values reuse the
 original vector. A high-recall search uses the same scope; non-empty results
 are merged and reranked again. An empty second pass preserves the first ranking.
 
-**Fast mode does not disable this pass.** `iterative_pass=true` indicates an
+**Fast and deep mode both allow this pass.** `iterative_pass=true` indicates an
 attempt, even if no new hits were found.
 
 ## 8. Build context, fetch facts, and optionally generate
@@ -249,8 +250,8 @@ the user query, and graph facts are added separately.
 
 </details>
 
-A **separate** related-graph read collects terms from the query and final hits. This produces `kg`, independently of the
-ranked structural hits. It requires hits, graph scope, and non-fast mode;
+A **separate** related-graph read uses terms from the query and final hits to produce
+`kg`. It leaves the ranked evidence unchanged. It requires hits, graph scope, and non-fast mode;
 `structural_hops=0` disables structural candidates but does not disable this
 separate fact read.
 
@@ -287,7 +288,7 @@ does not prove graph ingestion ran or facts exist.
 
 | Failure | Current boundary behavior |
 |---|---|
-| Invalid bridge schema or mismatched embedding provider | Validation error |
+| Invalid query contract or mismatched embedding provider | Validation error |
 | Blocked/empty sanitized query | HTTP 400 |
 | Missing scoped Qdrant collection | HTTP 503, `dataset_not_ready`; no collection creation |
 | Initial embedding failure | HTTP 500 |
@@ -296,7 +297,7 @@ does not prove graph ingestion ran or facts exist.
 | Neo4j availability failure | Empty graph evidence |
 | Generation failure | HTTP 502 |
 
-The query service logs stage counts, timings, provider, dataset and request IDs.
+The retrieval package logs stage counts, timings, provider, dataset and request IDs.
 Rewrite/expansion warnings use exception classes and bounded reasons;
 HTTP error translation redacts sensitive-looking values and returns stable
 messages for known upstream failures. Keep provider credentials and full document content out of operational logs.
@@ -305,12 +306,12 @@ messages for known upstream failures. Keep provider credentials and full documen
 
 RAG-Anything describes a retrieval approach that combines semantic matching with
 navigation through graph relationships and combines their relevance signals
-before answer generation. HAWKI RAG uses the RAG-Anything library during
+before answer generation. HAWKI-RAG uses the RAG-Anything library during
 [graph extraction at ingestion time](./Ingestion/graph_enrichment.md).
-HAWKI RAG implements the query workflow documented here, including lexical
+HAWKI-RAG implements the query workflow documented here, including lexical
 retrieval, the order of merging and graph scoring, and the separate read of
 related facts for answer context.
 
-For the original framework and its hybrid retrieval approach, please refer to
+For the original framework and hybrid retrieval approach, see
 Guo et al. (2025), [*RAG-Anything: All-in-One RAG Framework*](https://arxiv.org/abs/2510.12323),
 especially [Section 2.3, Cross-Modal Hybrid Retrieval](https://arxiv.org/html/2510.12323v1#S2.SS3).

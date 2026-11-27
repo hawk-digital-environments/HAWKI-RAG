@@ -1,8 +1,11 @@
 # Python RAG tests
 
-Run deterministic workspace tests using the [testing guide](../../_documentation/Developer/testing.md). PostgreSQL, provider and store integration tests require their explicit isolated configuration; do not point them at retained production/history data.
+Use the [testing guide](../../_documentation/Developer/testing.md) to run the
+workspace tests. Configure isolated PostgreSQL, model, and store endpoints
+for opt-in integration cases.
 
-Live acceptance uses the configured Python service boundary and disposable datasets. URL ingestion requires a configured external crawler and the scraper worker. Service credentials stay server-side. See [deployment](../../_documentation/Operations/python_runtime.md) and [external crawler setup](../../_documentation/Operations/crawler_v2_local_upgrade.md).
+Live acceptance uses the service API and disposable datasets. URL tests also
+require a configured crawler and scraper worker. See [deployment](../../_documentation/Operations/python_runtime.md) and [external crawler setup](../../_documentation/Operations/crawler_v2_local_upgrade.md).
 
 ## Service API text E2E
 

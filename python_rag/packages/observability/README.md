@@ -1,8 +1,8 @@
 # HAWKI observability
 
-This package owns secret-safe log formatting, request previews, correlation-ID
-selection, and stable event names. It contains no retry, transport, database,
-framework, or optional-dependency loading behavior.
+Workers and adapters use this package to select correlation IDs and format
+events, including redacted request previews. Network clients and retry
+policies belong to the consuming packages.
 
 ## Tests
 

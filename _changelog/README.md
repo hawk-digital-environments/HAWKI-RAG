@@ -1,53 +1,53 @@
 # Changelog
 
-Welcome to the HAWKI RAG changelog! 🚀
-
-Whether you're checking out what's new in the latest release or catching up after some time away, you'll find all our updates, improvements, and bug fixes organized by version in the menu on the left.
+Find the release you are upgrading to in the changelog sidebar.
 
 ## What you'll find here
 
-- **Version history** grouped by major releases for easy browsing
-- **Upgrade instructions** right alongside each release when setup changes are needed
-- **Clear descriptions** of what's changed and why it matters
+- **Release notes** list the features, fixes, and deprecations for each version.
+- **Upgrade guides** appear alongside releases that require manual steps on
+  existing installations.
 
 ## Need help?
 
-Got questions about a release or running into issues? Our
-[Discord community](https://discord.gg/zzR54sRWDE) is full of helpful folks who'd love to help out.
-
-Happy updating! ✨
+Ask release questions in the [Discord community](https://discord.gg/zzR54sRWDE).
 
 ---
 
 ## For contributors
 
-The sections below explain how the changelog and release process work for developers contributing to the RAG. The release pipeline is powered by [hawk-pipeline-actions](https://github.com/hawk-digital-environments/hawk-pipeline-actions).
+Update the draft release notes and upgrade instructions alongside the change.
+The historical release pipeline used [hawk-pipeline-actions](https://github.com/hawk-digital-environments/hawk-pipeline-actions).
 
 ### Tracking changes day-to-day
 
-There are two working files in this directory: `next.md` and `next-upgrade.md`. These are **living documents** — treat them like a running notepad for the next release.
+For a pull request to `development` with changes users or operators need to
+know about, update the relevant draft in the same pull request. Record
+user-visible changes in `next.md` and manual upgrade steps in `next-upgrade.md`.
 
-**Every pull request to `development` that introduces a change worth communicating should update one or both of these files as part of the PR itself.** Don't save it for later; changelog entries written close to the actual change are far more accurate and useful.
-
-> **Both files are automatically reset to a clean template after every release.** You will never need to manually clear or recreate them — just start filling in `next.md` for the next release cycle.
+> The historical release workflow **reset both drafts** when it created the
+> release branch.
 
 #### Which parts are written?
 
-Lines written as `[//]: # (text)` are template hints — they are visible in your editor but render as nothing in markdown. When the pipeline processes a release, these lines are stripped first; any section that contains only those hints is then dropped entirely. Write your real content as normal (non-commented) lines anywhere under the appropriate heading.
+Lines of the form `[//]: # (text)` are template comments. Write release notes
+as ordinary Markdown under the appropriate heading. The historical release
+workflow stripped the comments and omitted the resulting empty sections.
 
 #### `next.md` — the next release notes
 
-This is the primary changelog file. Add bullet points under the appropriate section when your PR introduces something new, fixes a bug, or deprecates something.
+Add an entry under the relevant heading for a feature, bug fix, or deprecation.
 
 #### `next-upgrade.md` — the next upgrade guide
 
-This file is **optional**. Only fill it in if your change requires administrators to take manual action when upgrading (e.g. running a migration, changing a config value, updating an environment variable). If your change needs no upgrade steps, leave the file alone.
+This file is **optional**. Add steps only when an upgrade requires manual
+action, such as a database migration or a change to an environment variable.
 
 ---
 
 ### Which version number to use?
 
-Always follow [Semantic Versioning](https://semver.org/). In short:
+Use [Semantic Versioning](https://semver.org/).
 
 **Patch — `x.y.Z`**
 Increment for backward-compatible bug fixes only. A bug fix corrects incorrect behaviour without changing any public interface.
@@ -58,14 +58,16 @@ Increment when new, backward-compatible functionality is introduced. Also increm
 **Major — `X.0.0`**
 Increment when backward-incompatible changes are introduced. Reset both minor and patch versions to `0`.
 
-When in doubt, err on the side of a minor bump rather than a patch. A version number that's slightly higher than necessary causes no harm; a patch version that hides a breaking change causes real problems for people upgrading.
+If a backward-compatible change could qualify for either a patch or a minor
+release, prefer a minor bump.
 
 ---
 
 ### Releasing a new version
 
-Releases are triggered manually via two GitHub Actions workflows, run in order.
-You will find both under **Actions** in the repository.
+The following procedure describes the historical release workflows. The
+current checkout contains test and documentation workflows. Use the release
+steps below only with a branch that provides the named workflows.
 
 #### Step 1 — Create the release branch
 
@@ -82,7 +84,7 @@ The pipeline validates `next.md`, renames it to `2.1.0.md`, resets both working 
 
 1. Go to **Actions** → **[MANUAL] - 2. Trigger Release**
 2. Click **Run workflow**
-3. Select **`release/v2.1.0`** from the **"Use workflow from"** dropdown — this is your release selector, there is no separate input field for the branch
+3. Select **`release/2.1.0`** from the **"Use workflow from"** dropdown — this is your release selector, there is no separate input field for the branch
 4. Run the workflow
 
 The pipeline validates the branch name, runs a Docker build test, then squash-merges the release branch into `main` and back into `development`, pushes the version tag, and deletes the release branch. This tag push automatically triggers the automated release pipeline, which builds the Docker image, creates the GitHub Release, and announces the update on Discord.
@@ -95,7 +97,7 @@ The pipeline validates the branch name, runs a Docker build test, then squash-me
 
 Git **tags** and working **branch names** do not carry a `v` prefix. The version `2.1.0` is tagged as `2.1.0` and the release branch is named `release/2.1.0`.
 
-The only place the `v` prefix appears is in the **GitHub Release display name** (`v2.1.0`), which is cosmetic and matches GitHub's conventions for release pages. This is intentional and consistent with HAWKI's historical versioning schema.
+The GitHub Release display name uses the `v` prefix.
 
 | Thing               | Format            | Example                           |
 |---------------------|-------------------|-----------------------------------|

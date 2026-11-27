@@ -1,20 +1,31 @@
 # Identity & Incremental Ingestion
 
-Incremental ingestion allows the system to recognize documents across multiple indexing runs. It uses three different values for different purposes: **source identity** identifies the same logical document over time, the **content hash** shows whether the document's content has changed, and the **idempotency key** identifies a specific submission or retry. For direct text, the same dataset and `external_document_id` should be kept across revisions. When the content changes, the hash changes and a new idempotency key should be used. The idempotency key belongs to the submission, not to the document itself.
+**Source identity** ties revisions to the same logical document. A
+**content hash** tells the indexer whether the document's bytes changed.
+An **idempotency key** identifies one submission. Reuse it when retrying
+identical input and use a new key when submitting changed content or metadata.
 
 ## Identity rules
 
-Each source type has a stable way of identifying a document. Web pages use their normalized URL, while files may also include their relative artifact path when necessary to distinguish them. Uploaded files without an HTTP URL receive an identity based on their source and artifact path. Direct-text documents are identified by the dataset and `external_document_id`, with their stable `document.md` artifact used to determine the document ID. A direct-text `source_url` is only metadata and does not define the document's identity. During preparation, the system also verifies or generates a SHA-256 content hash from the actual document content.
+Each source type has a stable way of identifying a document. Web pages use their normalized URL, while files may also include their relative artifact path when necessary to distinguish them. Uploaded files without an HTTP URL receive an identity based on their source and artifact path. For historical direct text, the dataset and `external_document_id` identify
+the source, and the stable `document.md` artifact determines the indexed
+document ID. Its `source_url` is descriptive. Inline text submitted through
+`/v1/documents` uses a managed document ID. Replace it through the document API. During preparation, the system also verifies or generates a SHA-256 content hash from the actual document content.
 
 ## Document Update Detection
 
 Qdrant is the source of truth for deciding whether a document is new, unchanged, or changed. If the identity is new, the document is indexed normally. If the identity and content hash are unchanged, normal vector and graph processing can be skipped. If the identity is the same but the content has changed, new embeddings are created and the previous vectors are replaced; graph data is also replaced after successful extraction.
 
-Documents that disappear from a later source submission are **not automatically removed**. Internal graph-only indexing can update graph data without updating vectors, but it does not automatically remove stale graph facts. Incremental indexing uses the authorized document identity and store evidence; frozen public-schema history is not runtime ownership. If Qdrant cannot be read reliably, the system does not assume that a document is new and may fail the indexing operation instead.
+Documents missing from a later submission are **not automatically removed**.
+Use scoped deletion for those documents. Internal graph-only indexing can
+update graph data without updating vectors, but it does not automatically
+remove stale graph facts. Incremental indexing uses the authorized document
+identity and store evidence. Runtime ownership comes from active records.
+If Qdrant cannot be read reliably, the indexing operation may fail.
 
 ## How text ingestion handles retries
 
-For directly submitted text (`IngestTextWorkflow`), the indexer checks the stored chunk points in Qdrant to determine whether a previous attempt finished indexing the whole document. This check runs whenever the indexing activity executes, including retries after a provider error, a failed Qdrant write, or an interrupted
+For historical text ingestions run by `IngestTextWorkflow`, the indexer checks the stored chunk points in Qdrant to determine whether a previous attempt finished indexing the whole document. This check runs whenever the indexing activity executes, including retries after a provider error, a failed Qdrant write, or an interrupted
 worker. Recovery uses the same embedding model, chunking rules, and storage settings.
 
 Replaying an HTTP submission with the same idempotency key returns its recorded
@@ -33,7 +44,7 @@ content hashes and can skip unchanged documents after a configuration change.
 Use a fresh target or controlled cleanup and rebuild to apply new indexing rules
 to existing content.
 
-Direct-text completion checks cover the document content and expected chunk
+Historical direct-text completion checks cover the document content and expected chunk
 points. Applying a new embedding model or changed chunking rules to existing
 data requires a planned rebuild.
 

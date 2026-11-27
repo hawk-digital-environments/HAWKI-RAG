@@ -1,7 +1,8 @@
 # HAWKI reranker
 
-Cohere-compatible local HTTP service for relevance reranking with an isolated
-model dependency environment.
+The reranker scores candidate passages against a query through a
+Cohere-compatible HTTP endpoint. Its model dependencies use a separate
+environment.
 
 ## Tests
 

@@ -1,27 +1,36 @@
 # HAWKI workflow worker
 
-This service runs deterministic `IngestSourceWorkflow` and `IngestTextWorkflow`
-executions. Network,
-filesystem, database, scraping, conversion, and indexing operations remain in
-activities hosted by their owning workers.
+The workflow worker runs `IngestSourceWorkflow` for current ingestion and
+`IngestTextWorkflow` for historical text operations. Workflows determine the
+activity order. Scraping, conversion, indexing, and other I/O run in the
+activity workers.
 
 ## Failed-stage recovery
 
-The Python pipeline Retry action creates a new workflow with current service settings and
-a typed `resume` payload selected from the recorded stage states:
+The historical Laravel dispatcher started a new workflow with a `resume`
+payload derived from the failed stage and verified the saved output before
+dispatch. The workflow still accepts an explicit, typed `resume` payload.
 
-- `scrape`: run scraping, conversion, and ingestion.
+- `scrape`: start at the beginning of the ingestion path. Managed uploads
+  using protocol 2 still start with conversion.
 - `convert`: reuse the completed scrape's `raw_dir`, then convert and ingest.
 - `ingest`: reuse the completed conversion's `markdown_dir`, then ingest.
 
-FastAPI verifies the required saved outputs before starting recovery. Missing
-outputs produce a recovery error; they do not silently restart earlier stages.
-Ingestion recovery reprocesses unchanged content so a completed Qdrant write
-cannot hide an incomplete vector batch or failed Neo4j write. Recovery restarts
-the failed stage, not an individual file or database statement within it.
+The workflow validates the stage and its required output paths before
+scheduling activities. Resuming at `ingest` reprocesses unchanged content so
+that an incomplete vector batch or a failed graph write can be retried.
 
-Workflows without `resume` retain their original activity sequence. Deploy the
-backend, workflow worker and indexer with matching shared input contracts before using stage recovery.
+The current Python pipeline retry API uses the owning service's recovery path:
+
+- A replay of the same mutation reconciles its recorded operation and workflow
+  identity. An uncertain URL dispatch resumes the recorded generation.
+- A URL generation recorded as completed with a failed or skipped result is
+  recrawled as a successor generation with a new workflow identity.
+- A failed managed revision is replaced using its saved upload. The replacement
+  creates a new source revision, generation, and workflow identity.
+
+These paths use the normal activity sequence for their workflow input.
+Keep the backend, workflow worker, and indexer on matching input contracts.
 
 ## URL dispatch acknowledgement
 

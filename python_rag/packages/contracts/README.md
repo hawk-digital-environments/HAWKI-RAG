@@ -1,8 +1,7 @@
 # HAWKI RAG contracts
 
-This package contains versioned wire models and stable Temporal identifiers
-shared by the Python RAG services. It performs no filesystem, network,
-database, framework, or service I/O.
+The backend and workers use these wire models to read each other's payloads.
+The package also defines stable Temporal names and has no runtime I/O.
 
 ## Contract domains
 

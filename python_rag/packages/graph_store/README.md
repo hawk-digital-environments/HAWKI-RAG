@@ -1,8 +1,8 @@
 # HAWKI graph store
 
-This package owns HAWKI RAG's graph persistence boundary and Neo4j adapter. It
-contains graph value contracts, scoped Cypher requests,
-response parsing, and managed-transaction behavior. Graph cleanup, retrieval
+The Neo4j adapter reads and writes graph records within a dataset scope. This
+package defines the graph values, Cypher requests, response parsers, and
+transaction handling used by the adapter. Graph cleanup, retrieval
 ranking, and RAG-hit projection remain application-owned. It has no dependency
 on the vector-store or text-processing packages.
 

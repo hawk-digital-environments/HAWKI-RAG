@@ -1,9 +1,8 @@
 # Shared Python packages
 
-`python_rag/packages/` contains focused libraries shared by independently
-deployed HAWKI RAG Python services. Packages provide stable contracts and reusable
-infrastructure; they do not orchestrate services, interpret authorization, or
-own workflow order.
+`python_rag/packages/` contains libraries used by the backend and workers. Packages
+provide shared contracts and adapters. The consuming services decide what work
+to authorize and in what order to run it.
 
 ## Package rules
 
@@ -36,8 +35,9 @@ ingestion, queries, reranking, callbacks, and stable Temporal identifiers.
 
 ### `external_jobs/`
 
-Generic HTTP start-or-resume and status-polling behavior used by scraper and
-converter adapters. Service payload interpretation remains outside the package.
+HTTP job submission and status polling for scraper and converter adapters.
+The CustomCrawler client also verifies `crawler-api` job receipts and sends
+cancellation requests.
 
 ### `graph_store/`
 
@@ -75,8 +75,8 @@ strategies are application-owned.
 
 ### `worker_runtime/`
 
-Temporal activity-executor construction, heartbeat delivery, retry-delay value
-objects, and worker logging/settings. FastAPI callbacks and external jobs live
+Temporal executor construction, heartbeat delivery, retry-delay values, and
+worker logging and settings. FastAPI callbacks and external jobs live
 in their own packages.
 
 ### `retrieval/`

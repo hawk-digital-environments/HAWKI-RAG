@@ -1,6 +1,6 @@
 # Ingestion with Graph Processing Enabled
 
-When graph processing is enabled for a website or uploaded file, the indexer
+When graph processing is enabled for a URL or managed document, the indexer
 extracts entities and relationships from the document content and stores them
 as facts in the dataset's Neo4j graph. This adds a graph representation of the
 documents alongside their searchable chunk vectors in Qdrant.
@@ -33,13 +33,30 @@ second step affect the stored data and ingestion status.
 
 ## When graph processing runs
 
-Website and uploaded-file ingestion normally use `RAG_INGEST_GRAPH` to control
-graph processing; `true` enables it, and the template default is `false`.
-Supported managed-document and upload requests can supply a `graph` option for
-that ingestion operation; FastAPI carries the selection into the workflow input.
-A converted document marked `converter_fallback=raganything_passthrough` also
-enables graph processing for its batch. Direct-text ingestion
-(`IngestTextWorkflow`) sets `graph=false` and performs vector indexing.
+For a new managed document or URL task, the request's graph option defaults to
+`false`. To enable graph enrichment on a managed document, send a top-level
+`graph` field in the JSON body for inline text or a `graph` form field with
+the file upload. The following examples show only the graph fields.
+
+```json
+{"graph": true}
+```
+
+For a URL task, put the option inside `metadata`.
+
+```json
+{"metadata": {"graph": true}}
+```
+
+Omitting `graph` on a managed replacement keeps the document's previous
+setting. An explicit `true` requires a graph scope on the dataset. FastAPI
+records the selection in the workflow input. The Python API derives these
+defaults from the request and document record independently of the legacy
+`RAG_INGEST_GRAPH` entry in the root environment template.
+
+A converted document marked `converter_fallback=raganything_passthrough` can
+also enable graph processing for its batch. The historical `IngestTextWorkflow`
+uses vector indexing.
 
 For websites and uploaded files, the incremental planner skips graph extraction
 for documents whose content hash is unchanged. Enabling graph processing for
@@ -84,14 +101,13 @@ flowchart TB
 |---|---|
 | RAG-Anything | Coordinates text, supported converter image metadata, and model callbacks |
 | LightRAG | Embedded extraction and intermediate graph representation |
-| HAWKI RAG adapter | Exports edges, normalizes subject/relation/object tuples, filters against source text, removes duplicates |
+| HAWKI-RAG adapter | Exports edges, normalizes subject/relation/object tuples, filters against source text, removes duplicates |
 | Neo4j writer | Persists canonical facts with document provenance and trusted dataset/namespace |
 
 ## System configuration and setup
 
-The request's `graph` option controls a supported ingestion operation while the
-system is running. The default `RAG_INGEST_GRAPH` and the extraction limits below
-take effect when the services that read them are recreated.
+FastAPI records the effective `graph` option for each ingestion. Recreate the
+indexer after changing the worker environment settings below.
 
 The indexer reads the amount of document text to use for graph extraction from
 its worker environment:
@@ -104,8 +120,7 @@ its worker environment:
 The indexer applies the chunk limit first, then the character limit. With the
 template values, it passes up to 6,000 characters from the first six chunks of
 each document to graph extraction. That character budget applies to the combined
-selected text for one document. Operators can adjust both values to change how
-much text the extractor receives. An unset setting uses `0` in the code.
+selected text for one document. When a setting is unset, the indexer uses `0`.
 
 New limits and model selections apply to future extraction. Rebuild affected graph
 data when existing facts should reflect those changes. See
@@ -132,10 +147,16 @@ Cache lifecycle and temporary graph cleanup are internal details.
 
 ## Scope and update order
 
-For graph-enabled indexing, the request must include a trusted dataset ID and Neo4j namespace. Existing chunks must belong to the same scope, and this is checked before vectors are written. The dataset ID and namespace are also used when writing graph data to Neo4j. The namespace is only a logical separation of data; it does not create a separate Neo4j database.
+Graph-enabled indexing requires a trusted dataset ID and Neo4j namespace.
+The indexer checks existing chunks against that scope before writing vectors.
+Neo4j writes use the same dataset ID and namespace. A namespace identifies a
+logical scope within the configured Neo4j database.
 
-Qdrant is updated **before** graph extraction and Neo4j updates. For changed documents, the system first extracts the new graph information while keeping the existing graph data unchanged. If extraction fails or times out, the
-document is marked as failed and the old graph data is preserved.
+The indexer writes to Qdrant **before** extracting facts and updating Neo4j.
+For changed documents, it keeps the existing graph data while extracting the
+new facts. If extraction fails or times out, the indexer records the failure
+and preserves the old graph data. A graph failure on a source/path artifact
+also prevents whole-document completion.
 
 If extraction finishes successfully, the system replaces the old graph data with the new result. This also happens when extraction succeeds but returns no graph facts. If the later Neo4j delete or write step fails, the graph update can be left incomplete and the indexing operation fails.
 

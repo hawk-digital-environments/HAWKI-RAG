@@ -1,10 +1,14 @@
 # Requirements
 
-Use Docker with Compose v2 and the Python and uv versions pinned in the backend
-and worker projects. Local builds need enough RAM and disk for the chosen
-models, indexes, and volumes. CUDA workers also need the NVIDIA Container
-Toolkit. Node is used by the separate documentation site build.
+Local builds use Docker with Compose v2. Use **Python 3.13.14** and
+**uv 0.11.26**, the versions pinned for the Python builds and CI.
+Allow disk space for models, indexes, and Docker volumes, and enough memory
+for the selected models. CUDA deployments require the NVIDIA Container Toolkit.
+The documentation site uses Node.js.
 
-Provision a registered service JWT issuer and a PostgreSQL backend role with
-only the operational schema grants. The [runtime guide](../Operations/python_runtime.md)
-covers readiness, data retention, and production image prerequisites.
+Provision a service JWT issuer and a restricted PostgreSQL runtime role with
+only the required grants on `hawki_backend`. Use a separate, privileged
+migration login to provision the schema. The runtime role must lack schema
+creation rights, privileged role attributes, and access to the historical
+`public` tables. See the [runtime guide](../Operations/python_runtime.md) for
+the production image, database, and readiness requirements.

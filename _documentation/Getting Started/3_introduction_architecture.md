@@ -1,5 +1,10 @@
 # Architecture
 
+FastAPI authorizes requests and records ingestion state in PostgreSQL.
+Temporal records workflow history and routes tasks. The workflow worker
+executes the workflow code, and activity workers carry out its scraping,
+conversion, and indexing steps.
+
 ```mermaid
 flowchart LR
     Client[Private-network client with a service JWT] -->|/v1| Backend[FastAPI]
@@ -17,9 +22,11 @@ flowchart LR
 ```
 
 The backend verifies issuer, audience, signature, service identity, tenant,
-scopes and exact dataset grants. Query and ingestion resolve their physical
-store targets from authorized dataset metadata. External applications own
-their human authentication and request service tokens from the configured issuer.
+scopes. Dataset query and ingestion routes check the corresponding exact grant.
+The authorized dataset record selects the storage targets for queries and
+ingestion. External applications authenticate their users and request service
+tokens from the configured issuer.
 
 The backend and infrastructure listen on private Docker networks. Workers sign
-the original callback bytes and submit them through the project network.
+the callback body before sending it to FastAPI. Only the Temporal scraper
+worker sends HTTP requests to the crawler.

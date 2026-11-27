@@ -1,11 +1,35 @@
 # Authorization & Dataset Scope
 
-HAWKI owns human authentication. FastAPI authenticates registered service identities using asymmetric JWT verification, HTTPS JWKS, issuer/audience/lifetime, tenant, client registry and scopes. It does not implement a mirrored human account system.
+External applications authenticate their users. They call FastAPI with service
+JWTs issued for registered clients. FastAPI verifies the signature against the
+HTTPS JWKS and checks issuer, audience, lifetime, tenant, client, and scopes.
 
-Authorization requires both the action's coarse scope and an exact grant on the active dataset for that tenant/service. Management scope does not implicitly grant ingestion. Dataset creation issues a one-time bootstrap capability; ingest self-grant redemption remains explicit. Query grants require real indexed content and the applicable service policy.
+Dataset creation and the authenticated `/v1/readiness` endpoints require
+`rag:datasets:manage`. Creation uses the tenant from the service JWT and
+issues a one-time ingest grant token for the new dataset.
 
-The canonical dataset determines Qdrant collection, Neo4j namespace, embedding provider/model and graph capability. Caller metadata cannot select physical storage scope or another tenant. Authorization precedes retrieval/context generation and ingestion side effects.
+1. Create the dataset with `POST /v1/datasets`.
+2. Redeem the token as `grant_token` at
+   `POST /v1/datasets/{dataset_id}/ingest-grants/self` with `rag:ingest`.
+   This grants the calling service ingest access to that active dataset.
+3. Index content with `rag:ingest` and the ingest grant. To obtain a new
+   service query grant, call `POST /v1/datasets/{dataset_id}/query-grants/self`
+   with both `rag:query` and `rag:datasets:manage`. The dataset's Qdrant
+   collection must be available and contain at least one indexed point.
 
-External applications handle human authentication and call HAWKI-RAG with their own scoped service JWTs. The issuer registers each client and the backend verifies tenant-specific dataset grants.
+The query self-grant endpoint can also reconcile an existing grant. With
+`rag:query` and an existing grant on the active dataset, the service can replay
+the request even if the Qdrant catalog is unavailable. This path still requires
+the backend to read the dataset and grant records.
+
+Queries require `rag:query` and the exact query grant. Ingestion requires
+`rag:ingest` and the exact ingest grant. Other dataset-scoped routes apply their
+own policy. For example, graph reads require query access and dataset
+retirement uses the management scope within the caller's tenant.
+
+The dataset record selects the Qdrant collection, Neo4j namespace, embedding
+model and provider, and graph capability. The API checks the grant before
+retrieval or ingestion. Caller-supplied metadata has no effect on tenant or
+storage selection.
 
 [Runtime deployment and security configuration](../Operations/python_runtime.md).

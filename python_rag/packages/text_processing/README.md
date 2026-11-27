@@ -1,8 +1,9 @@
 # HAWKI RAG text processing
 
-This package contains deterministic, side-effect-free text operations: Markdown
-cleanup, chunking, term extraction, tag normalization, and prompt/output safety
-rules. It performs no model, network, database, filesystem, or environment I/O.
+This package cleans up Markdown, splits it into chunks, extracts terms,
+normalizes tags, and checks prompt and output text. These operations are
+deterministic and run entirely on the supplied text, with no model, network,
+database, filesystem, or environment access.
 
 ## Tests
 

@@ -1,11 +1,12 @@
 # HAWKI RAG Python workspace
 
-This Python **3.13.14** uv workspace contains the RAG services and reusable
-packages, managed by [pyproject.toml](pyproject.toml) and one [lockfile](uv.lock).
+This uv workspace contains the ingestion workers, reranker, and shared Python
+packages. Members declare **Python 3.13.14**. The workspace uses
+[pyproject.toml](pyproject.toml) and one [lockfile](uv.lock).
 It owns retrieval and ingestion. FastAPI owns current service authorization and
 operational records; historical public-schema records remain preserved evidence.
 
-The handbook is authoritative for
+See
 [runtime architecture](../_documentation/Getting%20Started/3_introduction_architecture.md)
 and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-workspace-dependencies).
 
@@ -20,8 +21,8 @@ and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-wo
 | Live integration tests | [Test README](tests/README.md) |
 | Ownership rules | [Architecture Rules](../_documentation/Developer/architecture_rules.md) |
 
-The current [Python runtime guide](../_documentation/Operations/python_runtime.md)
-covers current deployment requirements. FastAPI serves query and graph APIs
+The [Python runtime guide](../_documentation/Operations/python_runtime.md)
+lists deployment requirements. FastAPI serves query and graph APIs
 directly through the shared retrieval and workflow-control packages.
 
 ## Local development

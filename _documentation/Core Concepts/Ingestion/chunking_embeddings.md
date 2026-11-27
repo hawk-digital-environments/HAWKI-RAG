@@ -1,21 +1,21 @@
 # Chunking & Embeddings
 
-A chunk is one retrievable passage. Each successfully embedded chunk becomes a
+A **chunk** is one retrievable passage. Each successfully embedded chunk becomes a
 Qdrant point containing the vector, text, and source metadata.
 
 ```text
 Document → character-based chunks → embedding per chunk → Qdrant points
 ```
 
-This happens during the **indexing stage** of the ingestion workflows:
+Current file, text, and URL submissions reach the same indexing activity.
 
 | Input | Temporal workflow | Path to indexing |
 |---|---|---|
 | Website | `IngestSourceWorkflow` | Crawl pages → prepare Markdown through conversion or passthrough → index |
-| Uploaded file | `IngestSourceWorkflow` | Stage the uploaded file → prepare Markdown through conversion or passthrough → index |
-| Direct text | `IngestTextWorkflow` | Use the submitted text's stored Markdown → index |
+| File or inline text | `IngestSourceWorkflow` | Stage the upload → prepare Markdown through conversion or passthrough → index |
+| Historical direct text | `IngestTextWorkflow` | Read the stored Markdown → index |
 
-Both workflows call the `ingest_markdown_files` activity, run by
+These workflows call the `ingest_markdown_files` activity, run by
 `hawki_indexer_worker`. This activity groups input files, splits documents into
 chunks, generates embeddings, and writes chunk points to Qdrant. The batching
 described below takes place inside this activity. See
@@ -32,16 +32,19 @@ Chunking uses **character counts** to set passage boundaries.
 | `CHUNK_OVERLAP_SIZE` | 250 | Start the next window before the previous end |
 | `INGEST_BATCH_SIZE` | 64 | Maximum input files per ingestion group and chunk points per Qdrant write |
 
-A **batch** is a group of document chunks written to Qdrant together. A batch can contain chunks from **one or multiple documents**, and large documents may span several batches. Documents are divided into smaller pieces called **chunks**. Whenever possible, the system splits the text at a paragraph break to keep related content together. Otherwise, it splits at the configured chunk size. Each chunk is stored in Qdrant with its text, document ID, position, source information, and metadata. Each chunk also has a **stable unique ID**, so processing the same chunk again updates the existing point instead of creating a duplicate.
+The chunker prefers paragraph breaks when it splits a document. Otherwise it
+uses the configured chunk size. Each point stores the chunk text, source and
+document IDs, position, and metadata. Reprocessing the same chunk writes to
+the same **stable point ID**.
 
 See [Batches and partial failures](#batches-and-partial-failures) for more details.
 
 ## Embedding Model Compatibility
 
-FastAPI stores the dataset's embedding provider and model and sends them to the
-indexer and query bridge. Indexing and queries must use the same embedding model
-so their vectors share a common meaning. Compatibility depends on the model as
-well as the vector dimension.
+FastAPI stores the dataset's embedding provider and model. The indexing
+workflow and FastAPI's retrieval package both use that contract. Indexing and
+queries must use the same embedding model so their vectors can be compared.
+Compatibility depends on the model as well as the vector dimension.
 
 :::warning Changing embedding models
 
@@ -54,10 +57,19 @@ See [Embedding migration](#embedding-migration) for the migration steps.
 
 :::
 
-The system keeps track of the embedding model used for each dataset. Existing vectors continue to use their original model until the content is re-ingested. If the embedding model is changed, the content should be re-ingested so that all vectors are created with the same model. Embedding providers such as **Ollama** and **LiteLLM** can be selected explicitly. If the selected provider cannot generate an embedding, the operation fails and reports an error.
+Set `RAG_BACKEND_DATASET_EMBEDDING_PROVIDER` and
+`RAG_BACKEND_DATASET_EMBEDDING_MODEL` before creating the target dataset.
+The backend copies these defaults into the dataset record at creation.
+Changing the defaults leaves existing records and vectors in place.
+`RAG_BACKEND_QUERY_MODELS` separately registers chat and vision models
+by provider. Supported embedding providers include **Ollama** and **LiteLLM**.
+Indexing reports embedding failures.
+
 ## Batches and partial failures
 
-The system applies `INGEST_BATCH_SIZE` at two stages:
+The indexer uses the same **batch size** for input files and Qdrant writes.
+A write can include points from **one or more documents**, and a large
+document can span several writes.
 
 | Stage | What one batch contains |
 |---|---|
@@ -74,35 +86,34 @@ points are then grouped into batches and written to Qdrant.
 
 ### What happens when indexing fails
 
-For website and uploaded-file ingestion, successfully processed chunks can still
-be stored even if some chunks fail. This can leave a document **partially
-indexed**. For example, if 8 of 10 chunks are successfully indexed, those 8 chunks are
-available for search while the remaining 2 are missing.
+Ingestion can leave a **partial result** for documents without whole-document
+completion checks. For example, if 8 of 10 chunks succeed, search can see
+those eight. Inspect any partial result before retrying. The incremental
+planner can skip a document it considers unchanged.
 
-A retry does not always fill these missing chunks automatically. If the system
-recognizes the document as unchanged, it may skip processing it again. When a
-partial indexing result occurs, the affected document should therefore be checked
-and rebuilt if necessary. Direct-text ingestion handles this more strictly. All chunk embeddings must
-succeed before the existing document is replaced. If an embedding fails, the
-operation stops and the document can be retried safely.
-
-Qdrant writes are performed in batches. If one of the later writes fails, earlier
-successful batches may already be stored. Retrying the ingestion allows the
-system to process the incomplete document again. For direct-text ingestion, the document is considered complete only after all expected points have been written successfully.
+Historical direct-text documents and artifacts identified by source and path
+require whole-document completion. All embeddings must succeed before the
+indexer replaces existing points. If a later Qdrant batch fails, points from
+earlier batches may already exist. The indexer checks the expected points and
+completion markers to decide whether a retry must reprocess the document.
 
 See [How text ingestion handles retries](./identity_incremental.md#how-text-ingestion-handles-retries).
 
 ## System configuration and setup
 
-These settings control chunking, embedding, and batch writes. The table describes
-how changes affect future ingestion and existing indexed content.
+For managed file and inline-text submissions, FastAPI records `CHUNK_SIZE`,
+`CHUNK_OVERLAP_SIZE`, and `INGEST_BATCH_SIZE` in the workflow input. URL
+ingestion uses the same indexing activity, but FastAPI leaves these fields
+unset for URL tasks. The indexer then uses its defaults of 1200 characters,
+250 characters of overlap, and 64 items per batch. Existing workflow inputs
+retain their recorded settings.
 
 | Setting or processing rule changed | How to apply it and handle existing data |
 |---|---|
-| `CHUNK_SIZE`, `CHUNK_OVERLAP_SIZE` | Recreate affected services and rebuild affected vectors; consider graph rebuild |
-| Dataset embedding provider/model or vector dimension | Create a compatible target and re-ingest before switching consumers; Settings defaults apply to new datasets |
+| `CHUNK_SIZE`, `CHUNK_OVERLAP_SIZE` | Recreate the backend to apply the settings to new managed workflow inputs. Rebuild affected vectors and consider rebuilding graph facts. |
+| Dataset embedding provider/model or vector dimension | Create a compatible target and re-ingest before switching consumers. Deployment defaults apply to new datasets. |
 | `QDRANT_DISTANCE` / collection distance metric | Use a collection configured for the intended metric and reindex |
-| `INGEST_BATCH_SIZE` | Recreate affected services; new workflow inputs use the new batch size, and existing vectors remain valid |
+| `INGEST_BATCH_SIZE` | Recreate the backend to apply the setting to new managed workflow inputs. Existing vectors remain valid. |
 
 See [Runtime options and system configuration](../../Operations/5_environment_db_queue.md#runtime-options-and-system-configuration)
 for when settings take effect, and

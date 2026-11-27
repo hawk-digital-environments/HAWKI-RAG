@@ -1,10 +1,14 @@
 # External crawler setup
 
-HAWKI-RAG sends crawler requests through its Temporal scraper worker. FastAPI
-uses the scraper queue to check readiness and fetch saved profiles or job
-receipts. The ingestion workflow uses the same queue for scraping.
-The scraper worker calls the external crawler over HTTP and reports ingestion
-progress back to FastAPI.
+The crawler fetches web pages and writes files to the shared artifact volume.
+The Temporal scraper worker submits the crawl over HTTP and polls for its
+receipt. The converter reads the files from the volume. FastAPI uses the same
+scraper queue to check readiness, fetch saved profiles, and inspect or cancel
+existing jobs.
+
+RAWKI checks that the crawler implements `crawler-api`. The crawler advertises
+this contract as `permanent-job-v2` in its OpenAPI schema. Retries reuse the
+same job ID, and job receipts confirm when the crawler has stopped writing.
 
 ## Configure the worker
 
@@ -22,11 +26,11 @@ shares the artifact volume with the worker. Set `RAG_SCRAPER_IMAGE` to select
 a specific image tag or digest. The scraper publishes no host port. If a
 reverse proxy on the crawler network serves its UI, set `ORIGIN` in
 `.env.scraper` to the public URL. Enable `RAG_BACKEND_URL_INGESTION_ENABLED=true`
-in `.env` for an image that implements `permanent-job-v2`, then check readiness.
+in `.env` for an image that implements `crawler-api`, then check readiness.
 
 ### Separately deployed crawler
 
-1. Deploy a crawler that advertises and implements `permanent-job-v2`. Give it
+1. Deploy a crawler that implements `crawler-api`. Give it
    access to the same shared artifact storage as the scraper and converter
    workers. Make the crawler endpoint reachable from the scraper worker.
 2. For repository builds, copy `.env.scraper-worker.example` to

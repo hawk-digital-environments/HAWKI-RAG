@@ -4,13 +4,18 @@
 
 [//]: # (- The main new features and changes in this version.)
 
-- **Headless service API.** Clients on the private Docker network use service JWTs
-  with the `/v1/*` API.
+- **Headless service API.** Clients call FastAPI over REST or MCP on the private Docker
+  network using service JWTs.
+- Inline text and file uploads share the managed document API and workflow.
+- The Temporal scraper worker handles crawler requests. The production
+  scraper image remains an optional Compose addon.
 
-- **Verified managed-document deletion.** Remove a document's Qdrant points and
-  Neo4j contributions through durable Temporal orchestration. Deletion remains
-  pending until owned writers have drained and scoped sink cleanup is verified;
-  failed or uncertain operations retain the evidence needed for retries.
+- **Verified managed-document deletion.** The earlier deletion path used a
+  dedicated Temporal workflow. The Python backend now owns scoped cleanup of
+  Qdrant points and Neo4j contributions. It uses Temporal to cancel active
+  ingestion when needed and keeps deletion pending until owned writers have
+  drained and sink cleanup is verified. Failed or uncertain operations retain
+  the evidence needed for retries.
 - **Immediate dataset removal with background cleanup.** Dataset DELETE hides and
   archives the dataset immediately, blocking ingestion, retries and queries. The
   cleanup coordinator can resume scoped cleanup after writer drain. The deployment

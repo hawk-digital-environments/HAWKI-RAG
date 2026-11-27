@@ -1,8 +1,8 @@
 # HAWKI vector store
 
-This package owns HAWKI-RAG's vector persistence boundary and Qdrant adapter. It
-contains vector value contracts, request construction,
-response parsing, transport retry policy, and scoped collection behavior.
+The Qdrant adapter reads and writes vector points and chunk payloads in scoped
+collections. This package defines the values, request and response mapping,
+and transport retries used by the adapter.
 Retrieval ranking and fallback strategies remain application-owned. It has no
 dependency on the graph-store package.
 

@@ -1,16 +1,15 @@
 # HAWKI RAG Python services
 
-This directory contains independently packaged Python services. It has no shared
-service entrypoint. The authoritative
+Each member has its own Python package and entry point. The
 [Repository Map](../../_documentation/Reference/8_repo_map.md#python-service-ownership)
-owns workspace dependencies and implementation paths; use
+lists implementation paths and workspace dependencies. See
 [Architecture](../../_documentation/Getting%20Started/3_introduction_architecture.md)
 for cross-service behavior and runtime diagrams.
 
 | Member | Responsibility |
 |---|---|
 | [hawki_workflow_worker](hawki_workflow_worker/README.md) | Deterministic source and direct-text orchestration |
-| [hawki_scraper_worker](hawki_scraper_worker/README.md) | External crawling or upload staging into raw artifacts |
+| [hawki_scraper_worker](hawki_scraper_worker/README.md) | External crawl jobs, crawler control, and upload staging for historical workflows |
 | [hawki_converter_worker](hawki_converter_worker/README.md) | Inspection/conversion into Markdown artifacts |
 | [hawki_indexer_worker](hawki_indexer_worker/README.md) | Incremental vectors, optional graph enrichment, terminal callbacks |
 | [hawki_reranker](hawki_reranker/README.md) | Cohere-compatible reranking and model lifecycle |

@@ -1,11 +1,12 @@
 # Storage: Vectors, Graphs & Artifacts
 
-Each store answers a different question. They are not interchangeable replicas.
+HAWKI-RAG stores operation records, workflow history, indexed evidence, and
+source files separately.
 
 | Store | State | Authority |
 |---|---|---|
 | PostgreSQL application database | Datasets, grants, tasks, sources, jobs, managed documents, worker-event receipts, monitor artifacts | FastAPI operational records |
-| Temporal persistence | Workflow history and execution state, separate from backend operational tables | Temporal execution truth |
+| Temporal persistence | Workflow history and execution state, separate from backend operational tables | Recorded workflow execution |
 | Qdrant | Chunk text and metadata alongside embeddings; content hashes and direct-text completion markers | What is indexed and the state used for incremental decisions |
 | Neo4j | Canonical normalized entities/relations with dataset namespace and document provenance | What graph facts exist |
 | Shared volume | Raw uploads/crawl files, Markdown, metadata sidecars, manifests | Artifact handoff and source material for indexing |
@@ -43,7 +44,7 @@ point write to fail. Before changing the embedding model or collection settings,
 follow the [embedding compatibility and migration guidance](./Ingestion/chunking_embeddings.md#embedding-model-compatibility).
 
 During a query, FastAPI supplies the collection selected for the authorized
-dataset. The query service searches that collection and applies a mandatory
+dataset. The retrieval package searches that collection and applies a mandatory
 `dataset_id` payload filter to restrict results to that dataset. If the collection
 is missing, the query returns `dataset_not_ready` (HTTP 503); collection creation
 takes place during ingestion.
@@ -53,9 +54,9 @@ markers from Qdrant payloads to decide whether to skip, retry, or replace a
 document. FastAPI stores operational ownership in its dedicated PostgreSQL schema. [Identity & Incremental Ingestion](./Ingestion/identity_incremental.md)
 explains how the indexer uses the stored points to make those decisions.
 
-For a full explanation of Qdrant's concepts, please refer to the official
+See the Qdrant documentation for
 [Collections](https://qdrant.tech/documentation/manage-data/collections/) and
-[Points](https://qdrant.tech/documentation/manage-data/points/) documentation.
+[Points](https://qdrant.tech/documentation/manage-data/points/).
 
 ## Neo4j
 
@@ -63,20 +64,20 @@ Neo4j represents entities as **nodes** and connections between them as
 **relationships**. Both can carry **properties**, which store additional data as
 key-value pairs.
 
-In HAWKI RAG, a namespace identifies a logical graph scope within a Neo4j database.
+In HAWKI-RAG, a namespace identifies a logical graph scope within a Neo4j database.
 Canonical facts carry dataset and namespace scope; reads and writes use those
 trusted values. Document provenance permits targeted graph replacement.
 
 RAG-Anything/LightRAG extraction can maintain intermediate graph state.
-That state is distinct from the canonical facts HAWKI RAG normalizes and writes.
+That state is distinct from the canonical facts HAWKI-RAG normalizes and writes.
 See [Ingestion with Graph Processing Enabled](./Ingestion/graph_enrichment.md).
 
 Neo4j enrichment is optional behavior, although Compose starts Neo4j and the
 default health gate includes graph checks.
 
-For a full explanation of Neo4j's concepts, please refer to the official
+See
 [Graph database concepts](https://neo4j.com/docs/getting-started/appendix/graphdb-concepts/)
-documentation.
+in the Neo4j documentation.
 
 ## Shared storage
 
@@ -90,8 +91,8 @@ Remote object-storage settings do not enable an alternative ingestion handoff.
 
 ## Consistency and backups
 
-Qdrant writes precede graph writes; signed callbacks update FastAPI state separately.
-A snapshot of only one store is not a full recoverable application backup.
+The indexer writes to Qdrant before Neo4j. Signed callbacks update FastAPI
+operation records separately. Back up the stores together to retain all state.
 
 Preserve the application database, Temporal persistence, Qdrant, Neo4j, shared
 artifacts, protected archive evidence, and installation secrets. The repository does not provide a coordinated cross-store backup/restore

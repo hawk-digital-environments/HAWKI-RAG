@@ -8,7 +8,7 @@
 | `python_backend/tests` | unit/integration tests, frozen fixtures and inert compatibility models |
 | `python_rag/services` | workflow and activity workers, indexer/converter/scraper, reranker |
 | `python_rag/packages` | shared typed contracts, stores, artifacts, runtime adapters |
-| `docker`, Compose files | deployment images, networking, local crawler and service issuer |
+| `docker`, Compose files | deployment images, networking, and local service issuer |
 | `scripts` | explicit provisioning, disposable smoke checks and read-only audits |
 
 ## Actual workspace dependencies
@@ -19,4 +19,7 @@ Use the [deployment guide](../Operations/python_runtime.md), [testing guide](../
 
 ## Follow one query
 
-The browser gateway injects its service JWT. FastAPI validates the principal and exact dataset grant, resolves canonical storage/model scope, and calls the query adapters for vector/graph retrieval and optional generation.
+The client sends its registered service JWT with a dataset ID. FastAPI checks
+the grant, resolves the storage targets and models, and calls the retrieval
+package in the backend process. Retrieval can use vector, lexical, and graph
+evidence, and the caller can request a generated answer.

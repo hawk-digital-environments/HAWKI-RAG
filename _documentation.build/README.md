@@ -1,41 +1,44 @@
 # Website
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+The [Docusaurus](https://docusaurus.io/) build reads the handbook and changelog
+from the parent directory. Run the following commands from this directory.
 
 ### Installation
 
 ```
-$ yarn
+npm ci
 ```
 
 ### Local Development
 
 ```
-$ yarn start
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+The development server reloads when documentation files change.
 
 ### Build
 
 ```
-$ yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+The build writes static files to `build`. The production build also checks
+the documentation links.
 
 ### Deployment
 
-Using SSH:
+For a manual deployment over SSH, run the deploy script with `USE_SSH`.
 
 ```
-$ USE_SSH=true yarn deploy
+USE_SSH=true npm run deploy
 ```
 
-Not using SSH:
+For a manual deployment over HTTPS, set `GIT_USER`.
 
 ```
-$ GIT_USER=<Your GitHub username> yarn deploy
+GIT_USER=your-github-username npm run deploy
 ```
 
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+The repository also has a documentation publishing workflow under
+`.github/workflows/publish-documentation.yml`.

@@ -1,7 +1,7 @@
 # Historical contract fixtures
 
-These inert fixtures replace test-time PHP/Composer dependencies. They are never
-loaded by runtime code and contain no deployment credentials.
+These fixtures record the outputs of the former PHP implementation for Python
+compatibility tests. They contain test data and require no PHP runtime.
 
 - `text_ingestion.fixture`: 48 metadata cases and eight encoded-size boundaries
   captured on 2026-11-21 using the original `tests/Support/text_ingestion_parity.php`

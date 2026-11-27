@@ -10,9 +10,11 @@ the supplied deployment models pending the historical ownership handoff.
 
 ## Connect API clients
 
-The Compose stack keeps FastAPI on the private Docker network. Connect from a
-client with access to that network and send a registered service JWT to
-`http://rag_backend/v1`. Update removed addon entries in `COMPOSE_FILE`.
+Connect from the private Docker network and authenticate with a registered
+service JWT. The REST base URL is `http://rag_backend/v1`; the MCP URL is
+`http://rag_backend/mcp`. Remove retired addon entries from `COMPOSE_FILE`.
+The production scraper addon remains available. Configure a separate crawler
+for local URL ingestion.
 
 ## Update the environment
 

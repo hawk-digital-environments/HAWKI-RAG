@@ -1,13 +1,11 @@
 # HAWKI artifact store
 
-`hawki-artifact-store` is the small shared-filesystem boundary used by the
-scraper, converter, and indexer workers. It is a Python library bundled into
-those worker images; it is not a database, container, metadata repository, or
-object-storage client.
+`hawki-artifact-store` reads and writes files on the shared artifact volume.
+The scraper, converter, and indexer images include this library.
 
 ## Responsibility boundary
 
-FastAPI owns the control-plane concerns:
+FastAPI manages the following parts of the artifact lifecycle.
 
 - validating and storing uploads;
 - allocating source, raw, Markdown, and manifest paths;
@@ -16,7 +14,7 @@ FastAPI owns the control-plane concerns:
 - processing signed worker callbacks; and
 - deleting task and source workspaces at the end of their lifecycle.
 
-Python workers own only activity-local artifact work:
+Workers perform the following file operations within an activity.
 
 - copying a FastAPI-owned upload into its raw stage directory;
 - resetting the specific retry-local stage directories FastAPI supplied;

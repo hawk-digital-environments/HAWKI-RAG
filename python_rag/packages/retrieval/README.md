@@ -1,18 +1,18 @@
 # hawki-rag-retrieval
 
-Shared RAG query/retrieval package for HAWKI-RAG.
+FastAPI calls this package in the backend process with an authorized dataset
+scope. The package handles:
 
-This package contains the core retrieval logic extracted from the bridge service,
-including:
-
-- Query execution and orchestration
-- Semantic and lexical retrieval
-- Graph/Neo4j integration
-- Reranking
-- Fusion and ranking policies
-- Context assembly and answer generation
+- Semantic and lexical retrieval and score fusion.
+- Optional graph retrieval from Neo4j.
+- Optional reranking of the leading hits. With mode `none`, the reranker
+  leaves the incoming order intact.
+- Context assembly and optional answer generation.
 
 ## Usage
+
+The example assumes that the caller has already resolved the authorized
+dataset scope in `request`.
 
 ```python
 from hawki_rag_retrieval import QueryDependencies, execute_authorized_query

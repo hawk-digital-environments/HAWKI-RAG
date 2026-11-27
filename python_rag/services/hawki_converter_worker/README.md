@@ -1,7 +1,8 @@
 # HAWKI converter worker
 
-Temporal worker that inspects raw artifacts and produces canonical Markdown
-artifacts for the indexer.
+The converter worker prepares Markdown for the indexer. It reads crawled
+files or stages a managed upload from shared storage, then converts the
+input or passes through existing Markdown.
 
 ## Tests
 

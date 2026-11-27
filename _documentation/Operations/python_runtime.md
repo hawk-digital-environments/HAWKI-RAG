@@ -1,17 +1,18 @@
 # Python RAG deployment
 
 HAWKI-RAG serves the authenticated `/v1/*` API on the private Docker network.
-Only `/v1/health` and the published schema are available without a service JWT.
-The API verifies issuer, audience, key, scopes and tenant before applying
-exact dataset grants. Workers sign internal callbacks.
+Clients can read liveness at `/v1/health` and the schema at `/v1/openapi.json`
+without a service JWT. Protected routes verify the token and check the relevant
+scope and any dataset grant required by the route. Workers authenticate
+internal callbacks with HMAC signatures.
 
 ## Configuration and schema
 
 Use `.env.example` for repository builds and `_docker_production/.env.example` for
-registry releases. The current backend requires Alembic revision **0009** and a
+registry releases. The backend requires Alembic revision `0009` and a
 separate runtime login with only the grants verified by readiness. Keep the
-migration DSN outside the application environment. For inspected local setup,
-`make migrate-core` uses an explicit operator-supplied migration DSN.
+migration DSN outside the application environment. For local provisioning,
+`make migrate-core` uses the migration DSN supplied by the operator.
 
 Keep deployment values in the untracked project `.env` and provider fragments.
 The tracked files under `docker/env/` and `_docker_production/env/` apply service
@@ -31,6 +32,8 @@ store configuration, signed callback credentials, and the shared artifact
 permissions. Preserve the Compose project name and existing volumes on upgrades.
 
 ## External crawler
+
+### Production Compose addon {#production-crawler}
 
 Production can run the published HAWKI-RAG scraper image with the optional
 `docker-compose.scraper.yml` addon. The Temporal scraper worker reaches it at
@@ -77,17 +80,16 @@ keeps FastAPI on the private Docker network and leaves its host port unpublished
 If upgrading from the former backend-only overlay, transfer the required backend
 settings to the configured environment before startup.
 
-The current branch needs matching published Python images, operator-provisioned
-roles and credentials, and an approved schema rollout. Live model readiness
-currently checks Ollama inventories. A LiteLLM deployment requires a reviewed
-provider-specific probe.
+Use images from the same release. Provision the database roles and
+credentials and apply the migration through the approved schema rollout
+procedure before startup. Live model readiness currently checks Ollama
+inventories. A LiteLLM deployment requires a reviewed provider-specific probe.
 
 ## Historical evidence and reservations
 
-The 27 original `public.*` tables remain frozen evidence, documented in
-[public schema history](../History/public_schema.md). Fresh Python deployments
-do not execute their former source-level migrations. The removed migrations
-remain available in Git at `5391cb23:database/migrations/`.
+Preserve the 27 original `public.*` tables as historical evidence. Fresh Python
+deployments use the `hawki_backend` schema. The former migrations remain
+available in Git at `5391cb23:database/migrations/`.
 
 Preserve the shared volume, `/shared/.historical-orphans`,
 `/shared/.crawler-runtime/legacy-archive`, reserved original job/source identities,
@@ -111,9 +113,9 @@ verify durable ownership, writer quiescence and exact sink scope.
 
 Previously recorded graph-clear operations can be reconciled on the private
 backend connection using its authenticated receipt endpoint and verified sink
-evidence. Graph clearing uses the Python-owned operation. Background dataset
-cleanup remains
-disabled in both Compose models pending verified historical handoff.
+evidence. Graph clearing uses the Python-owned operation. Both Compose models
+disable background dataset cleanup pending verification of the historical
+ownership handoff.
 
 Qdrant collections are created lazily on first indexing. Live readiness still
 probes every configured Qdrant client, but an active dataset with valid canonical

@@ -1,11 +1,26 @@
 # Architecture Rules
 
-FastAPI owns authorization, canonical dataset scope and durable operation state. Python workers own execution and store writes through typed adapters; signed callbacks publish application status. Keep HTTP validation, domain decisions and persistence/external clients distinct.
+FastAPI authorizes requests, resolves dataset scope, and records operations.
+Workers execute activities and write through typed store adapters. They report
+status through signed callbacks. Keep HTTP validation, domain decisions, and
+storage or network access in their respective layers.
 
-Authorization must precede side effects. Require service identity, tenant/action scope and exact dataset grant. Never derive physical storage from caller metadata. Keep immutable workflow input, idempotency, generation checks and writer fences consistent across retries and cleanup.
+Before making changes, check the service identity, tenant, action scope, and any
+dataset grant required by the route. Resolve physical storage from the dataset
+record. Replay the same mutation with its recorded operation identity and
+workflow input. Recovery that recrawls a URL or replaces a managed revision
+prepares a successor generation and workflow identity. Check the expected
+generation and enforce writer fences before cleanup or recovery. Keep dispatch
+and dataset authority with the owning Python service.
 
-Shared packages expose small typed contracts; services compose dependencies. Keep query configuration and credentials deployment-owned. Do not add a second dispatcher or duplicate dataset authority outside the owning Python service.
+Shared packages define the contracts used by services. Services supply their own
+dependencies. Keep query configuration and credentials in deployment settings.
+When changing a wire contract, test its consumers against the new contract and
+any supported older inputs.
 
-Change wire contracts deliberately with consumer tests. Preserve frozen schema/wire fixtures and test-only compatibility identities; do not regenerate independent reference expectations from the implementation under test. Historical public records and archive reservations are evidence, not active Python ownership.
+Keep frozen schema and wire fixtures independent of the implementation under
+test. Retained database rows and reserved archive identities provide historical
+evidence. Active ownership comes from Python operational records.
 
-Update member READMEs and current guides with behavior changes. Use [testing](testing.md) and [runtime deployment](../Operations/python_runtime.md) for checks.
+Update the affected member READMEs and guides. See [testing](testing.md) and
+[runtime deployment](../Operations/python_runtime.md).

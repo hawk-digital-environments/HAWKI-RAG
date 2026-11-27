@@ -1,12 +1,12 @@
 # HAWKI-RAG documentation
 
-HAWKI-RAG is a headless FastAPI service with Python workers.
-External applications own human authentication. Service JWT/JWKS, tenant grants, signed callbacks,
-permanent-job-v2 and historical identity reservations remain mandatory.
+FastAPI serves the HAWKI-RAG API. Python workers convert and index documents
+under Temporal. Client applications authenticate their users and send service
+JWTs to the API. Workers report ingestion events through signed callbacks.
 
 - [Current deployment and architecture](Operations/python_runtime.md)
 - [Python testing](Developer/testing.md)
-- [Frozen public-schema history](History/public_schema.md)
 
-Follow the deployment guide for configuration, startup, readiness and data
-preservation requirements.
+The deployment guide covers database provisioning, service authentication, and
+readiness. URL ingestion also requires a crawler that implements
+`crawler-api`. See [external crawler setup](Operations/crawler_v2_local_upgrade.md).

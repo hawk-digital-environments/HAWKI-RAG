@@ -1,9 +1,11 @@
 # HAWKI scraper worker
 
-This service owns the `scrape_source` Temporal activity. It either stages an
-uploaded source into shared artifact storage or starts/resumes the configured
-external crawler job. Pipeline state is reported through signed, typed FastAPI
-callbacks; this worker has no PostgreSQL or bridge dependency.
+The `scrape_source` activity submits and polls the external crawler. The
+crawler writes to shared storage. The worker reports status and receipts to
+FastAPI through signed callbacks. The worker also runs `CrawlerControlWorkflow`
+for readiness, catalogs, job status, and cancellation. Historical upload
+workflows can still stage files through `scrape_source`. Current uploads
+start with the converter.
 
 ## Tests
 

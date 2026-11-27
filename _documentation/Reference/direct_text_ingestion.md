@@ -1,10 +1,11 @@
 # Inline text and file ingestion
 
-HAWKI-RAG accepts inline text and file uploads at `POST /v1/documents`. Both use the managed document workflow. The API stages an upload, the converter worker produces a Markdown artifact, and the indexer writes the resulting chunks.
+HAWKI-RAG accepts inline text and file uploads at `POST /v1/documents`. Both use the managed document workflow. The API stages the upload. The converter worker produces Markdown, and the
+indexer writes the chunks to the dataset.
 
 ## Submit a source
 
-Use a registered service JWT with the `rag:ingest` scope and an exact ingest grant on the active dataset. Send a stable `Idempotency-Key` header when the client may retry. Send files as `multipart/form-data` with `dataset_id` and `file`. Send inline text as `application/json` or as form fields with `text` in place of `file`.
+Use a registered service JWT with the `rag:ingest` scope and an exact ingest grant on the active dataset. Reuse a stable `Idempotency-Key` when retrying the same request. Send files as `multipart/form-data` with `dataset_id` and `file`. Send inline text as `application/json` or as form fields with `text` in place of `file`.
 
 ```json
 {
@@ -52,9 +53,9 @@ dataset that grants ingest access to the service in your token.
 }
 ```
 
-For a file, supply `markdown_file` with its plain `.md` filename and its
-base64-encoded UTF-8 bytes in `content_base64`. Files up to 4 MiB are supported
-over MCP.
+In `markdown_file`, set `filename` to a plain `.md` filename and
+`content_base64` to the base64-encoded UTF-8 contents. The decoded file limit
+is 4 MiB.
 
 ```json
 {
@@ -93,4 +94,4 @@ Poll `GET /v1/pipeline/tasks/{task_id}` for completion. Delete new text and file
 
 A service with `rag:query` and the dataset query grant can call `POST /v1/query`. Each hit includes its existing ID, score and projected evidence payload, plus a separate `metadata` object. For the example above, `hits[0].payload.content` contains the retrieved chunk and `hits[0].metadata.year` is the integer `2025`. Hits without validated public source metadata return `{}`.
 
-Use the optional `metadata_filters` expression to narrow retrieval before reranking. The REST reference defines its operators, types, limits and shared Python contract. [Metadata-aware queries](rest_apis.md#query-request)
+Use the optional `metadata_filters` expression to narrow retrieval before reranking. The REST reference lists the operators, operand types, and limits. [Metadata-aware queries](rest_apis.md#query-request)

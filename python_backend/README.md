@@ -1,9 +1,9 @@
 # HAWKI backend
 
-FastAPI owns the RAG API, dataset grants and new operational state. HAWKI owns
-human authentication. The backend accepts registered **service** JWT identities,
-tenant/scope claims and exact dataset grants; it has no human account, password,
-browser-session implementation.
+FastAPI serves the HAWKI-RAG API and stores datasets, grants, and operation
+records. Client applications authenticate their users and send registered
+**service** JWTs. The backend checks the tenant and scopes and applies the
+dataset grant required by the route.
 
 The current [deployment guide](../_documentation/Operations/python_runtime.md)
 documents provisioning and startup. Frozen contract fixtures live under
@@ -16,20 +16,21 @@ for deployment checks.
 
 - API clients on the private Docker network send service JWTs to FastAPI `/v1/*`.
 - Workers send timestamped, signed callbacks over the project network.
-- Alembic revision **0009** owns the operational `hawki_backend` schema. The
+- The runtime expects Alembic revision `0009` for the `hawki_backend` schema. The
   restricted login lacks DDL and historical-table privileges.
 
 ## Capabilities
 
-Query and graph retrieval; dataset creation/grants/retirement; direct text;
-managed upload/download/update/deletion; URL/sitemap ingestion, schedules and
-cancellation; graph operations and snapshots; Python pipeline diagnostics and
-readiness. New dataset graph support is controlled by
+The backend provides retrieval, graph operations and snapshots, dataset
+management, and pipeline diagnostics. The document API accepts files and
+inline text and supports download, replacement, and deletion. URL tasks
+support sitemap ingestion, scheduling, and cancellation. New dataset graph support is controlled by
 `RAG_BACKEND_DATASET_GRAPH_ENABLED`; uploads/tasks select graph ingestion through
 their normal input. Physical collection and namespace remain server-derived.
 
-The crawler must support and advertise genuine `permanent-job-v2`. URL ingestion
-fails closed when enabled when its safety contract is unavailable.
+URL ingestion requires a crawler that implements
+`crawler-api`. The scraper worker checks the contract through Temporal
+before the backend admits URL work.
 
 ## Historical isolation
 
@@ -58,7 +59,7 @@ Live readiness, inside the configured backend container:
 docker compose exec -T rag_backend python -m hawki_backend.readiness --live
 ```
 
-The current runtime requires 26/26 PASS. Readiness never repairs state or replaces
-authorization. Retained grant/import tooling is covered independently; its old
+Readiness requires every applicable check to pass. The set of probes depends
+on the enabled capabilities and configured stores. Retained grant/import tooling is covered independently; its old
 live activation switches are retired. Frozen contract fixtures remain independent
 reference data for compatibility and security tests.

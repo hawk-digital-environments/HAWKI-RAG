@@ -1,8 +1,9 @@
 # HAWKI external jobs
 
-This package owns the generic HTTP start/status polling protocol shared by the
-scraper and converter adapters. It does not own Temporal, worker logging,
-FastAPI callbacks, or service-specific payload interpretation.
+`ExternalJobClient` submits and polls HTTP jobs for the scraper and converter
+adapters. `CustomCrawlerClient` adds contract checks, owned job receipts,
+and cancellation for `crawler-api`. The worker handles Temporal and
+FastAPI callbacks.
 
 ## Tests
 
